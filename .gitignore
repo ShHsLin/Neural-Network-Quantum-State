@@ -1,0 +1,10 @@
+*.pyc
+Model/
+AFH2_CNN_Mom/
+AFH2_CNN_Mom_pre/
+AFH2_NN_Mom/
+AFH_CNN_Adam/
+AFH_CNN_Mom/
+EigenVec/
+Ising_CNN2_Mom/
+
