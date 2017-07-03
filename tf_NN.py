@@ -88,7 +88,8 @@ class tf_NN:
         # Reshape conv2 output to fit fully connected layer input
         fc1 = tf.reshape(x, [-1, weights['wd1'].get_shape().as_list()[0]])
         fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
-        fc1 = tf.nn.sigmoid(fc1)
+        fc1 = tf.nn.tanh(fc1)
+        # fc1 = tf.cos(fc1)
 
         out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
         #    out = tf.nn.sigmoid(out)

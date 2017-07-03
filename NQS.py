@@ -6,6 +6,7 @@ from tf_FCN import tf_FCN
 from tf_CNN import tf_CNN
 from tf_NN import tf_NN
 from tf_NN3 import tf_NN3
+from tf_NN_complex import tf_NN_complex
 
 
 def save_object(obj, filename):
@@ -74,10 +75,24 @@ class NQS():
 
     def newconfig(self):
         L = self.config.shape[0]
-        randsite = np.random.randint(L)
         tempconfig = self.config.copy()
-        tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
-        ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+        # randsite = np.random.randint(L)
+        # tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
+        # ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+        # if np.random.rand() < np.amin([1., ratio**2]):
+        #     self.config = tempconfig
+        # else:
+        #     pass
+        if np.random.rand() < 0.5:
+            randsite = np.random.randint(L)
+            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
+            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+        else:
+            randsite = np.random.randint(L)
+            randsite2 = np.random.randint(L)
+            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
+            tempconfig[randsite2, :, 0] = (tempconfig[randsite2, :, 0] + 1) % 2
+            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
         if np.random.rand() < np.amin([1., ratio**2]):
             self.config = tempconfig
         else:
@@ -145,15 +160,15 @@ class NQS():
         ############
         # Method 1 #
         ############
-        # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
-        # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
-        # invSij = np.linalg.inv(Sij)
+        regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
+        Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
+        invSij = np.linalg.inv(Sij)
         ############
         # Method 2 #
         ############
-        Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
-        invSij = np.linalg.pinv(Sij, 1e-2)
-        # Fj = 2<O_iH>-2<H><O_i>
+        # Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
+        # invSij = np.linalg.pinv(Sij, 1e-2)
+        #  Fj = 2<O_iH>-2<H><O_i>
         if self.moving_E_avg is None:
             Fj = 2. * (EOsum / numSample - Eavg * Osum / numSample)
         else:
@@ -245,9 +260,9 @@ class NQS():
 ########################
 
 
-L = 10
+L = 32
 systemSize = (L, 2)
-which_Net = 'NN3'
+which_Net = 'NN_complex'
 opt = 'Mom'
 H = 'AFH'
 
@@ -259,13 +274,15 @@ elif which_Net == "CNN":
     Net = tf_CNN(systemSize, optimizer=opt)
 elif which_Net == "FCN":
     Net = tf_FCN(systemSize, optimizer=opt)
+elif which_Net == "NN_complex":
+    Net = tf_NN_complex(systemSize, optimizer=opt, alpha=4)
 
 N = NQS(systemSize, Net=Net, Hamiltonian=H)
 
 var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
 var_list = tf.global_variables()
 saver = tf.train.Saver(N.NNet.model_var_list)
-ckpt = tf.train.get_checkpoint_state('Model/'+which_Net+'/L'+str(L)+'/')
+ckpt = tf.train.get_checkpoint_state('Model_VMC/'+which_Net+'/L'+str(L)+'/')
 
 if ckpt and ckpt.model_checkpoint_path:
     saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
@@ -275,25 +292,25 @@ else:
 
 
 # Thermalization
-for i in range(1000):
+for i in range(100):
     N.newconfig()
 
 E_log = []
 # wc1 = np.load('wc1.npy')
 # bc1 = np.load('bc1.npy')
-N.NNet.sess.run(N.NNet.learning_rate.assign(1e-1))
-N.NNet.sess.run(N.NNet.momentum.assign(0.5))
-_, _, E_avg = N.VMC(numSample=1500, iteridx=0)
+N.NNet.sess.run(N.NNet.learning_rate.assign(1e-4))
+N.NNet.sess.run(N.NNet.momentum.assign(0.9))
+_, _, E_avg = N.VMC(numSample=300, iteridx=0)
 # N.moving_E_avg = E_avg * l
 
-for iteridx in range(0, 1500):
+for iteridx in range(0, 3000):
     print(iteridx)
     # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
     # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
 
-    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-2 * (0.995**iteridx)))
-    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
-    numSample = 3000  # + iteridx
+#    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-3 * (0.995**iteridx)))
+#    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
+    numSample = 50 + iteridx/10
     GradW, batchConfig, E = N.VMC(numSample=numSample, iteridx=iteridx)
     # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
     E_log.append(E)
@@ -309,6 +326,8 @@ for iteridx in range(0, 1500):
 #    for idx, W in enumerate( N.NNet.sess.run(N.NNet.para_list)):
     #        GList[idx] += W*0.1
 
+# To save object ##
+# saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
 
 # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
 #           E_log, '%.4e', delimiter=',')

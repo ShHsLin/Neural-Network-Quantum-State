@@ -3,9 +3,9 @@ import tensorflow as tf
 from tf_wrapper import *
 
 
-class tf_CNN:
+class tf_NN3_complex:
     def __init__(self, inputShape, optimizer, learning_rate=0.1125,
-                 momentum=0.95):
+                 momentum=0.90, alpha=1):
         # Parameters
         self.learning_rate = tf.Variable(learning_rate)
         self.momentum = tf.Variable(momentum)
@@ -16,32 +16,40 @@ class tf_CNN:
 
         # tf Graph input
         self.x = tf.placeholder(tf.float32, [None, n_input])
-        self.y = tf.placeholder(tf.float32, [None, n_classes])
-        self.keep_prob = tf.placeholder(tf.float32)
+        self.y = tf.placeholder(tf.complex64, [None, n_classes])
 
         self.L = int(inputShape[0])
 
         # Variables Creation
         # Store layers weight & bias
-        chan1 = 20
         self.weights = {
-            'wc1': tf.Variable(tf.random_normal([4, 2, 1, chan1], stddev=0.2)),
-            'wd1': tf.Variable(tf.random_normal([(self.L)*1*chan1, 5],
-                                                stddev=np.sqrt(2./((self.L)*1*chan1+5)))),
-            'out': tf.Variable(tf.random_normal([5, n_classes], stddev=0.1))
+            'wd1': tf.Variable(tf.random_normal([(self.L), (self.L * alpha)],
+                                                stddev=np.sqrt(2./(self.L*(1+alpha))))),
+            'wd2': tf.Variable(tf.random_normal([(self.L*alpha), (self.L * alpha)],
+                                                stddev=np.sqrt(2./(self.L*alpha*2)))),
+            'wd3_re': tf.Variable(tf.random_normal([(self.L * alpha), (self.L * alpha)],
+                                                   stddev=np.sqrt(2./(self.L * 2 * alpha)/100.))),
+            'wd3_im': tf.Variable(tf.random_normal([(self.L * alpha), (self.L * alpha)],
+                                                   stddev=np.sqrt(2./(self.L * 2 * alpha)))),
+            'out_re': tf.Variable(tf.random_normal([self.L*alpha, n_classes],
+                                                   stddev=np.sqrt(2./(self.L*alpha)))),
+            'out_im': tf.Variable(tf.random_normal([self.L*alpha, n_classes],
+                                                   stddev=np.sqrt(2./(self.L*alpha))))
         }
 
         self.biases = {
-            'bc1': tf.Variable(np.zeros(chan1, dtype=np.float32)),
-            'bd1': tf.Variable(np.zeros(5, dtype=np.float32)),
-            'out': tf.Variable(np.zeros(1, dtype=np.float32))
+            'bd1': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
+            'bd2': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
+            'bd3_re': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
+            'bd3_im': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
+            'out': tf.Variable((np.zeros(1, dtype=np.float32)))
         }
 
         # Construct model : Tensorflow Graph is built here !
-        self.pred = self.conv_net(self.x, self.weights, self.biases,
-                                  self.keep_prob, inputShape)
+        self.pred = self.build(self.x, self.weights, self.biases, inputShape)
 
         self.model_var_list = tf.global_variables()
+
         # Define optimizer
         if optimizer == 'Adam':
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
@@ -82,27 +90,30 @@ class tf_CNN:
                                                 zip(self.newgrads, grad_list)})
 
     # Create model
-    def conv_net(self, x, weights, biases, dropout, inputShape):
+    def build(self, x, weights, biases, inputShape):
         x = tf.reshape(x, shape=[-1, inputShape[0], inputShape[1], 1])
-
-        conv1 = conv2d(x, weights['wc1'], biases['bc1'], padding='SAME')
-        # conv2 = tf.nn.tanh(conv1)
-        conv2 = leaky_relu(conv1)
-        # conv2 = tf.cos(conv1)
-        # conv2_2 = tf.cos(conv1)
-        # conv2 = tf.multiply(conv2, conv2_2)
-
+        x = x[:, :, 0, :]
         # Fully connected layer
-        # Reshape conv2 output to fit fully connected layer input
-        fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
+        fc1 = tf.reshape(x, [-1, weights['wd1'].get_shape().as_list()[0]])
         fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
-        fc1 = tf.nn.tanh(fc1)
+        fc1 = tf.nn.sigmoid(fc1)
 
-        out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
+        fc2 = tf.add(tf.matmul(fc1, weights['wd2']), biases['bd2'])
+        fc2 = tf.nn.sigmoid(fc2)
+
+        fc3 = tf.add(tf.matmul(tf.complex(fc2, 0.),
+                               tf.complex(weights['wd3_re'],
+                                          weights['wd3_im'])),
+                     tf.complex(biases['bd3_re'], biases['bd3_im']))
+        fc3 = tf.exp(fc3)
+
+        out = tf.add(tf.matmul(fc3, tf.complex(weights['out_re'],
+                                               weights['out_im'])),
+                     tf.complex(biases['out'], 0.0))
+        out = tf.real(out)
         #    out = tf.nn.sigmoid(out)
         print("Building the model with shape:")
         print("Input Layer X:", x.get_shape())
-        print("Conv1:", conv1.get_shape())
         print("FC1:", fc1.get_shape())
         print("out:", out.get_shape())
         return out

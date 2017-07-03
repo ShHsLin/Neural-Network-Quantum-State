@@ -18,6 +18,10 @@ def leaky_relu(x):
     # return tf.nn.tanh(x)
 
 
+def complex_relu(x):
+    return tf.complex(tf.nn.relu(tf.real(x)), tf.imag(x))
+
+
 def maxpool1d(x, k=2):
     # MaxPool2D wrapper
     return tf.nn.max_pool(x, ksize=[1, k, 1, 1], strides=[1, k, 1, 1],

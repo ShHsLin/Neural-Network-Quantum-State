@@ -1,5 +1,7 @@
 *.pyc
+*.csv
 Model/
+Model_VMC/
 AFH2_CNN_Mom/
 AFH2_CNN_Mom_pre/
 AFH2_NN_Mom/

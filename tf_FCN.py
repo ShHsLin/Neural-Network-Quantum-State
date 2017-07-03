@@ -21,14 +21,15 @@ class tf_FCN:
 
         self.L = int(inputShape[0])
 
-        chan1 = 2
-        chan2 = 2
-        chan3 = 4
-        chan4 = 4
-        chan5 = 6
-        chan6 = 6
-        chan7 = 8
-        chan8 = 8
+        alpha = 2
+        chan1 = 2 * alpha
+        chan2 = 2 * alpha
+        chan3 = 4 * alpha
+        chan4 = 4 * alpha
+        chan5 = 6 * alpha
+        chan6 = 6 * alpha
+        chan7 = 8 * alpha
+        chan8 = 8 * alpha
 
         self.weights = {
             'wc1': tf.Variable(tf.random_normal([4, 2, 1, chan1],
@@ -52,7 +53,7 @@ class tf_FCN:
             # 'wd1': tf.Variable(tf.random_uniform([(self.L-3)*1*6, 5])/(self.L-3)),
             # 5 inputs, 1 outputs (class prediction)
             # 'out': tf.Variable(tf.random_normal([4, n_classes], stddev = 0.4))
-            'out': tf.Variable(tf.random_uniform([8, n_classes]))
+            'out': tf.Variable(tf.random_uniform([self.L / 16 * chan8, n_classes]))
             # 'out': tf.Variable(tf.random_normal([L_pool*1*chan3,
             #                                     n_classes])/10 )
         }

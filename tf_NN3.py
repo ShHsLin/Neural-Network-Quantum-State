@@ -37,8 +37,8 @@ class tf_NN3:
         self.biases = {
             'bd1': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
             'bd2': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
-            'bd3': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
-            'out': tf.Variable(np.zeros(1, dtype=np.float32))
+            'bd3': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32))
+#            'out': tf.Variable(np.zeros(1, dtype=np.float32))
         }
 
         # Construct model : Tensorflow Graph is built here !
@@ -100,7 +100,8 @@ class tf_NN3:
         fc2 = tf.nn.tanh(fc2)
         fc3 = tf.add(tf.matmul(fc2, weights['wd3']), biases['bd3'])
         fc3 = tf.nn.tanh(fc3)
-        out = tf.add(tf.matmul(fc3, weights['out']), biases['out'])
+        out = tf.matmul(fc3, weights['out'])
+        # out = tf.add(tf.matmul(fc3, weights['out']), biases['out'])
         #    out = tf.nn.sigmoid(out)
         print("Building the model with shape:")
         print("Input Layer X:", x.get_shape())
