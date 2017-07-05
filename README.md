@@ -26,9 +26,12 @@ This work is inspired by the paper from,
 - [x] Pretraining with eigenvector given.
 - [ ] Different NNQS
      - [x] 1-hidden layer NN
-     - [x] 1 conv +  1-hidden layer NN  
      - [x] 3-hidden layer NN
+     - [x] 1 conv +  1-hidden layer NN  
      - [x] Fully Convolutional Network (FCN)
+     - [x] 1-hidden layer Complex NN
+     - [x] 3-hidden layer Complex NN
+     - [x] RBM Network
      - [ ] ...
 
   

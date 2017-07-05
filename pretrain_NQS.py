@@ -9,7 +9,7 @@ from tf_NN3_complex import tf_NN3_complex
 from tf_NN_RBM import tf_NN_RBM
 
 L = 16
-which_Net = 'NN3_complex'
+which_Net = 'NN'
 lr = 1e-3  # 1e-10
 
 basis = []
