@@ -1,12 +1,14 @@
+from __future__ import absolute_import
+
 import tensorflow as tf
 import numpy as np
-from tf_NN import tf_NN
-from tf_NN3 import tf_NN3
-from tf_CNN import tf_CNN
-from tf_FCN import tf_FCN
-from tf_NN_complex import tf_NN_complex
-from tf_NN3_complex import tf_NN3_complex
-from tf_NN_RBM import tf_NN_RBM
+from wavefunction.tf_NN import tf_NN
+from wavefunction.tf_NN3 import tf_NN3
+from wavefunction.tf_CNN import tf_CNN
+from wavefunction.tf_FCN import tf_FCN
+from wavefunction.tf_NN_complex import tf_NN_complex
+from wavefunction.tf_NN3_complex import tf_NN3_complex
+from wavefunction.tf_NN_RBM import tf_NN_RBM
 
 L = 16
 which_Net = 'NN'
