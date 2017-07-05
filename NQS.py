@@ -1,10 +1,11 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-import sys
 import numpy as np
-import pickle
 import tensorflow as tf
+import pickle
+
+from utils.parse_args import parse_args
 
 from wavefunction.tf_NN import tf_NN
 from wavefunction.tf_NN3 import tf_NN3
@@ -15,6 +16,14 @@ from wavefunction.tf_NN3_complex import tf_NN3_complex
 from wavefunction.tf_NN_RBM import tf_NN_RBM
 
 
+"""
+1.  Should move config out as an indep class
+So that easily to change from 1d problem to 2d problem?
+2.  Rewrite the h, J,... etc in a class model
+So easily to switch model
+"""
+
+
 def save_object(obj, filename):
     with open(filename, 'wb') as output:
         pickle.dump(obj, output, pickle.HIGHEST_PROTOCOL)
@@ -23,16 +32,6 @@ def save_object(obj, filename):
 def read_object(filename):
     with open(filename, 'r') as input:
         return pickle.load(input)
-
-# TASK!! #
-
-
-"""
-1.  Should move config out as an indep class
-So that easily to change from 1d problem to 2d problem?
-2.  Rewrite the h, J,... etc in a class model
-So easily to switch model
-"""
 
 
 class NQS():
@@ -82,13 +81,6 @@ class NQS():
     def newconfig(self):
         L = self.config.shape[0]
         tempconfig = self.config.copy()
-        # randsite = np.random.randint(L)
-        # tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
-        # ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
-        # if np.random.rand() < np.amin([1., ratio**2]):
-        #     self.config = tempconfig
-        # else:
-        #     pass
         if np.random.rand() < 0.5:
             randsite = np.random.randint(L)
             tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
@@ -99,10 +91,12 @@ class NQS():
             tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
             tempconfig[randsite2, :, 0] = (tempconfig[randsite2, :, 0] + 1) % 2
             ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
-        if np.random.rand() < np.amin([1., ratio**2]):
-            self.config = tempconfig
-        else:
-            pass
+            if np.random.rand() < np.amin([1., ratio**2]):
+                self.config = tempconfig
+            else:
+                pass
+
+        return
 
     def H_exp(self, num_sample=1000, h=1, J=0):
         energyList = []
@@ -268,16 +262,11 @@ class NQS():
 
 if __name__ == "__main__":
 
-    argv = sys.argv[1:]
-    try:
-        assert(len(argv) == 4)
-    except:
-        raise ValueError("Input arguments should be: [L] [which_Net] [learning_rate] [num_Sample]")
-
-    L = int(argv[0])
-    which_Net = argv[1]  # 'NN3'
-    lr = float(argv[2])
-    num_sample = int(argv[3])
+    args = parse_args()
+    L = args.L
+    which_Net = args.which_Net
+    lr = args.lr
+    num_sample = args.num_sample
 
     opt = 'Mom'
     H = 'AFH'
@@ -298,7 +287,7 @@ if __name__ == "__main__":
     elif which_Net == "NN_RBM":
         Net = tf_NN_RBM(systemSize, optimizer=opt)
     else:
-        raise ValueError("Input Network Name not found/implemented")
+        raise NotImplementedError
 
     N = NQS(systemSize, Net=Net, Hamiltonian=H)
 
@@ -342,13 +331,13 @@ if __name__ == "__main__":
             grad_ind += var_size
 
         N.NNet.applyGrad(grad_list)
-    #  L2 Regularization ###
-    #    for idx, W in enumerate( N.NNet.sess.run(N.NNet.para_list)):
+        #  L2 Regularization ###
+        # for idx, W in enumerate( N.NNet.sess.run(N.NNet.para_list)):
         #        GList[idx] += W*0.1
 
     # To save object ##
-        if iteridx % 50 == 0:
-            saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
+    if iteridx % 50 == 0:
+        saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
 
     # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
     #           E_log, '%.4e', delimiter=',')
