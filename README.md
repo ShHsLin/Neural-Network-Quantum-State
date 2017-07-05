@@ -33,5 +33,6 @@ This work is inspired by the paper from,
      - [x] 3-hidden layer Complex NN
      - [x] RBM Network
      - [ ] ...
-
+- [ ] Test Pretrain Accuracy
+- [ ] Test VMC Accuracy
   

@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 
+import sys
 import tensorflow as tf
 import numpy as np
 from wavefunction.tf_NN import tf_NN
@@ -10,9 +11,15 @@ from wavefunction.tf_NN_complex import tf_NN_complex
 from wavefunction.tf_NN3_complex import tf_NN3_complex
 from wavefunction.tf_NN_RBM import tf_NN_RBM
 
-L = 16
-which_Net = 'NN'
-lr = 1e-3  # 1e-10
+argv = sys.argv[1:]
+try:
+    assert(len(argv) == 3)
+    L = int(argv[0])
+    which_Net = argv[1]  # 'NN3'
+    lr = float(argv[2])  # 1e-10
+except:
+    print('python pretrain_NQS.py [L] [which_Net] [learning_rate]\n')
+    raise ValueError
 
 basis = []
 for line in open('EigenVec/basisMatrix'+str(L)+'.csv', 'r'):
@@ -83,7 +90,8 @@ with Net.sess as sess:
     learning_rate = tf.Variable(lr)
     train_step = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
     # train_step = tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=0.9).minimize(cost)
-    from tensorflow.python import debug as tf_debug
+
+#    from tensorflow.python import debug as tf_debug
 #    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 #    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 

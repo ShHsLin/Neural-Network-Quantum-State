@@ -1,12 +1,18 @@
+from __future__ import absolute_import
 from __future__ import print_function
+
+import sys
 import numpy as np
 import pickle
 import tensorflow as tf
-from tf_FCN import tf_FCN
-from tf_CNN import tf_CNN
-from tf_NN import tf_NN
-from tf_NN3 import tf_NN3
-from tf_NN_complex import tf_NN_complex
+
+from wavefunction.tf_NN import tf_NN
+from wavefunction.tf_NN3 import tf_NN3
+from wavefunction.tf_CNN import tf_CNN
+from wavefunction.tf_FCN import tf_FCN
+from wavefunction.tf_NN_complex import tf_NN_complex
+from wavefunction.tf_NN3_complex import tf_NN3_complex
+from wavefunction.tf_NN_RBM import tf_NN_RBM
 
 
 def save_object(obj, filename):
@@ -98,10 +104,10 @@ class NQS():
         else:
             pass
 
-    def H_exp(self, numSample=1000, h=1, J=0):
+    def H_exp(self, num_sample=1000, h=1, J=0):
         energyList = []
         correlength = 10
-        for i in range(numSample * correlength):
+        for i in range(num_sample * correlength):
             self.newconfig()
             if i % correlength == 0:
                 _, _, localEnergy, _ = self.getLocal(h, J)
@@ -111,7 +117,7 @@ class NQS():
         print(energyList)
         return np.average(energyList)
 
-    def VMC(self, numSample, iteridx=0):
+    def VMC(self, num_sample, iteridx=0):
         self.cleanAmpDic()
 
         L = self.config.shape[0]
@@ -128,9 +134,9 @@ class NQS():
 
         corrlength = 10
         configDim = list(self.config.shape)
-        configDim[2] = numSample
+        configDim[2] = num_sample
         configArray = np.zeros(configDim)
-        for i in range(numSample * corrlength):
+        for i in range(num_sample * corrlength):
             self.newconfig()
             if i % corrlength == 0:
                 configArray[:, :, i / corrlength] = self.config[:, :, 0]
@@ -156,7 +162,7 @@ class NQS():
         print(self.getSelfAmp())
         print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L)  # , "Earray[:10]",Earray[:10]
         # S_ij = <O_i O_j > - <O_i><O_j>
-        Sij = OOsum / numSample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (numSample**2)
+        Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2)
         ############
         # Method 1 #
         ############
@@ -170,10 +176,10 @@ class NQS():
         # invSij = np.linalg.pinv(Sij, 1e-2)
         #  Fj = 2<O_iH>-2<H><O_i>
         if self.moving_E_avg is None:
-            Fj = 2. * (EOsum / numSample - Eavg * Osum / numSample)
+            Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-            Fj = 2. * (EOsum / numSample - self.moving_E_avg * Osum / numSample)
+            Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
 
         Gj = invSij.dot(Fj.T)
@@ -260,87 +266,102 @@ class NQS():
 ########################
 
 
-L = 32
-systemSize = (L, 2)
-which_Net = 'NN_complex'
-opt = 'Mom'
-H = 'AFH'
+if __name__ == "__main__":
 
-if which_Net == "NN":
-    Net = tf_NN(systemSize, optimizer=opt, alpha=10)
-elif which_Net == "NN3":
-    Net = tf_NN3(systemSize, optimizer=opt, alpha=2)
-elif which_Net == "CNN":
-    Net = tf_CNN(systemSize, optimizer=opt)
-elif which_Net == "FCN":
-    Net = tf_FCN(systemSize, optimizer=opt)
-elif which_Net == "NN_complex":
-    Net = tf_NN_complex(systemSize, optimizer=opt, alpha=4)
+    argv = sys.argv[1:]
+    try:
+        assert(len(argv) == 4)
+    except:
+        raise ValueError("Input arguments should be: [L] [which_Net] [learning_rate] [num_Sample]")
 
-N = NQS(systemSize, Net=Net, Hamiltonian=H)
+    L = int(argv[0])
+    which_Net = argv[1]  # 'NN3'
+    lr = float(argv[2])
+    num_sample = int(argv[3])
 
-var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
-var_list = tf.global_variables()
-saver = tf.train.Saver(N.NNet.model_var_list)
-ckpt = tf.train.get_checkpoint_state('Model_VMC/'+which_Net+'/L'+str(L)+'/')
+    opt = 'Mom'
+    H = 'AFH'
+    systemSize = (L, 2)
 
-if ckpt and ckpt.model_checkpoint_path:
-    saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
-    print("Restore from last check point")
-else:
-    print("No checkpoint found")
+    if which_Net == "NN":
+        Net = tf_NN(systemSize, optimizer=opt, alpha=10)
+    elif which_Net == "NN3":
+        Net = tf_NN3(systemSize, optimizer=opt, alpha=2)
+    elif which_Net == "CNN":
+        Net = tf_CNN(systemSize, optimizer=opt)
+    elif which_Net == "FCN":
+        Net = tf_FCN(systemSize, optimizer=opt)
+    elif which_Net == "NN_complex":
+        Net = tf_NN_complex(systemSize, optimizer=opt, alpha=4)
+    elif which_Net == "NN_complex3":
+        Net = tf_NN3_complex(systemSize, optimizer=opt, alpha=2)
+    elif which_Net == "NN_RBM":
+        Net = tf_NN_RBM(systemSize, optimizer=opt)
+    else:
+        raise ValueError("Input Network Name not found/implemented")
 
+    N = NQS(systemSize, Net=Net, Hamiltonian=H)
 
-# Thermalization
-for i in range(100):
-    N.newconfig()
+    var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
+    var_list = tf.global_variables()
+    saver = tf.train.Saver(N.NNet.model_var_list)
+    ckpt = tf.train.get_checkpoint_state('Model_VMC/'+which_Net+'/L'+str(L)+'/')
 
-E_log = []
-# wc1 = np.load('wc1.npy')
-# bc1 = np.load('bc1.npy')
-N.NNet.sess.run(N.NNet.learning_rate.assign(1e-4))
-N.NNet.sess.run(N.NNet.momentum.assign(0.9))
-_, _, E_avg = N.VMC(numSample=300, iteridx=0)
-# N.moving_E_avg = E_avg * l
+    if ckpt and ckpt.model_checkpoint_path:
+        saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
+        print("Restore from last check point")
+    else:
+        print("No checkpoint found")
 
-for iteridx in range(0, 3000):
-    print(iteridx)
-    # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
-    # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
+    # Thermalization
+    for i in range(100):
+        N.newconfig()
 
-#    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-3 * (0.995**iteridx)))
-#    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
-    numSample = 50 + iteridx/10
-    GradW, batchConfig, E = N.VMC(numSample=numSample, iteridx=iteridx)
-    # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
-    E_log.append(E)
-    grad_list = []
-    grad_ind = 0
-    for var_shape in var_shape_list:
-        var_size = np.prod(var_shape)
-        grad_list.append(GradW[grad_ind:grad_ind + var_size].reshape(var_shape))
-        grad_ind += var_size
+    E_log = []
+    N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
+    N.NNet.sess.run(N.NNet.momentum.assign(0.9))
+    _, _, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
+    # N.moving_E_avg = E_avg * l
 
-    N.NNet.applyGrad(grad_list)
-#  L2 Regularization ###
-#    for idx, W in enumerate( N.NNet.sess.run(N.NNet.para_list)):
-    #        GList[idx] += W*0.1
+    for iteridx in range(0, 3000):
+        print(iteridx)
+        # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
+        # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
 
-# To save object ##
-# saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
+        #    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-3 * (0.995**iteridx)))
+        #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
+        # num_sample = 500 + iteridx/10
+        GradW, batchConfig, E = N.VMC(num_sample=num_sample, iteridx=iteridx)
+        # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
+        E_log.append(E)
+        grad_list = []
+        grad_ind = 0
+        for var_shape in var_shape_list:
+            var_size = np.prod(var_shape)
+            grad_list.append(GradW[grad_ind:grad_ind + var_size].reshape(var_shape))
+            grad_ind += var_size
 
-# np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
-#           E_log, '%.4e', delimiter=',')
+        N.NNet.applyGrad(grad_list)
+    #  L2 Regularization ###
+    #    for idx, W in enumerate( N.NNet.sess.run(N.NNet.para_list)):
+        #        GList[idx] += W*0.1
 
-# save_object(N,'NNQS_AFH_L40_Mom.obj')
-# save_object(N,'CNNQS_AFH_L40_noMom.obj')
+    # To save object ##
+        if iteridx % 50 == 0:
+            saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
 
-'''
-Task0
-Rewrite it as batch to improve the speed
+    # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
+    #           E_log, '%.4e', delimiter=',')
 
-Task1
-Write down again the Probability assumption
-and the connection with deep learning model
+    # save_object(N,'NNQS_AFH_L40_Mom.obj')
+    # save_object(N,'CNNQS_AFH_L40_noMom.obj')
 
-'''
+    '''
+    Task0
+    Rewrite it as batch to improve the speed
+
+    Task1
+    Write down again the Probability assumption
+    and the connection with deep learning model
+
+    '''
