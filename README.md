@@ -33,18 +33,25 @@ python pretrain.py --net [which_net] --l [L]
 ###   Network Architecture
 
 * **1-hidden layer NN (NN)**
-*input_layer -> affine -> tanh -> affine ->  output_layer*
+
+ *input_layer -> affine -> tanh -> affine ->  output_layer*
 * **3-hidden layer NN (NN3)**
+
 *input_layer -> [affine -> tanh]$$\times 3$$  -> affine ->  output_layer*
 * **1 conv +  1-hidden layer NN (CNN)**
+
 *input_layer -> conv -> leaky_relu -> affine -> tanh -> affine -> output_layer*
 * **Fully Convolutional Network (FCN)**
+
 *input_layer -> [conv -> leaky_relu -> conv -> leaky_relu -> avg_pool ] $$\times 4$$ -> affine -> output_layer*
 * **1-hidden layer Complex NN (NN_complex)**
+
 *input_layer -> complex_affine -> exp -> complex_affine --> output_layer*
 * **3-hidden layer Complex NN (NN3_complex)**
+
 *input_layer -> [affine -> sigmoid]$$\times 2$$ -> complex_affine -> exp -> complex_affine -> output_layer*
 * **RBM Network (NN_RBM)**
+
 *input_layer -> complex_affine -> soft_plus -> sum -> 1*
 *input_layer -> affine -> 2*
 *1+2 -> exp -> output_layer*
@@ -52,9 +59,9 @@ python pretrain.py --net [which_net] --l [L]
 ### Table of pretraining accuracy 
 Learning to approximate AFH ground state for system size L = 16, dim(H) = 65536,
 | Network Name  | number of parameters  | accuracy on AFH  | iterations to converge (learning rate)  |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | NN ($$\alpha=9$$) | 2593  |  57 %  | > 70k (1e-2) |
-| NN3 ($$\alpha=2$$)  | 2688  | 99 %  | > 100k (1e-2) |
+| NN3 ($ \alpha=2 $)  | 2688  | 99 %  | > 100k (1e-2) |
 | CNN  |  1791 | 50 %  | > 150k (1e-3) | 
 | FCN  | 1648  | 53 %  | > 100k (1e-2) |
 | FCN  | 1648  | 65 %  | 200k (1e-3) |
