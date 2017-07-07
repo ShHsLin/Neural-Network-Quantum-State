@@ -28,7 +28,7 @@ class tf_NN_RBM:
                                                    stddev=1e-4*np.sqrt(2./(self.L*(1+alpha))))),
             'wd1_im': tf.Variable(tf.random_normal([(self.L), (self.L * alpha)],
                                                    stddev=np.sqrt(2./(self.L*(1+alpha))))),
-            # 'wd2': tf.Variable(tf.random_normal([self.L, 1], stddev=0.01))
+            'wd2': tf.Variable(tf.random_normal([self.L, 1], stddev=0.01))
         }
 
         self.biases = {
@@ -95,18 +95,19 @@ class tf_NN_RBM:
         # fc1 = tf.nn.tanh(fc1)
         fc1 = tf.exp(fc1)
         fc2 = tf.add(tf.ones_like(fc1), fc1)
-        fc2 = tf.divide(fc2,2)
+        fc2 = tf.divide(fc2, 2)
         # rad = tf.abs(fc2)
         # angle = tf.acos(tf.divide(tf.real(fc2), rad))
         # out = tf.multiply(tf.reduce_prod(rad,axis=1),
         #                   tf.cos(tf.reduce_sum(angle,axis=1)))
         fc2 = tf.log(fc2)
 
-        # v_bias =  tf.reshape(x, [-1, weights['wd2'].get_shape().as_list()[0]])
-        # v_bias = tf.matmul(v_bias, weights['wd2'])
-        # fc2 = tf.add(fc2, tf.complex(v_bias, 0.0))
+        v_bias = tf.reshape(x, [-1, weights['wd2'].get_shape().as_list()[0]])
+        v_bias = tf.matmul(v_bias, weights['wd2'])
 
-        out = tf.real(tf.exp(tf.reduce_sum(fc2, axis=1, keep_dims=True)))
+        log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+        log_prob = tf.add(log_prob, tf.complex(v_bias, 0.0))
+        out = tf.real(tf.exp(log_prob))
         # fc2_re = tf.real(fc2)
         # fc2_im = tf.imag(fc2)
         # out = tf.multiply(tf.exp(tf.reduce_sum(fc2_re)),

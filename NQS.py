@@ -282,7 +282,7 @@ if __name__ == "__main__":
         Net = tf_FCN(systemSize, optimizer=opt)
     elif which_Net == "NN_complex":
         Net = tf_NN_complex(systemSize, optimizer=opt, alpha=4)
-    elif which_Net == "NN_complex3":
+    elif which_Net == "NN3_complex":
         Net = tf_NN3_complex(systemSize, optimizer=opt, alpha=2)
     elif which_Net == "NN_RBM":
         Net = tf_NN_RBM(systemSize, optimizer=opt)
@@ -312,7 +312,7 @@ if __name__ == "__main__":
     _, _, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
     # N.moving_E_avg = E_avg * l
 
-    for iteridx in range(0, 3000):
+    for iteridx in range(500, 3000):
         print(iteridx)
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
@@ -335,9 +335,9 @@ if __name__ == "__main__":
         # for idx, W in enumerate( N.NNet.sess.run(N.NNet.para_list)):
         #        GList[idx] += W*0.1
 
-    # To save object ##
-    if iteridx % 50 == 0:
-        saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
+        # To save object ##
+        if iteridx % 50 == 0:
+            saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
 
     # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
     #           E_log, '%.4e', delimiter=',')

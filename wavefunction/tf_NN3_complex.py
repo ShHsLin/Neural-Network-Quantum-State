@@ -17,6 +17,7 @@ class tf_NN3_complex:
         # tf Graph input
         self.x = tf.placeholder(tf.float32, [None, n_input])
         self.y = tf.placeholder(tf.complex64, [None, n_classes])
+        self.keep_prob = tf.placeholder(tf.float32)
 
         self.L = int(inputShape[0])
 

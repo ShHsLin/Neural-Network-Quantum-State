@@ -5,7 +5,7 @@ import numpy as np
 
 class tf_FCN:
     def __init__(self, inputShape, optimizer, learning_rate=0.1125,
-                 momentum=0.95):
+                 momentum=0.95, alpha=2):
         # Parameters
         self.learning_rate = tf.Variable(learning_rate)
         self.momentum = tf.Variable(momentum)
@@ -21,7 +21,6 @@ class tf_FCN:
 
         self.L = int(inputShape[0])
 
-        alpha = 2
         chan1 = 2 * alpha
         chan2 = 2 * alpha
         chan3 = 4 * alpha
@@ -164,4 +163,3 @@ class tf_FCN:
         #    out = tf.nn.sigmoid(out)
         #    out = tf.nn.tanh(out)
         return out
-
