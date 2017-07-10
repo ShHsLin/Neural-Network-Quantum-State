@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tf_wrapper import *
+import tf_wrapper as tf_
 import numpy as np
 
 
@@ -52,7 +52,7 @@ class tf_FCN:
             # 'wd1': tf.Variable(tf.random_uniform([(self.L-3)*1*6, 5])/(self.L-3)),
             # 5 inputs, 1 outputs (class prediction)
             # 'out': tf.Variable(tf.random_normal([4, n_classes], stddev = 0.4))
-            'out': tf.Variable(tf.random_uniform([self.L / 16 * chan8, n_classes]))
+            'out': tf.Variable(tf.random_normal([self.L / 16 * chan8, n_classes]))
             # 'out': tf.Variable(tf.random_normal([L_pool*1*chan3,
             #                                     n_classes])/10 )
         }
@@ -120,33 +120,34 @@ class tf_FCN:
         # Reshape input picture
         x = tf.reshape(x, shape=[-1, inputShape[0], inputShape[1], 1])
 
-        conv1 = conv2d(x, weights['wc1'], biases['bc1'])
-        conv1 = leaky_relu(conv1)
-        conv2 = conv2d(conv1, weights['wc2'], biases['bc2'])
-        conv2 = leaky_relu(conv2)
-        conv2 = avgpool1d(conv2, k=2)
+        conv1 = tf_.conv2d(x, weights['wc1'], biases['bc1'])
+        conv1 = tf_.leaky_relu(conv1)
+        conv2 = tf_.conv2d(conv1, weights['wc2'], biases['bc2'])
+        conv2 = tf_.leaky_relu(conv2)
+        conv2 = tf_.avgpool1d(conv2, k=2)
         #    conv2 = maxpool2d(conv2, k=2)
 
-        conv3 = conv2d(conv2, weights['wc3'], biases['bc3'])
-        conv3 = leaky_relu(conv3)
-        conv4 = conv2d(conv3, weights['wc4'], biases['bc4'])
-        conv4 = leaky_relu(conv4)
-        conv4 = avgpool1d(conv4, k=2)
+        conv3 = tf_.conv2d(conv2, weights['wc3'], biases['bc3'])
+        conv3 = tf_.leaky_relu(conv3)
+        conv4 = tf_.conv2d(conv3, weights['wc4'], biases['bc4'])
+        conv4 = tf_.leaky_relu(conv4)
+        conv4 = tf_.avgpool1d(conv4, k=2)
         #    conv4 = maxpool1d(conv4, k=2)
 
-        conv5 = conv2d(conv4, weights['wc5'], biases['bc5'])
-        conv5 = leaky_relu(conv5)
-        conv6 = conv2d(conv5, weights['wc6'], biases['bc6'])
-        conv6 = leaky_relu(conv6)
-        conv6 = avgpool1d(conv6, k=2)
+        conv5 = tf_.conv2d(conv4, weights['wc5'], biases['bc5'])
+        conv5 = tf_.leaky_relu(conv5)
+        conv6 = tf_.conv2d(conv5, weights['wc6'], biases['bc6'])
+        conv6 = tf_.leaky_relu(conv6)
+        conv6 = tf_.avgpool1d(conv6, k=2)
         #    conv6 = maxpool1d(conv6, k=2)
 
-        conv7 = conv2d(conv6, weights['wc7'], biases['bc7'])
-        conv7 = leaky_relu(conv7)
-        conv8 = conv2d(conv7, weights['wc8'], biases['bc8'])
-        conv8 = leaky_relu(conv8)
-        conv8 = avgpool1d(conv8, k=2)
+        conv7 = tf_.conv2d(conv6, weights['wc7'], biases['bc7'])
+        conv7 = tf_.leaky_relu(conv7)
+        conv8 = tf_.conv2d(conv7, weights['wc8'], biases['bc8'])
+        conv8 = tf_.leaky_relu(conv8)
+        conv8 = tf_.avgpool1d(conv8, k=2)
         #    conv8 = maxpool1d(conv8, k=2)
+        conv8 = tf.exp(conv8)
 
         # Fully connected layer
         # fc1 = tf.reshape(conv8, [1, 32])

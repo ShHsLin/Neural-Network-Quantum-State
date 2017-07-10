@@ -121,11 +121,11 @@ if __name__ == "__main__":
                 y = sess.run(Net.pred, feed_dict={Net.x: X})
                 print('y norm : ', np.linalg.norm(y))
                 print (Y.flatten().dot(y.flatten())/np.linalg.norm(Y)/np.linalg.norm(y))
-                # import matplotlib.pyplot as plt
-                # fig = plt.figure()
-                # plt.plot(Y/np.linalg.norm(Y), '-o')
-                # plt.plot(y/np.linalg.norm(y), '--')
-                # plt.show()
+                import matplotlib.pyplot as plt
+                fig = plt.figure()
+                plt.plot(Y/np.linalg.norm(Y), '-o')
+                plt.plot(y/np.linalg.norm(y), '--')
+                plt.show()
                 pass
 
             _, c, y = sess.run([train_step, cost, Net.pred], feed_dict={Net.x: X[batch_mask],

@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tf_wrapper import *
+import tf_wrapper as tf_
 
 
 class tf_NN_RBM:
@@ -92,15 +92,13 @@ class tf_NN_RBM:
                                tf.complex(weights['wd1_re'],
                                           weights['wd1_im'])),
                      tf.complex(biases['bd1_re'], biases['bd1_im']))
-        # fc1 = tf.nn.tanh(fc1)
-        fc1 = tf.exp(fc1)
-        fc2 = tf.add(tf.ones_like(fc1), fc1)
-        fc2 = tf.divide(fc2, 2)
         # rad = tf.abs(fc2)
         # angle = tf.acos(tf.divide(tf.real(fc2), rad))
         # out = tf.multiply(tf.reduce_prod(rad,axis=1),
         #                   tf.cos(tf.reduce_sum(angle,axis=1)))
-        fc2 = tf.log(fc2)
+
+        fc2 = tf_.soft_plus2(fc1)
+        # fc2 = tf_.complex_relu(fc1)
 
         v_bias = tf.reshape(x, [-1, weights['wd2'].get_shape().as_list()[0]])
         v_bias = tf.matmul(v_bias, weights['wd2'])

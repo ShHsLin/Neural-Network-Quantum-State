@@ -155,19 +155,22 @@ class NQS():
         Evar = np.var(Earray)
         print(self.getSelfAmp())
         print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L)  # , "Earray[:10]",Earray[:10]
-        # S_ij = <O_i O_j > - <O_i><O_j>
+        #####################################
+        # S_ij = <O_i O_j > - <O_i><O_j>   ##
+        #####################################
         Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2)
         ############
         # Method 1 #
         ############
-        regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
-        Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
-        invSij = np.linalg.inv(Sij)
+        # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
+        # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
+        # invSij = np.linalg.inv(Sij)
         ############
         # Method 2 #
         ############
-        # Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
-        # invSij = np.linalg.pinv(Sij, 1e-2)
+        Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
+        invSij = np.linalg.pinv(Sij, 1e-2)
+
         #  Fj = 2<O_iH>-2<H><O_i>
         if self.moving_E_avg is None:
             Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
@@ -177,6 +180,7 @@ class NQS():
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
 
         Gj = invSij.dot(Fj.T)
+        # Gj = Fj.T
         print(np.linalg.norm(Gj), "norm(F):", np.linalg.norm(Fj))
 
         return Gj, configArray, Eavg / L
@@ -312,7 +316,7 @@ if __name__ == "__main__":
     _, _, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
     # N.moving_E_avg = E_avg * l
 
-    for iteridx in range(500, 3000):
+    for iteridx in range(200, 3000):
         print(iteridx)
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))

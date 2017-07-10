@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tf_wrapper import *
+import tf_wrapper as tf_
 
 
 class tf_NN_complex:
@@ -25,7 +25,7 @@ class tf_NN_complex:
         # Store layers weight & bias
         self.weights = {
             'wd1_re': tf.Variable(tf.random_normal([(self.L), (self.L * alpha)],
-                                                           stddev=np.sqrt(2./(self.L*(1+alpha))))),
+                                                   stddev=np.sqrt(2./(self.L*(1+alpha))))),
             'wd1_im': tf.Variable(tf.random_normal([(self.L), (self.L * alpha)],
                                                    stddev=np.sqrt(2./(self.L*(1+alpha))))),
             'out_re': tf.Variable(tf.random_normal([self.L*alpha, n_classes],
@@ -97,11 +97,12 @@ class tf_NN_complex:
                                           weights['wd1_im'])),
                      tf.complex(biases['bd1_re'], biases['bd1_im']))
         # fc1 = tf.nn.tanh(fc1)
-        fc1 = tf.exp(fc1)
+        fc1 = tf_.soft_plus2(fc1)
 
         out = tf.add(tf.matmul(fc1, tf.complex(weights['out_re'],
                                                weights['out_im'])),
                      tf.complex(biases['out'], 0.0))
+        out = tf.exp(out)
         out = tf.real(out)
         #    out = tf.nn.sigmoid(out)
         print("Building the model with shape:")

@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tf_wrapper import *
+import tf_wrapper as tf_
 
 
 class tf_CNN:
@@ -85,9 +85,9 @@ class tf_CNN:
     def conv_net(self, x, weights, biases, dropout, inputShape):
         x = tf.reshape(x, shape=[-1, inputShape[0], inputShape[1], 1])
 
-        conv1 = conv2d(x, weights['wc1'], biases['bc1'], padding='SAME')
-        # conv2 = tf.nn.tanh(conv1)
-        conv2 = leaky_relu(conv1)
+        conv1 = tf_.conv2d(x, weights['wc1'], biases['bc1'], padding='SAME')
+        conv2 = tf_.soft_plus2(conv1)
+        # conv2 = leaky_relu(conv1)
         # conv2 = tf.cos(conv1)
         # conv2_2 = tf.cos(conv1)
         # conv2 = tf.multiply(conv2, conv2_2)
@@ -96,7 +96,8 @@ class tf_CNN:
         # Reshape conv2 output to fit fully connected layer input
         fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
         fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
-        fc1 = tf.nn.tanh(fc1)
+        # fc1 = tf.nn.tanh(fc1)
+        fc1 = tf.exp(fc1)
 
         out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
         #    out = tf.nn.sigmoid(out)

@@ -1,4 +1,3 @@
-import numpy as np
 import tensorflow as tf
 
 
@@ -18,7 +17,24 @@ def leaky_relu(x):
     # return tf.nn.tanh(x)
 
 
+def soft_plus(x):
+    return tf.log(tf.add(tf.ones_like(x), tf.exp(x)))
+
+
+def soft_plus2(x):
+    return tf.log(tf.add(tf.ones_like(x), tf.exp(x))/2.)
+
+
 def complex_relu(x):
+    re = tf.real(x)
+    im = tf.imag(x)
+    mask = tf.cast(tf.greater(re, tf.zeros_like(re)), tf.float32)
+    re = re * mask
+    im = im * mask  # if re>0; im*1; else: im*0
+    return tf.complex(re, im)
+
+
+def complex_relu2(x):
     return tf.complex(tf.nn.relu(tf.real(x)), tf.imag(x))
 
 
@@ -42,6 +58,3 @@ def avgpool1d(x, k=2):
 def avgpool2d(x, k=2):
     return tf.nn.avg_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
                           padding='VALID')
-
-
-
