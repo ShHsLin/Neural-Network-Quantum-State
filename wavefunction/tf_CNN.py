@@ -48,6 +48,8 @@ class tf_CNN:
         elif optimizer == 'Mom':
             self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,
                                                         momentum=self.momentum)
+        elif optimizer == 'RMSprop':
+            self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
         else:
             raise
 

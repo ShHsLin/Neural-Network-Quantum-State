@@ -1,20 +1,15 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+import scipy.sparse.linalg
 import numpy as np
 import tensorflow as tf
 import pickle
 
 from utils.parse_args import parse_args
+from utils.prepare_net import prepare_net
 
-from wavefunction.tf_NN import tf_NN
-from wavefunction.tf_NN3 import tf_NN3
-from wavefunction.tf_CNN import tf_CNN
-from wavefunction.tf_FCN import tf_FCN
-from wavefunction.tf_NN_complex import tf_NN_complex
-from wavefunction.tf_NN3_complex import tf_NN3_complex
-from wavefunction.tf_NN_RBM import tf_NN_RBM
-
+import time
 
 """
 1.  Should move config out as an indep class
@@ -111,7 +106,7 @@ class NQS():
         print(energyList)
         return np.average(energyList)
 
-    def VMC(self, num_sample, iteridx=0):
+    def VMC(self, num_sample, iteridx=0, use_batch=False, Gj=None):
         self.cleanAmpDic()
 
         L = self.config.shape[0]
@@ -126,35 +121,59 @@ class NQS():
         # Earray	=	[]
         # EOsum	=	np.zeros(localEO.shape)
 
+        start = time.clock()
         corrlength = 10
         configDim = list(self.config.shape)
         configDim[2] = num_sample
-        configArray = np.zeros(configDim)
-        for i in range(num_sample * corrlength):
-            self.newconfig()
-            if i % corrlength == 0:
-                configArray[:, :, i / corrlength] = self.config[:, :, 0]
-                localO, localOO, localE, localEO = self.getLocal()
-                OOsum += localOO
-                Osum += localO
-                Earray.append(localE)
-                EOsum += localEO
-            else:
-                pass
 
-        # ## If batch ###########################
-        #        localO,localOO,localE,localEO = self.getLocalBatch(configArray,h=h,J=J)
-        #        OOsum   =   np.einsum('ijk->ij',localOO)
-        #        Osum    =   np.einsum('ij->i' ,localO)
-        #        Earray  =   localE
-        #        EOsum   =   np.einsum('ij->i' ,localEO)
-        # ##### Have not finish batch below #####
+        if not use_batch:
+            for i in range(num_sample * corrlength):
+                self.newconfig()
+                if i % corrlength == 0:
+                    localO, localOO, localE, localEO = self.getLocal()
+                    OOsum += localOO
+                    Osum += localO
+                    Earray.append(localE)
+                    EOsum += localEO
+                else:
+                    pass
+
+        else:
+            configArray = np.zeros(configDim)
+            for i in range(num_sample * corrlength):
+                self.newconfig()
+                if i % corrlength == 0:
+                    configArray[:, :, i / corrlength] = self.config[:, :, 0]
+                else:
+                    pass
+
+            raise NotImplementedError
+            # localO, localOO, localE, localEO = self.getLocalBatch(configArray, h=h, J=J)
+            OOsum = np.einsum('ijk->ij', localOO)
+            Osum = np.einsum('ij->i', localO)
+            Earray = localE
+            EOsum = np.einsum('ij->i', localEO)
+
+        end = time.clock()
+        print("monte carlo time: ", end - start)
+        start2 = time.clock()
 
         Earray = np.array(Earray).flatten()
         Eavg = np.average(Earray)
         Evar = np.var(Earray)
         print(self.getSelfAmp())
         print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L)  # , "Earray[:10]",Earray[:10]
+
+        #####################################
+        #  Fj = 2<O_iH>-2<H><O_i>
+        #####################################
+        if self.moving_E_avg is None:
+            Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
+        else:
+            self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+            Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
+            print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
+
         #####################################
         # S_ij = <O_i O_j > - <O_i><O_j>   ##
         #####################################
@@ -168,22 +187,22 @@ class NQS():
         ############
         # Method 2 #
         ############
-        Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
-        invSij = np.linalg.pinv(Sij, 1e-2)
+        # Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
+        # invSij = np.linalg.pinv(Sij, 1e-2)
+        ############
+        # Method 3 #
+        ############
+        Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+        print("conv Gj : ", info)
 
-        #  Fj = 2<O_iH>-2<H><O_i>
-        if self.moving_E_avg is None:
-            Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
-        else:
-            self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-            Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
-            print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
-
-        Gj = invSij.dot(Fj.T)
+        # Gj = invSij.dot(Fj.T)
         # Gj = Fj.T
         print(np.linalg.norm(Gj), "norm(F):", np.linalg.norm(Fj))
 
-        return Gj, configArray, Eavg / L
+        end2 = time.clock()
+        print("Sij, Fj time: ", end2 - start2)
+
+        return Gj, Eavg / L
 
     def getLocal(self):
         Wsize = self.getNumPara()
@@ -266,39 +285,32 @@ class NQS():
 
 if __name__ == "__main__":
 
+    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 4, "NN3_complex": 2,
+                 "NN_RBM": 2}
+
     args = parse_args()
     L = args.L
-    which_Net = args.which_Net
+    which_net = args.which_net
     lr = args.lr
     num_sample = args.num_sample
+    if args.alpha != 0:
+        alpha = args.alpha
+    else:
+        alpha = alpha_map[which_net]
 
     opt = 'Mom'
     H = 'AFH'
     systemSize = (L, 2)
 
-    if which_Net == "NN":
-        Net = tf_NN(systemSize, optimizer=opt, alpha=10)
-    elif which_Net == "NN3":
-        Net = tf_NN3(systemSize, optimizer=opt, alpha=2)
-    elif which_Net == "CNN":
-        Net = tf_CNN(systemSize, optimizer=opt)
-    elif which_Net == "FCN":
-        Net = tf_FCN(systemSize, optimizer=opt)
-    elif which_Net == "NN_complex":
-        Net = tf_NN_complex(systemSize, optimizer=opt, alpha=4)
-    elif which_Net == "NN3_complex":
-        Net = tf_NN3_complex(systemSize, optimizer=opt, alpha=2)
-    elif which_Net == "NN_RBM":
-        Net = tf_NN_RBM(systemSize, optimizer=opt)
-    else:
-        raise NotImplementedError
+    Net = prepare_net(which_net, systemSize, opt, alpha)
+    print("Total num para: ", Net.getNumPara())
 
     N = NQS(systemSize, Net=Net, Hamiltonian=H)
 
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
     saver = tf.train.Saver(N.NNet.model_var_list)
-    ckpt = tf.train.get_checkpoint_state('Model_VMC/'+which_Net+'/L'+str(L)+'/')
+    ckpt = tf.train.get_checkpoint_state('Model_VMC/'+which_net+'/L'+str(L)+'/')
 
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
@@ -313,10 +325,10 @@ if __name__ == "__main__":
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
-    _, _, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
+    G_init, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
     # N.moving_E_avg = E_avg * l
 
-    for iteridx in range(200, 3000):
+    for iteridx in range(0, 1000):
         print(iteridx)
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
@@ -324,7 +336,8 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-3 * (0.995**iteridx)))
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
-        GradW, batchConfig, E = N.VMC(num_sample=num_sample, iteridx=iteridx)
+        GradW, E = N.VMC(num_sample=num_sample, iteridx=iteridx,
+                         Gj=G_init)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
         E_log.append(E)
         grad_list = []
@@ -341,7 +354,7 @@ if __name__ == "__main__":
 
         # To save object ##
         if iteridx % 50 == 0:
-            saver.save(N.NNet.sess, 'Model_VMC/'+which_Net+'/L'+str(L)+'/pre')
+            saver.save(N.NNet.sess, 'Model_VMC/'+which_net+'/L'+str(L)+'/pre')
 
     # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
     #           E_log, '%.4e', delimiter=',')

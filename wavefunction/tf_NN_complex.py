@@ -52,6 +52,8 @@ class tf_NN_complex:
         elif optimizer == 'Mom':
             self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,
                                                         momentum=self.momentum)
+        elif optimizer == 'RMSprop':
+            self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
         else:
             raise
 
@@ -96,7 +98,8 @@ class tf_NN_complex:
                                tf.complex(weights['wd1_re'],
                                           weights['wd1_im'])),
                      tf.complex(biases['bd1_re'], biases['bd1_im']))
-        # fc1 = tf.nn.tanh(fc1)
+
+        # fc1 = tf.nn.sigmoid(fc1)
         fc1 = tf_.soft_plus2(fc1)
 
         out = tf.add(tf.matmul(fc1, tf.complex(weights['out_re'],
@@ -104,7 +107,7 @@ class tf_NN_complex:
                      tf.complex(biases['out'], 0.0))
         out = tf.exp(out)
         out = tf.real(out)
-        #    out = tf.nn.sigmoid(out)
+
         print("Building the model with shape:")
         print("Input Layer X:", x.get_shape())
         print("FC1:", fc1.get_shape())

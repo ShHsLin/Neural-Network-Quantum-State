@@ -26,13 +26,16 @@ class tf_NN:
         self.weights = {
             'wd1': tf.Variable(tf.random_normal([(self.L), (self.L * alpha)],
                                                 stddev=np.sqrt(2./(self.L*(1+alpha))))),
-            'out': tf.Variable(tf.random_normal([self.L*alpha, n_classes],
-                                                stddev=np.sqrt(2./(self.L*alpha))))
+            'out_re': tf.Variable(tf.random_normal([self.L*alpha, n_classes],
+                                                   stddev=np.sqrt(2./(self.L*alpha)))),
+            'out_im': tf.Variable(tf.random_normal([self.L*alpha, n_classes],
+                                                   stddev=np.sqrt(2./(self.L*alpha))))
         }
 
         self.biases = {
             'bd1': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
-            'out': tf.Variable(np.zeros(1, dtype=np.float32))
+            'out_re': tf.Variable(np.zeros(1, dtype=np.float32)),
+            'out_im': tf.Variable(np.zeros(1, dtype=np.float32))
         }
 
         # Construct model : Tensorflow Graph is built here !
@@ -47,6 +50,8 @@ class tf_NN:
         elif optimizer == 'Mom':
             self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,
                                                         momentum=self.momentum)
+        elif optimizer == 'RMSprop':
+            self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
         else:
             raise
 
@@ -91,7 +96,9 @@ class tf_NN:
         fc1 = tf.nn.tanh(fc1)
         # fc1 = tf.cos(fc1)
 
-        out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
+        out_re = tf.add(tf.matmul(fc1, weights['out_re']), biases['out_re'])
+        out_im = tf.add(tf.matmul(fc1, weights['out_im']), biases['out_im'])
+        out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
         #    out = tf.nn.sigmoid(out)
         print("Building the model with shape:")
         print("Input Layer X:", x.get_shape())

@@ -52,9 +52,7 @@ class tf_FCN:
             # 'wd1': tf.Variable(tf.random_uniform([(self.L-3)*1*6, 5])/(self.L-3)),
             # 5 inputs, 1 outputs (class prediction)
             # 'out': tf.Variable(tf.random_normal([4, n_classes], stddev = 0.4))
-            'out_re': tf.Variable(tf.random_normal([self.L / 16 * chan8,
-                                                    n_classes])),
-            'out_im': tf.Variable(tf.random_normal([self.L / 16 * chan8, n_classes]))
+            'out': tf.Variable(tf.random_normal([self.L / 16 * chan8, n_classes]))
             # 'out': tf.Variable(tf.random_normal([L_pool*1*chan3,
             #                                     n_classes])/10 )
         }
@@ -67,11 +65,10 @@ class tf_FCN:
             'bc5': tf.Variable(np.zeros([chan5], dtype=np.float32)),
             'bc6': tf.Variable(np.zeros([chan6], dtype=np.float32)),
             'bc7': tf.Variable(np.zeros([chan7], dtype=np.float32)),
-            'bc8': tf.Variable(np.zeros([chan8], dtype=np.float32)),
+            'bc8': tf.Variable(np.zeros([chan8], dtype=np.float32))
             # 'bd1': tf.Variable(np.zeros(5,dtype=np.float32)),
             # 'bd1': tf.Variable(tf.random_normal([4],stddev=0.1)),
-            'out_re': tf.Variable(np.zeros([n_classes], dtype=np.float32)),
-            'out_im': tf.Variable(np.zeros([n_classes], dtype=np.float32))
+            # 'out': tf.Variable(tf.random_normal([n_classes],stddev=0.1))
         }
 
         # Construct model
@@ -152,21 +149,20 @@ class tf_FCN:
         conv8 = tf_.leaky_relu(conv8)
         conv8 = tf_.avgpool1d(conv8, k=2)
         #    conv8 = maxpool1d(conv8, k=2)
-        # conv8 = tf.exp(conv8)
+        conv8 = tf.exp(conv8)
 
         # Fully connected layer
         # fc1 = tf.reshape(conv8, [1, 32])
-        fc1 = tf.reshape(conv8, [-1, weights['out_re'].get_shape().as_list()[0]])
+        fc1 = tf.reshape(conv8, [-1, weights['out'].get_shape().as_list()[0]])
         # fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
+        # fc1 = tf.nn.sigmoid(fc1)
         # Apply Dropout
         # fc1 = tf.nn.dropout(fc1, dropout)
 
         # Output, class prediction
         # out = tf.matmul(fc1, np.ones((32,1),dtype=np.float32))
-        out_re = tf.add(tf.matmul(fc1, weights['out_re']), biases['out_re'])
-        out_im = tf.add(tf.matmul(fc1, weights['out_im']), biases['out_im'])
+        out = tf.matmul(fc1, weights['out'])
         #    out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
         #    out = tf.nn.sigmoid(out)
         #    out = tf.nn.tanh(out)
-        out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
         return out

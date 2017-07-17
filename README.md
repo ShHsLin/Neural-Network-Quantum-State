@@ -19,7 +19,7 @@ This work is inspired by the paper from,
 * Giuseppe Carleo, Matthias Troyer - [Solving the Quantum Many-Body Problem with Artificial Neural Networks](https://arxiv.org/abs/1606.02318) 
 * James Martens, et al. - [On the Representational Efficiency of Restricted Boltzmann Machines](https://www.cs.toronto.edu/~toni/Papers/nips2013.pdf)
 
-### Execute Code
+### How to run the Code
 
 to run the variational monte carlo,
 ```
@@ -46,8 +46,10 @@ python NQS.py --net NN3 --l 20 --lr 1e-3 --num_sample 500
 *input_layer -> conv -> leaky_relu -> affine -> tanh -> affine -> output_layer*
 * **Fully Convolutional Network (FCN)**    
 *input_layer -> [conv -> leaky_relu -> conv -> leaky_relu -> avg_pool ] x 4 -> affine -> output_layer*
-* **1-hidden layer Complex NN (NN_complex)**    
-*input_layer -> complex_affine -> exp -> complex_affine --> output_layer*
+* **1-hidden layer Complex NN version1 (NN_complex_v1)**    
+*input_layer -> complex_affine -> exp -> complex_affine -> output_layer*
+* **1-hidden layer Complex NN version2 (NN_complex_v2)**    
+*input_layer -> complex_affine -> soft_plus -> complex_affine -> exp -> real -> output_layer*
 * **3-hidden layer Complex NN (NN3_complex)**    
 *input_layer -> [affine -> sigmoid] x 2 -> complex_affine -> exp -> complex_affine -> output_layer*
 * **RBM Network (NN_RBM)**    
@@ -65,23 +67,33 @@ Learning to approximate AFH ground state for system size L = 16, dim(H) = 65536,
 | CNN  |  1791 | 50 %  | > 150k (1e-3) | 
 | FCN  | 1648  | 53 %  | > 100k (1e-2) |
 | FCN  | 1648  | 65 %  | 200k (1e-3) |
-| NN_complex  | 1054  | 73 %  | 60 k (1e-2) |
-| NN_complex  | 1054  | 71 %  | 200k (1e-3) |
+| NN_complex_v1  | 1054  | 73 %  | 60 k (1e-2) |
+| NN_complex_v2  | 1153  | 99% | 35k (1e-3) |
 | NN3_complex  | 1121  | 99 %  | 50 k (1e-2 -> 1e-3) |
 | NN_RBM  | 1104  | 99 % | ~ 100 k (1e-2) |
 
 
+
 NN3 : \[45k -> 85%\] but keep oscillating +- 10%  
+NN_complex : [20k -> 95%]  
 NN3_complex : \[20k -> 90%\] \[30k -> 97%\]  
 RBM : [25k -> 95%] quite stable   
 After 100k, reducing the step size, NN3, NN_RBM both quickly gives 99% accuracy.
 
+
 >max accuracy :  
 RBM 99.9%  
+NN_complex 99.8%   
 NN3_complex 99.7%
 
->Observation:  
-relu Conv arch, need smaller lr. The other don't
+>Observation:   
+>1. Soft_plus + complex network works very well. Relu + complex network works not so well. This is probably because the inputs for activation are small, i.e. [-1,1]. In orther words, input are not at asymptotic region, where Soft_plus and relu are almost the same. 
+>2. Exponential is crucial for complex network.
+>3. relu Conv arch, need smaller lr. Network involving exponential also need samller lr.  
+>4. Standard neural network can also represent the wave function. However, the convergence is slower. This might indicate that it is hard to obtain ground state in VMC optimization, even though the function space contain the wave function.
+>5. Real shallow neural network does not work.
+
+
 
 
 ### To do list
@@ -99,6 +111,7 @@ relu Conv arch, need smaller lr. The other don't
      - [ ] ...
 - [ ] Test Pretrain Accuracy
 - [ ] Test VMC Accuracy
+
 
 
 

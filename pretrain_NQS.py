@@ -4,22 +4,26 @@ import tensorflow as tf
 import numpy as np
 
 from utils.parse_args import parse_args
-
-from wavefunction.tf_NN import tf_NN
-from wavefunction.tf_NN3 import tf_NN3
-from wavefunction.tf_CNN import tf_CNN
-from wavefunction.tf_FCN import tf_FCN
-from wavefunction.tf_NN_complex import tf_NN_complex
-from wavefunction.tf_NN3_complex import tf_NN3_complex
-from wavefunction.tf_NN_RBM import tf_NN_RBM
+from utils.prepare_net import prepare_net
 
 if __name__ == "__main__":
 
     args = parse_args()
     L = args.L
-    which_Net = args.which_Net
+    which_net = args.which_net
     lr = args.lr
     batch_size = args.batch_size
+
+    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 4, "NN3_complex": 2,
+                 "NN_RBM": 2}
+    if args.alpha != 0:
+        alpha = args.alpha
+    else:
+        alpha = alpha_map[which_net]
+
+    opt = "Mom"
+    system_size = (L, 2)
+    Net = prepare_net(which_net, system_size, opt, alpha)
 
     basis = []
     for line in open('EigenVec/basisMatrix'+str(L)+'.csv', 'r'):
@@ -29,24 +33,6 @@ if __name__ == "__main__":
     for i in range(len(basis)):
         for j in range(L):
             newbasis[i, j, 0] = basis[i][j]
-
-    systemSize = (L, 2)
-    if which_Net == 'NN':
-        Net = tf_NN(systemSize, optimizer='Mom', alpha=9)
-    elif which_Net == 'NN3':
-        Net = tf_NN3(systemSize, optimizer='Mom', alpha=2)
-    elif which_Net == 'CNN':
-        Net = tf_CNN(systemSize, optimizer='Mom')
-    elif which_Net == 'FCN':
-        Net = tf_FCN(systemSize, optimizer='Mom')
-    elif which_Net == 'NN_complex':
-        Net = tf_NN_complex(systemSize, optimizer='Mom', alpha=2)
-    elif which_Net == 'NN3_complex':
-        Net = tf_NN3_complex(systemSize, optimizer='Mom', alpha=1)
-    elif which_Net == 'NN_RBM':
-        Net = tf_NN_RBM(systemSize, optimizer='Mom', alpha=2)
-    else:
-        raise NotImplementedError
 
     num_train = 2**L
     to_large_dict = {}
@@ -98,7 +84,7 @@ if __name__ == "__main__":
 
         print len(Net.model_var_list), len(Net.para_list)
         saver = tf.train.Saver(Net.model_var_list)  # Net.model_var_list)
-        ckpt = tf.train.get_checkpoint_state('Model/'+which_Net+'/L'+str(L))
+        ckpt = tf.train.get_checkpoint_state('Model/'+which_net+'/L'+str(L))
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(Net.sess, ckpt.model_checkpoint_path)
             print("Restore from last check point")
@@ -110,11 +96,12 @@ if __name__ == "__main__":
         print("-------- Start training -------\n")
         print("Total num para: ", Net.getNumPara())
 
+        p = (np.abs(Y)).flatten()
+        p = p + 0.1/batch_size
+        p = p/sum(p)
+
         for i in xrange(100000):
             # batch_mask = np.random.choice(len(Y), batch_size)  # ,p=Y*Y)
-            p = (np.abs(Y)).flatten()
-            p = p + 0.1/batch_size
-            p = p/sum(p)
             batch_mask = np.random.choice(len(Y), batch_size, p=p)
 
             if i % 5000 == 0:
@@ -130,14 +117,6 @@ if __name__ == "__main__":
 
             _, c, y = sess.run([train_step, cost, Net.pred], feed_dict={Net.x: X[batch_mask],
                                                                         true_out: Y[batch_mask]})
-            # _, c = sess.run([train_step, cost], feed_dict={Net.x: X, true_out: Y})
-    #         rad, angle, out, fc1, fc2= sess.run([Net.rad, Net.angle, Net.out, Net.fc1,
-    #                                              Net.fc2],feed_dict={Net.x: X[batch_mask]})
-    #         print "rad: ", rad
-    #         print "angle: ", angle
-    #         print "out: ", out
-    #         print "fc1: ", fc1
-    #         print "fc2: ", fc2
 
             if i % 500 == 0:
                 print("step:", i, " cosine error:", c, "Y norm",
@@ -146,6 +125,6 @@ if __name__ == "__main__":
                       y.T.dot(Y[batch_mask])[0]/np.linalg.norm(Y[batch_mask])/np.linalg.norm(y))
     #            if min_c > c:
     #                min_c = c
-                saver.save(sess, 'Model/'+which_Net+'/L'+str(L)+'/pre')
+                saver.save(sess, 'Model/'+which_net+'/L'+str(L)+'/pre')
 
     # fig.savefig('L16_pretrain.eps',bbox_inches='tight')
