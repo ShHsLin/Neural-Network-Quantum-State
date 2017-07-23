@@ -32,7 +32,8 @@ def read_object(filename):
 class NQS():
     def __init__(self, inputShape, Net, Hamiltonian):
         self.config = np.zeros((inputShape[0], inputShape[1], 1), dtype=int)
-        self.config[:, 1, 0] = 1
+        self.config[::2, 1, 0] = 1
+        self.config[1::2, 0, 0] = 1
         self.NNet = Net
         self.moving_E_avg = None
 
@@ -75,21 +76,38 @@ class NQS():
 
     def newconfig(self):
         L = self.config.shape[0]
-        tempconfig = self.config.copy()
-        if np.random.rand() < 0.5:
-            randsite = np.random.randint(L)
-            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
-            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
-        else:
-            randsite = np.random.randint(L)
-            randsite2 = np.random.randint(L)
-            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
+
+## Restricted to Sz = 0 sectors ##
+        randsite1 = np.random.randint(L)
+        randsite2 = np.random.randint(L)
+        if self.config[randsite1, 0, 0] + self.config[randsite2, 0, 0] == 1 and randsite1 != randsite2:
+            tempconfig = self.config.copy()
+            tempconfig[randsite1, :, 0] = (tempconfig[randsite1, :, 0] + 1) % 2
             tempconfig[randsite2, :, 0] = (tempconfig[randsite2, :, 0] + 1) % 2
             ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
             if np.random.rand() < np.amin([1., ratio**2]):
                 self.config = tempconfig
             else:
                 pass
+        else:
+            pass
+
+
+#        tempconfig = self.config.copy()
+#        if np.random.rand() < 0.5:
+#            randsite = np.random.randint(L)
+#            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
+#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#        else:
+#            randsite = np.random.randint(L)
+#            randsite2 = np.random.randint(L)
+#            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
+#            tempconfig[randsite2, :, 0] = (tempconfig[randsite2, :, 0] + 1) % 2
+#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#            if np.random.rand() < np.amin([1., ratio**2]):
+#                self.config = tempconfig
+#            else:
+#                pass
 
         return
 
