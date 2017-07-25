@@ -80,15 +80,9 @@ class tf_FCN:
         self.model_var_list = tf.global_variables()
 
         # Define loss and optimizer
-        if optimizer == 'Adam':
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-        elif optimizer == 'Mom':
-            self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,
-                                                        momentum=self.momentum)
-        elif optimizer == 'RMSprop':
-            self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
-        else:
-            raise
+        self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
+                                              self.momentum)
+
         # self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         # self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,momentum=self.momentum)
 

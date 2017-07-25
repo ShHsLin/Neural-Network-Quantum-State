@@ -208,7 +208,7 @@ class NQS():
         # Method 2 #
         ############
         # Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
-        # invSij = np.linalg.pinv(Sij, 1e-2)
+        # invSij = np.linalg.pinv(Sij, 1e-6)
         ############
         # Method 3 #
         ############
@@ -359,6 +359,9 @@ if __name__ == "__main__":
         GradW, E = N.VMC(num_sample=num_sample, iteridx=iteridx,
                          Gj=G_init)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
+        if np.linalg.norm(GradW) > 1000:
+            GradW = GradW/np.linalg.norm(GradW)
+
         E_log.append(E)
         grad_list = []
         grad_ind = 0

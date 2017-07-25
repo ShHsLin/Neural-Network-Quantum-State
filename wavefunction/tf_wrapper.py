@@ -1,6 +1,20 @@
 import tensorflow as tf
 
 
+def select_optimizer(optimizer, learning_rate, momentum=0):
+    if optimizer == 'Adam':
+        return tf.train.AdamOptimizer(learning_rate=learning_rate)
+    elif optimizer == 'Mom':
+        return tf.train.MomentumOptimizer(learning_rate=learning_rate,
+                                          momentum=momentum)
+    elif optimizer == 'RMSprop':
+        return tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+    elif optimizer == 'GD':
+        return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    else:
+        raise
+
+
 # Create some wrappers for simplicity
 def conv2d(x, W, b, strides=1, padding='SAME'):
     # Conv2D wrapper, with bias

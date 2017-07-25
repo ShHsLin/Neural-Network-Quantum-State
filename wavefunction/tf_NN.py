@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tf_wrapper import *
+import tf_wrapper as tf_
 
 
 class tf_NN:
@@ -45,15 +45,8 @@ class tf_NN:
         self.model_var_list = tf.global_variables()
 
         # Define optimizer
-        if optimizer == 'Adam':
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-        elif optimizer == 'Mom':
-            self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,
-                                                        momentum=self.momentum)
-        elif optimizer == 'RMSprop':
-            self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
-        else:
-            raise
+        self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
+                                              self.momentum)
 
         # Define Gradient, loss = log(wave function)
         self.para_list = self.weights.values() + self.biases.values()
