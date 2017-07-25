@@ -47,29 +47,31 @@ class NQS():
         return self.NNet.getNumPara()
 
     def getSelfAmp(self):
-        configStr = ''.join([str(ele) for ele in self.config.flatten()])
-        if configStr in self.ampDic:
-            return self.ampDic[configStr]
-        else:
-            amp = float(self.NNet.forwardPass(self.config))
-            self.ampDic[configStr] = amp
-            return amp
+        return float(self.NNet.forwardPass(self.config))
+        # configStr = ''.join([str(ele) for ele in self.config.flatten()])
+        # if configStr in self.ampDic:
+        #     return self.ampDic[configStr]
+        # else:
+        #     amp = float(self.NNet.forwardPass(self.config))
+        #     self.ampDic[configStr] = amp
+        #     return amp
 
     def eval_amp_array(self, configArray):
-        inputShape0, inputShape1, numData = configArray.shape
-        ampArray = np.zeros((numData))
-        for i in range(numData):
-            config = configArray[:, :, i]
-            configStr = ''.join([str(ele) for ele in config.flatten()])
-            if configStr in self.ampDic:
-                amp = self.ampDic[configStr]
-            else:
-                amp = float(self.NNet.forwardPass(self.config))
-                self.ampDic[configStr] = amp
+        return self.NNet.forwardPass(configArray)
+        # inputShape0, inputShape1, numData = configArray.shape
+        # ampArray = np.zeros((numData))
+        # for i in range(numData):
+        #     config = configArray[:, :, i]
+        #     configStr = ''.join([str(ele) for ele in config.flatten()])
+        #     if configStr in self.ampDic:
+        #         amp = self.ampDic[configStr]
+        #     else:
+        #         amp = float(self.NNet.forwardPass(config))
+        #         self.ampDic[configStr] = amp
 
-            ampArray[i] = amp
+        #     ampArray[i] = amp
 
-        return ampArray
+        # return ampArray
 
     def cleanAmpDic(self):
         self.ampDic = {}
@@ -77,7 +79,7 @@ class NQS():
     def newconfig(self):
         L = self.config.shape[0]
 
-## Restricted to Sz = 0 sectors ##
+# Restricted to Sz = 0 sectors ##
         randsite1 = np.random.randint(L)
         randsite2 = np.random.randint(L)
         if self.config[randsite1, 0, 0] + self.config[randsite2, 0, 0] == 1 and randsite1 != randsite2:
@@ -180,7 +182,7 @@ class NQS():
         Eavg = np.average(Earray)
         Evar = np.var(Earray)
         print(self.getSelfAmp())
-        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L)  # , "Earray[:10]",Earray[:10]
+        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
 
         #####################################
         #  Fj = 2<O_iH>-2<H><O_i>
@@ -303,7 +305,7 @@ class NQS():
 
 if __name__ == "__main__":
 
-    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 4, "NN3_complex": 2,
+    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
                  "NN_RBM": 2}
 
     args = parse_args()
@@ -316,7 +318,7 @@ if __name__ == "__main__":
     else:
         alpha = alpha_map[which_net]
 
-    opt = 'Mom'
+    opt = args.opt
     H = 'AFH'
     systemSize = (L, 2)
 

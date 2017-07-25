@@ -25,6 +25,9 @@ def parse_args():
     parser.add_argument('--alpha', dest='alpha',
                         help='controll parameter for model complexity',
                         default=0, type=int)
+    parser.add_argument('--opt', dest='opt',
+                        help='optimizer for the neural network',
+                        default='Mom', type=str)
 
     if len(sys.argv) == 1:
         parser.print_help()

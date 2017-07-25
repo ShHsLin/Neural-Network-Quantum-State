@@ -14,7 +14,7 @@ if __name__ == "__main__":
     lr = args.lr
     batch_size = args.batch_size
 
-    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 4, "NN3_complex": 2,
+    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
                  "NN_RBM": 2}
     if args.alpha != 0:
         alpha = args.alpha
