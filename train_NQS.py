@@ -305,7 +305,7 @@ class NQS():
 
 if __name__ == "__main__":
 
-    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
+    alpha_map = {"NN": 2, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
                  "NN_RBM": 2}
 
     args = parse_args()
@@ -330,7 +330,7 @@ if __name__ == "__main__":
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
     saver = tf.train.Saver(N.NNet.model_var_list)
-    ckpt = tf.train.get_checkpoint_state('Model_VMC/'+which_net+'/L'+str(L)+'/')
+    ckpt = tf.train.get_checkpoint_state('Model/VMC/'+which_net+'/L'+str(L)+'/')
 
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
@@ -377,7 +377,7 @@ if __name__ == "__main__":
 
         # To save object ##
         if iteridx % 50 == 0:
-            saver.save(N.NNet.sess, 'Model_VMC/'+which_net+'/L'+str(L)+'/pre')
+            saver.save(N.NNet.sess, 'Model/VMC/'+which_net+'/L'+str(L)+'/pre')
 
     # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
     #           E_log, '%.4e', delimiter=',')

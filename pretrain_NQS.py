@@ -14,7 +14,7 @@ if __name__ == "__main__":
     lr = args.lr
     batch_size = args.batch_size
 
-    alpha_map = {"NN": 10, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
+    alpha_map = {"NN": 2, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
                  "NN_RBM": 2}
     if args.alpha != 0:
         alpha = args.alpha
@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
         print len(Net.model_var_list), len(Net.para_list)
         saver = tf.train.Saver(Net.model_var_list)  # Net.model_var_list)
-        ckpt = tf.train.get_checkpoint_state('Model/'+which_net+'/L'+str(L))
+        ckpt = tf.train.get_checkpoint_state('Model/Pretrain/'+which_net+'/L'+str(L))
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(Net.sess, ckpt.model_checkpoint_path)
             print("Restore from last check point")
@@ -125,6 +125,6 @@ if __name__ == "__main__":
                       y.T.dot(Y[batch_mask])[0]/np.linalg.norm(Y[batch_mask])/np.linalg.norm(y))
     #            if min_c > c:
     #                min_c = c
-                saver.save(sess, 'Model/'+which_net+'/L'+str(L)+'/pre')
+                saver.save(sess, 'Model/Pretrain/'+which_net+'/L'+str(L)+'/pre')
 
     # fig.savefig('L16_pretrain.eps',bbox_inches='tight')
