@@ -10,13 +10,10 @@ class tf_CNN:
         self.learning_rate = tf.Variable(learning_rate)
         self.momentum = tf.Variable(momentum)
         # Network Parameters
-        n_input = int(inputShape[0]*inputShape[1])
-        n_classes = 1
         # dropout = 0.75  # Dropout, probability to keep units
 
         # tf Graph input
-        self.x = tf.placeholder(tf.float32, [None, n_input])
-        self.y = tf.placeholder(tf.float32, [None, n_classes])
+        self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1]])
         self.keep_prob = tf.placeholder(tf.float32)
 
         self.L = int(inputShape[0])
@@ -28,7 +25,7 @@ class tf_CNN:
             'wc1': tf.Variable(tf.random_normal([4, 2, 1, chan1], stddev=0.2)),
             'wd1': tf.Variable(tf.random_normal([(self.L)*1*chan1, 5],
                                                 stddev=np.sqrt(2./((self.L)*1*chan1+5)))),
-            'out': tf.Variable(tf.random_normal([5, n_classes], stddev=0.1))
+            'out': tf.Variable(tf.random_normal([5, 1], stddev=0.1))
         }
 
         self.biases = {
@@ -62,11 +59,9 @@ class tf_CNN:
         self.sess.run(init)
 
     def forwardPass(self, X0):
-        X0 = X0.reshape(X0.size/(self.L*2), self.L*2)
         return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def backProp(self, X0):
-        X0 = X0.reshape(X0.size/(self.L*2), self.L*2)
         return self.sess.run(self.grads, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def getNumPara(self):

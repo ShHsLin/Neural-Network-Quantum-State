@@ -8,7 +8,8 @@ def select_optimizer(optimizer, learning_rate, momentum=0):
         return tf.train.MomentumOptimizer(learning_rate=learning_rate,
                                           momentum=momentum)
     elif optimizer == 'RMSprop':
-        return tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+        return tf.train.RMSPropOptimizer(learning_rate=learning_rate,
+                                         epsilon=0.1)
     elif optimizer == 'GD':
         return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
     else:

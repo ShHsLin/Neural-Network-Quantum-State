@@ -10,13 +10,10 @@ class tf_NN_RBM:
         self.learning_rate = tf.Variable(learning_rate)
         self.momentum = tf.Variable(momentum)
         # Network Parameters
-        n_input = int(inputShape[0]*inputShape[1])
-        n_classes = 1
         # dropout = 0.75  # Dropout, probability to keep units
 
         # tf Graph input
-        self.x = tf.placeholder(tf.float32, [None, n_input])
-        self.y = tf.placeholder(tf.complex64, [None, n_classes])
+        self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1]])
         self.keep_prob = tf.placeholder(tf.float32)
 
         self.L = int(inputShape[0])
@@ -61,11 +58,9 @@ class tf_NN_RBM:
         self.sess.run(init)
 
     def forwardPass(self, X0):
-        X0 = X0.reshape(X0.size/(self.L*2), self.L*2)
         return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def backProp(self, X0):
-        X0 = X0.reshape(X0.size/(self.L*2), self.L*2)
         return self.sess.run(self.grads, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def getNumPara(self):

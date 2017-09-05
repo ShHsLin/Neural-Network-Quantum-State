@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tf_wrapper import *
+import tf_wrapper as tf_
 
 
 class tf_NN3:
@@ -9,14 +9,10 @@ class tf_NN3:
         # Parameters
         self.learning_rate = tf.Variable(learning_rate)
         self.momentum = tf.Variable(momentum)
-        # Network Parameters
-        n_input = int(inputShape[0]*inputShape[1])
-        n_classes = 1
         # dropout = 0.75  # Dropout, probability to keep units
 
         # tf Graph input
-        self.x = tf.placeholder(tf.float32, [None, n_input])
-        self.y = tf.placeholder(tf.float32, [None, n_classes])
+        self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1]])
         self.keep_prob = tf.placeholder(tf.float32)
 
         self.L = int(inputShape[0])
@@ -30,7 +26,7 @@ class tf_NN3:
                                                 stddev=np.sqrt(2./(self.L*2*alpha)))),
             'wd3': tf.Variable(tf.random_normal([(self.L * alpha), (self.L * alpha)],
                                                 stddev=np.sqrt(2./(self.L*2*alpha)))),
-            'out': tf.Variable(tf.random_normal([self.L*alpha, n_classes],
+            'out': tf.Variable(tf.random_normal([self.L*alpha, 1],
                                                 stddev=np.sqrt(2./(self.L*alpha))))
         }
 
@@ -38,7 +34,7 @@ class tf_NN3:
             'bd1': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
             'bd2': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32)),
             'bd3': tf.Variable(np.zeros(self.L*alpha, dtype=np.float32))
-#            'out': tf.Variable(np.zeros(1, dtype=np.float32))
+            #            'out': tf.Variable(np.zeros(1, dtype=np.float32))
         }
 
         # Construct model : Tensorflow Graph is built here !
@@ -48,15 +44,8 @@ class tf_NN3:
         self.model_var_list = tf.global_variables()
 
         # Define optimizer
-        if optimizer == 'Adam':
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-        elif optimizer == 'Mom':
-            self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate,
-                                                        momentum=self.momentum)
-        elif optimizer == 'RMSprop':
-            self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
-        else:
-            raise
+        self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
+                                              self.momentum)
 
         # Define Gradient, loss = log(wave function)
         self.para_list = self.weights.values() + self.biases.values()
@@ -73,11 +62,9 @@ class tf_NN3:
         self.sess.run(init)
 
     def forwardPass(self, X0):
-        X0 = X0.reshape(X0.size/(self.L*2), self.L*2)
         return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def backProp(self, X0):
-        X0 = X0.reshape(X0.size/(self.L*2), self.L*2)
         return self.sess.run(self.grads, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def getNumPara(self):

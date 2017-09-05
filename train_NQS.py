@@ -31,9 +31,9 @@ def read_object(filename):
 
 class NQS():
     def __init__(self, inputShape, Net, Hamiltonian):
-        self.config = np.zeros((inputShape[0], inputShape[1], 1), dtype=int)
-        self.config[::2, 1, 0] = 1
-        self.config[1::2, 0, 0] = 1
+        self.config = np.zeros((1, inputShape[0], inputShape[1]), dtype=int)
+        self.config[0, ::2, 1] = 1
+        self.config[0, 1::2, 0] = 1
         self.NNet = Net
         self.moving_E_avg = None
 
@@ -61,7 +61,7 @@ class NQS():
         # inputShape0, inputShape1, numData = configArray.shape
         # ampArray = np.zeros((numData))
         # for i in range(numData):
-        #     config = configArray[:, :, i]
+        #     config = configArray[i, :, :]
         #     configStr = ''.join([str(ele) for ele in config.flatten()])
         #     if configStr in self.ampDic:
         #         amp = self.ampDic[configStr]
@@ -77,15 +77,15 @@ class NQS():
         self.ampDic = {}
 
     def newconfig(self):
-        L = self.config.shape[0]
+        L = self.config.shape[1]
 
 # Restricted to Sz = 0 sectors ##
         randsite1 = np.random.randint(L)
         randsite2 = np.random.randint(L)
-        if self.config[randsite1, 0, 0] + self.config[randsite2, 0, 0] == 1 and randsite1 != randsite2:
+        if self.config[0, randsite1, 0] + self.config[0, randsite2, 0] == 1 and randsite1 != randsite2:
             tempconfig = self.config.copy()
-            tempconfig[randsite1, :, 0] = (tempconfig[randsite1, :, 0] + 1) % 2
-            tempconfig[randsite2, :, 0] = (tempconfig[randsite2, :, 0] + 1) % 2
+            tempconfig[0, randsite1, :] = (tempconfig[0, randsite1, :] + 1) % 2
+            tempconfig[0, randsite2, :] = (tempconfig[0, randsite2, :] + 1) % 2
             ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
             if np.random.rand() < np.amin([1., ratio**2]):
                 self.config = tempconfig
@@ -98,13 +98,13 @@ class NQS():
 #        tempconfig = self.config.copy()
 #        if np.random.rand() < 0.5:
 #            randsite = np.random.randint(L)
-#            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
+#            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
 #            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
 #        else:
 #            randsite = np.random.randint(L)
 #            randsite2 = np.random.randint(L)
-#            tempconfig[randsite, :, 0] = (tempconfig[randsite, :, 0] + 1) % 2
-#            tempconfig[randsite2, :, 0] = (tempconfig[randsite2, :, 0] + 1) % 2
+#            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
+#            tempconfig[0, randsite2, :] = (tempconfig[0, randsite2, :] + 1) % 2
 #            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
 #            if np.random.rand() < np.amin([1., ratio**2]):
 #                self.config = tempconfig
@@ -129,7 +129,7 @@ class NQS():
     def VMC(self, num_sample, iteridx=0, use_batch=False, Gj=None):
         self.cleanAmpDic()
 
-        L = self.config.shape[0]
+        L = self.config.shape[1]
         numPara = self.getNumPara()
         OOsum = np.zeros((numPara, numPara))
         Osum = np.zeros((numPara))
@@ -144,7 +144,7 @@ class NQS():
         start = time.clock()
         corrlength = 10
         configDim = list(self.config.shape)
-        configDim[2] = num_sample
+        configDim[0] = num_sample
 
         if not use_batch:
             for i in range(num_sample * corrlength):
@@ -163,16 +163,16 @@ class NQS():
             for i in range(num_sample * corrlength):
                 self.newconfig()
                 if i % corrlength == 0:
-                    configArray[:, :, i / corrlength] = self.config[:, :, 0]
+                    configArray[i / corrlength, :, :] = self.config[0, :, :]
                 else:
                     pass
 
             raise NotImplementedError
             # localO, localOO, localE, localEO = self.getLocalBatch(configArray, h=h, J=J)
-            OOsum = np.einsum('ijk->ij', localOO)
-            Osum = np.einsum('ij->i', localO)
-            Earray = localE
-            EOsum = np.einsum('ij->i', localEO)
+            # OOsum = np.einsum('ijk->ij', localOO)
+            # Osum = np.einsum('ij->i', localO)
+            # Earray = localE
+            # EOsum = np.einsum('ij->i', localEO)
 
         end = time.clock()
         print("monte carlo time: ", end - start)
@@ -249,50 +249,51 @@ class NQS():
     # local_E_Ising, get local E from Ising Hamiltonian
     # For only one config.
     def local_E_Ising(self, config, h=1):
-        L, inputShape1, numData = config.shape
+        numData, L, inputShape1 = config.shape
         localE = 0.
         for i in range(L - 1):
-            temp = config[i, :, 0].dot(config[i + 1, :, 0])
+            temp = config[0, i, :].dot(config[0, i + 1, :])
             localE -= 2 * (temp - 0.5)
 
         # Periodic Boundary condition
-        temp = config[0, :, 0].dot(config[-1, :, 0])
+        temp = config[0, 0, :].dot(config[0, -1, :])
         localE -= 2 * (temp - 0.5)
         #####################################
 
-        oldAmp = self.eval_amp_array(config)[0]
+        oldAmp = self.eval_amp_array(config)[0,0]
         for i in range(L):
             tempConfig = config.copy()
-            tempConfig[i, :] = (tempConfig[i, :] + 1) % 2
+            tempConfig[0, i, :] = (tempConfig[0, i, :] + 1) % 2
             tempAmp = float(self.NNet.forwardPass(tempConfig))
             localE -= h * tempAmp / oldAmp
 
         return localE
 
     def local_E_AFH(self, config, J=1):
-        L, inputShape1, numData = config.shape
+        numData, L, inputShape1 = config.shape
         localE = 0.
-        oldAmp = self.eval_amp_array(config)[0]
+        oldAmp = self.eval_amp_array(config)[0,0]
         for i in range(L - 1):
-            temp = config[i, :, 0].dot(config[i + 1, :, 0])
+            temp = config[0, i, :].dot(config[0, i + 1, :])
             localE += 2 * (temp - 0.5) * J / 4
-            if config[i, :, 0].dot(config[i + 1, :, 0]) == 0:
+            if config[0, i, :].dot(config[0, i + 1, :]) == 0:
                 tempConfig = config.copy()
-                tempConfig[i, :] = (tempConfig[i, :] + 1) % 2
-                tempConfig[i + 1, :] = (tempConfig[i + 1, :] + 1) % 2
+                tempConfig[0, i, :] = (tempConfig[0, i, :] + 1) % 2
+                tempConfig[0, i + 1, :] = (tempConfig[0, i + 1, :] + 1) % 2
                 tempAmp = float(self.NNet.forwardPass(tempConfig))
                 localE += J * tempAmp / oldAmp / 2
             else:
                 pass
+ 
         '''
         Periodic Boundary condition
         '''
-        temp = config[0, :, 0].dot(config[-1, :, 0])
+        temp = config[0, 0, :].dot(config[0, -1, :])
         localE += 2 * (temp - 0.5) * J / 4
         if temp == 0:
             tempConfig = config.copy()
-            tempConfig[i, :] = (tempConfig[i, :] + 1) % 2
-            tempConfig[i + 1, :] = (tempConfig[i + 1, :] + 1) % 2
+            tempConfig[0, 0, :] = (tempConfig[0, 0, :] + 1) % 2
+            tempConfig[0, L-1, :] = (tempConfig[0, L-1, :] + 1) % 2
             tempAmp = float(self.NNet.forwardPass(tempConfig))
             localE += J * tempAmp / oldAmp / 2
 
@@ -345,7 +346,7 @@ if __name__ == "__main__":
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
-    G_init, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
+    GradW, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
     # N.moving_E_avg = E_avg * l
 
     for iteridx in range(0, 1000):
@@ -357,7 +358,7 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
         GradW, E = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                         Gj=G_init)
+                         Gj=GradW)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
         if np.linalg.norm(GradW) > 1000:
             GradW = GradW/np.linalg.norm(GradW)
@@ -394,3 +395,4 @@ if __name__ == "__main__":
     and the connection with deep learning model
 
     '''
+
