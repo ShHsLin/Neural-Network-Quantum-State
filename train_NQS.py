@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 
 import scipy.sparse.linalg
+from scipy.sparse.linalg import LinearOperator
 import numpy as np
 import tensorflow as tf
 import pickle
@@ -119,47 +120,54 @@ class NQS():
         for i in range(num_sample * correlength):
             self.newconfig()
             if i % correlength == 0:
-                _, _, localEnergy, _ = self.getLocal(h, J)
+                _, _, localEnergy, _ = self.getLocal(self.config)
                 energyList = np.append(energyList, localEnergy)
             else:
                 pass
         print(energyList)
         return np.average(energyList)
 
-    def VMC(self, num_sample, iteridx=0, use_batch=False, Gj=None):
+    def VMC(self, num_sample, iteridx=0, use_batch=False, Gj=None, explicit_SR=False):
         self.cleanAmpDic()
 
         L = self.config.shape[1]
         numPara = self.getNumPara()
         OOsum = np.zeros((numPara, numPara))
         Osum = np.zeros((numPara))
-        Earray = []
+        Earray = np.zeros((num_sample))
         EOsum = np.zeros((numPara))
-        # localO,localOO,localE,localEO = self.getLocal(h,J)
-        # OOsum	=	np.zeros(localOO.shape)
-        # Osum	=	np.zeros(localO.shape)
-        # Earray	=	[]
-        # EOsum	=	np.zeros(localEO.shape)
+        Oarray = np.zeros((numPara, num_sample))
 
         start = time.clock()
         corrlength = 10
         configDim = list(self.config.shape)
         configDim[0] = num_sample
+        configArray = np.zeros(configDim)
 
         if not use_batch:
             for i in range(num_sample * corrlength):
                 self.newconfig()
                 if i % corrlength == 0:
-                    localO, localOO, localE, localEO = self.getLocal()
-                    OOsum += localOO
-                    Osum += localO
-                    Earray.append(localE)
-                    EOsum += localEO
-                else:
-                    pass
+                    configArray[i / corrlength, :, :] = self.config[0, :, :]
+
+            end = time.clock()
+            print("monte carlo time (gen config): ", end-start)
+
+            for i in range(num_sample):
+                # localO, localOO, localE, localEO = self.getLocal(configArray[i:i+1])
+                localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
+                Osum += localO
+                Earray[i] = localE
+                EOsum += localEO
+                # OOsum += localOO
+                Oarray[:, i] = localO
+            
+            if not explicit_SR:
+                pass
+            else:
+                OOsum = Oarray.dot(Oarray.T)
 
         else:
-            configArray = np.zeros(configDim)
             for i in range(num_sample * corrlength):
                 self.newconfig()
                 if i % corrlength == 0:
@@ -175,10 +183,9 @@ class NQS():
             # EOsum = np.einsum('ij->i', localEO)
 
         end = time.clock()
-        print("monte carlo time: ", end - start)
+        print("monte carlo time (total): ", end - start)
         start2 = time.clock()
 
-        Earray = np.array(Earray).flatten()
         Eavg = np.average(Earray)
         Evar = np.var(Earray)
         print(self.getSelfAmp())
@@ -194,57 +201,68 @@ class NQS():
             Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
 
-        #####################################
-        # S_ij = <O_i O_j > - <O_i><O_j>   ##
-        #####################################
-        Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2)
-        ############
-        # Method 1 #
-        ############
-        # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
-        # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
-        # invSij = np.linalg.inv(Sij)
-        ############
-        # Method 2 #
-        ############
-        # Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-10)
-        # invSij = np.linalg.pinv(Sij, 1e-6)
-        ############
-        # Method 3 #
-        ############
-        Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-        print("conv Gj : ", info)
+        if not explicit_SR:
+            def implicit_S(v):
+                avgO = Osum.flatten()/num_sample
+                finalv = - avgO.dot(v) * avgO
+                finalv += Oarray.dot((Oarray.T.dot(v)))/num_sample
+                return finalv  # + v * 1e-4
+
+            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
+
+            Gj, info = scipy.sparse.linalg.minres(implicit_Sij, Fj, x0=Gj)
+            print("conv Gj : ", info)
+        else:
+            #####################################
+            # S_ij = <O_i O_j > - <O_i><O_j>   ##
+            #####################################
+            Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2)
+            # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
+            # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
+            Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
+            ############
+            # Method 1 #
+            ############
+            # invSij = np.linalg.inv(Sij)
+            ############
+            # Method 2 #
+            ############
+            # invSij = np.linalg.pinv(Sij, 1e-6)
+            ############
+            # Method 3 #
+            ############
+            Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            print("conv Gj : ", info)
 
         # Gj = invSij.dot(Fj.T)
         # Gj = Fj.T
-        print(np.linalg.norm(Gj), "norm(F):", np.linalg.norm(Fj))
+        print("norm(G): ", np.linalg.norm(Gj),
+              "norm(F):", np.linalg.norm(Fj))
 
         end2 = time.clock()
         print("Sij, Fj time: ", end2 - start2)
 
-        return Gj, Eavg / L
+        return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
 
-    def getLocal(self):
-        Wsize = self.getNumPara()
-        localO = np.zeros((Wsize))
-        localOO = np.zeros((Wsize, Wsize))
-        localE = 0.
-        localEO = np.zeros((Wsize))
-
-        config = self.config
+    def getLocal(self, config):
         localE = self.get_local_E(config)
 
-        GList = self.NNet.backProp(self.config)
-        localOind = 0
-        for i in range(len(GList)):
-            G = GList[i].flatten()
-            localO[localOind: localOind + G.size] = G
-            localOind += G.size
+        GList = self.NNet.backProp(config)
+        localO = np.concatenate([g.flatten() for g in GList])
 
-        localOO = np.einsum('i,j->ij', localO.flatten(), localO.flatten())
+        localOO = np.einsum('i,j->ij', localO, localO)
         localEO = localO * localE
 
         return localO, localOO, localE, localEO
+
+    def getLocal_no_OO(self, config):
+        localE = self.get_local_E(config)
+
+        GList = self.NNet.backProp(config)
+        localO = np.concatenate([g.flatten() for g in GList])
+        localEO = localO * localE
+
+        return localO, localE, localEO
 
     # local_E_Ising, get local E from Ising Hamiltonian
     # For only one config.
@@ -284,7 +302,6 @@ class NQS():
                 localE += J * tempAmp / oldAmp / 2
             else:
                 pass
- 
         '''
         Periodic Boundary condition
         '''
@@ -346,7 +363,7 @@ if __name__ == "__main__":
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
-    GradW, E_avg = N.VMC(num_sample=num_sample, iteridx=0)
+    GradW, E_avg, E_var = N.VMC(num_sample=num_sample, iteridx=0)
     # N.moving_E_avg = E_avg * l
 
     for iteridx in range(0, 1000):
@@ -357,8 +374,8 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-3 * (0.995**iteridx)))
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
-        GradW, E = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                         Gj=GradW)
+        GradW, E, E_var = N.VMC(num_sample=num_sample, iteridx=iteridx,
+                                Gj=GradW)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
         if np.linalg.norm(GradW) > 1000:
             GradW = GradW/np.linalg.norm(GradW)
@@ -395,4 +412,3 @@ if __name__ == "__main__":
     and the connection with deep learning model
 
     '''
-
