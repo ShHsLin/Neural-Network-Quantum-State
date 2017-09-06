@@ -31,10 +31,13 @@ def read_object(filename):
 
 
 class NQS():
-    def __init__(self, inputShape, Net, Hamiltonian):
-        self.config = np.zeros((1, inputShape[0], inputShape[1]), dtype=int)
-        self.config[0, ::2, 1] = 1
-        self.config[0, 1::2, 0] = 1
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1):
+        self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
+                               dtype=int)
+        self.batch_size = batch_size
+        self.inputShape = inputShape
+        self.init_config(sz0_sector=True)
+
         self.NNet = Net
         self.moving_E_avg = None
 
@@ -43,6 +46,23 @@ class NQS():
             self.get_local_E = self.local_E_Ising
         elif Hamiltonian == 'AFH':
             self.get_local_E = self.local_E_AFH
+
+    def init_config(self, sz0_sector=True):
+        if sz0_sector:
+            for i in range(self.batch_size):
+                x = np.random.randint(2, size=(self.inputShape[0]))
+                while(np.sum(x) != self.inputShape[0]/2):
+                    x = np.random.randint(2, size=(self.inputShape[0]))
+
+                self.config[i, :, 0] = x
+                self.config[i, :, 1] = (x+1) % 2
+
+            return
+        else:
+            x = np.random.randint(2, size=(self.batch_size, self.inputShape[0]))
+            self.config[:, :, 0] = x
+            self.config[:, :, 1] = (x+1) % 2
+            return
 
     def getNumPara(self):
         return self.NNet.getNumPara()
@@ -56,6 +76,9 @@ class NQS():
         #     amp = float(self.NNet.forwardPass(self.config))
         #     self.ampDic[configStr] = amp
         #     return amp
+
+    def get_self_amp_batch(self):
+        return self.NNet.forwardPass(self.config).flatten()
 
     def eval_amp_array(self, configArray):
         return self.NNet.forwardPass(configArray).flatten()
@@ -114,6 +137,29 @@ class NQS():
 
         return
 
+    def new_config_batch(self):
+        L = self.config.shape[1]
+        batch_size = self.batch_size
+        old_amp = self.get_self_amp_batch()
+
+# Restricted to Sz = 0 sectors ##
+        randsite1 = np.random.randint(L, size=(batch_size,))
+        randsite2 = np.random.randint(L, size=(batch_size,))
+        mask = (self.config[range(batch_size), randsite1, 0] +
+                self.config[range(batch_size), randsite2, 0]) == 1
+
+        flip_config = self.config.copy()
+        flip_config[range(batch_size), randsite1, :] = (flip_config[range(batch_size), randsite1, :] + 1) % 2
+        flip_config[range(batch_size), randsite2, :] = (flip_config[range(batch_size), randsite2, :] + 1) % 2
+
+        ratio = np.power(np.divide(self.eval_amp_array(flip_config), old_amp),  2)
+        mask2 = np.random.random_sample((batch_size,)) < ratio
+        final_mask = np.logical_and(mask, mask2)
+        # update self.config
+        # import pdb;pdb.set_trace()
+        self.config[final_mask] = flip_config[final_mask]
+        return
+
     def H_exp(self, num_sample=1000, h=1, J=0):
         energyList = []
         correlength = 10
@@ -127,7 +173,7 @@ class NQS():
         print(energyList)
         return np.average(energyList)
 
-    def VMC(self, num_sample, iteridx=0, use_batch=False, Gj=None, explicit_SR=False):
+    def VMC(self, num_sample, iteridx=0, Gj=None, explicit_SR=False):
         self.cleanAmpDic()
 
         L = self.config.shape[1]
@@ -138,57 +184,56 @@ class NQS():
         EOsum = np.zeros((numPara))
         Oarray = np.zeros((numPara, num_sample))
 
-        start = time.clock()
-        corrlength = 10
+        start_c, start_t = time.clock(), time.time()
+        if self.batch_size > 100:
+            corrlength = 30
+        else:
+            corrlength = 15
         configDim = list(self.config.shape)
         configDim[0] = num_sample
         configArray = np.zeros(configDim)
 
-        if not use_batch:
+        if (self.batch_size == 1):
             for i in range(num_sample * corrlength):
                 self.new_config()
                 if i % corrlength == 0:
                     configArray[i / corrlength, :, :] = self.config[0, :, :]
-
-            end = time.clock()
-            print("monte carlo time (gen config): ", end-start)
-
-            for i in range(num_sample):
-                # localO, localOO, localE, localEO = self.getLocal(configArray[i:i+1])
-                localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
-                Osum += localO
-                Earray[i] = localE
-                EOsum += localEO
-                # OOsum += localOO
-                Oarray[:, i] = localO
-
-            if not explicit_SR:
-                pass
-            else:
-                OOsum = Oarray.dot(Oarray.T)
 
         else:
-            for i in range(num_sample * corrlength):
-                self.new_config()
+            for i in range(num_sample * corrlength / self.batch_size):
+                self.new_config_batch()
+                bs = self.batch_size
                 if i % corrlength == 0:
-                    configArray[i / corrlength, :, :] = self.config[0, :, :]
+                    i_c = i/corrlength
+                    configArray[i_c*bs: (i_c+1)*bs, :, :] = self.config[:, :, :]
                 else:
                     pass
 
-            raise NotImplementedError
-            # localO, localOO, localE, localEO = self.getLocalBatch(configArray, h=h, J=J)
-            # OOsum = np.einsum('ijk->ij', localOO)
-            # Osum = np.einsum('ij->i', localO)
-            # Earray = localE
-            # EOsum = np.einsum('ij->i', localEO)
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
 
-        end = time.clock()
-        print("monte carlo time (total): ", end - start)
-        start2 = time.clock()
+        for i in range(num_sample):
+            # localO, localOO, localE, localEO = self.getLocal(configArray[i:i+1])
+            localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
+            Osum += localO
+            Earray[i] = localE
+            EOsum += localEO
+            # OOsum += localOO
+            Oarray[:, i] = localO
+
+        if not explicit_SR:
+            pass
+        else:
+            OOsum = Oarray.dot(Oarray.T)
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
+        start_c, start_t = time.clock(), time.time()
 
         Eavg = np.average(Earray)
         Evar = np.var(Earray)
-        print(self.getSelfAmp())
+        # print(self.getSelfAmp())
+        print(self.get_self_amp_batch()[:5])
         print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
 
         #####################################
@@ -239,8 +284,8 @@ class NQS():
         print("norm(G): ", np.linalg.norm(Gj),
               "norm(F):", np.linalg.norm(Fj))
 
-        end2 = time.clock()
-        print("Sij, Fj time: ", end2 - start2)
+        end_c, end_t = time.clock(), time.time()
+        print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
         return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
 
@@ -256,6 +301,10 @@ class NQS():
         return localO, localOO, localE, localEO
 
     def getLocal_no_OO(self, config):
+        '''
+        forming OO is extremely slow.
+        test with np.einsum, np.outer
+        '''
         # localE = self.get_local_E(config)
         localE = self.local_E_AFH_new(config)
         # if (localE-localE2)>1e-12:
@@ -378,13 +427,14 @@ if __name__ == "__main__":
         alpha = alpha_map[which_net]
 
     opt = args.opt
+    batch_size = args.batch_size
     H = 'AFH'
     systemSize = (L, 2)
 
     Net = prepare_net(which_net, systemSize, opt, alpha)
     print("Total num para: ", Net.getNumPara())
 
-    N = NQS(systemSize, Net=Net, Hamiltonian=H)
+    N = NQS(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
 
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
@@ -399,8 +449,12 @@ if __name__ == "__main__":
 
     # Thermalization
     print("Thermalizing ~~ ")
-    for i in range(1000):
-        N.new_config()
+    if batch_size > 1:
+        for i in range(1000):
+            N.new_config_batch()
+    else:
+        for i in range(1000):
+            N.new_config()
 
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
