@@ -58,8 +58,8 @@ class NQS():
         #     return amp
 
     def eval_amp_array(self, configArray):
-        return self.NNet.forwardPass(configArray)
-        # inputShape0, inputShape1, numData = configArray.shape
+        return self.NNet.forwardPass(configArray).flatten()
+        # numData, inputShape0, inputShape1 = configArray.shape
         # ampArray = np.zeros((numData))
         # for i in range(numData):
         #     config = configArray[i, :, :]
@@ -77,7 +77,7 @@ class NQS():
     def cleanAmpDic(self):
         self.ampDic = {}
 
-    def newconfig(self):
+    def new_config(self):
         L = self.config.shape[1]
 
 # Restricted to Sz = 0 sectors ##
@@ -118,7 +118,7 @@ class NQS():
         energyList = []
         correlength = 10
         for i in range(num_sample * correlength):
-            self.newconfig()
+            self.new_config()
             if i % correlength == 0:
                 _, _, localEnergy, _ = self.getLocal(self.config)
                 energyList = np.append(energyList, localEnergy)
@@ -146,7 +146,7 @@ class NQS():
 
         if not use_batch:
             for i in range(num_sample * corrlength):
-                self.newconfig()
+                self.new_config()
                 if i % corrlength == 0:
                     configArray[i / corrlength, :, :] = self.config[0, :, :]
 
@@ -161,7 +161,7 @@ class NQS():
                 EOsum += localEO
                 # OOsum += localOO
                 Oarray[:, i] = localO
-            
+
             if not explicit_SR:
                 pass
             else:
@@ -169,7 +169,7 @@ class NQS():
 
         else:
             for i in range(num_sample * corrlength):
-                self.newconfig()
+                self.new_config()
                 if i % corrlength == 0:
                     configArray[i / corrlength, :, :] = self.config[0, :, :]
                 else:
@@ -256,7 +256,10 @@ class NQS():
         return localO, localOO, localE, localEO
 
     def getLocal_no_OO(self, config):
-        localE = self.get_local_E(config)
+        # localE = self.get_local_E(config)
+        localE = self.local_E_AFH_new(config)
+        # if (localE-localE2)>1e-12:
+        #     print(np.squeeze(config).T, localE, localE2)
 
         GList = self.NNet.backProp(config)
         localO = np.concatenate([g.flatten() for g in GList])
@@ -278,7 +281,7 @@ class NQS():
         localE -= 2 * (temp - 0.5)
         #####################################
 
-        oldAmp = self.eval_amp_array(config)[0,0]
+        oldAmp = self.eval_amp_array(config)[0]
         for i in range(L):
             tempConfig = config.copy()
             tempConfig[0, i, :] = (tempConfig[0, i, :] + 1) % 2
@@ -290,8 +293,10 @@ class NQS():
     def local_E_AFH(self, config, J=1):
         numData, L, inputShape1 = config.shape
         localE = 0.
-        oldAmp = self.eval_amp_array(config)[0,0]
+        oldAmp = self.eval_amp_array(config)[0]
+
         for i in range(L - 1):
+            # Sz Sz Interaction
             temp = config[0, i, :].dot(config[0, i + 1, :])
             localE += 2 * (temp - 0.5) * J / 4
             if config[0, i, :].dot(config[0, i + 1, :]) == 0:
@@ -315,6 +320,42 @@ class NQS():
             localE += J * tempAmp / oldAmp / 2
 
         return localE
+
+    def local_E_AFH_new(self, config, J=1):
+        numData, L, inputShape1 = config.shape
+        localE = 0.
+        oldAmp = self.eval_amp_array(config)[0]
+
+        # PBC
+        config_shift_copy = np.zeros((1, L, inputShape1))
+        config_shift_copy[:, :-1, :] = config[:, 1:, :]
+        config_shift_copy[:, -1, :] = config[:, 0, :]
+
+        '''
+        Sz Sz Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+        '''
+        SzSz = np.einsum('ij,ij->i', config[0, :, :], config_shift_copy[0, :, :])
+        localE += np.sum(SzSz - 0.5) * 2 * J / 4
+
+        config_flip = np.einsum('i,ijk->ijk', np.ones(L), config)
+        for i in range(L):
+            config_flip[i, i, :] = (config_flip[i, i, :] + 1) % 2
+            config_flip[i, (i+1) % L, :] = (config_flip[i, (i+1) % L, :] + 1) % 2
+
+#        for i in range(L-1):
+#            config_flip[i, i, :] = (config_flip[i, i, :] + 1) % 2
+#            config_flip[i, (i+1), :] = (config_flip[i, (i+1), :] + 1) % 2
+
+#        config_flip[L-1, 0, :] = (config_flip[L-1, 0, :] + 1) % 2
+#        config_flip[L-1, L-1, :] = (config_flip[L-1, L-1, :] + 1) % 2
+
+        flip_Amp = self.eval_amp_array(config_flip)
+        localE += -(SzSz-1).dot(flip_Amp) * J / oldAmp / 2
+
+        return localE
+
 
 ########################
 #  END OF DEFINITION  #
@@ -357,8 +398,9 @@ if __name__ == "__main__":
         print("No checkpoint found")
 
     # Thermalization
-    for i in range(100):
-        N.newconfig()
+    print("Thermalizing ~~ ")
+    for i in range(1000):
+        N.new_config()
 
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
