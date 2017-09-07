@@ -186,7 +186,7 @@ class NQS():
 
         start_c, start_t = time.clock(), time.time()
         if self.batch_size > 100:
-            corrlength = 30
+            corrlength = 50
         else:
             corrlength = 15
         configDim = list(self.config.shape)
@@ -194,18 +194,18 @@ class NQS():
         configArray = np.zeros(configDim)
 
         if (self.batch_size == 1):
-            for i in range(num_sample * corrlength):
+            for i in range(1, 1 + num_sample * corrlength):
                 self.new_config()
                 if i % corrlength == 0:
-                    configArray[i / corrlength, :, :] = self.config[0, :, :]
+                    configArray[i / corrlength - 1, :, :] = self.config[0, :, :]
 
         else:
-            for i in range(num_sample * corrlength / self.batch_size):
+            for i in range(1, 1 + num_sample * corrlength / self.batch_size):
                 self.new_config_batch()
                 bs = self.batch_size
                 if i % corrlength == 0:
                     i_c = i/corrlength
-                    configArray[i_c*bs: (i_c+1)*bs, :, :] = self.config[:, :, :]
+                    configArray[(i_c-1)*bs: i_c*bs, :, :] = self.config[:, :, :]
                 else:
                     pass
 
@@ -432,7 +432,12 @@ if __name__ == "__main__":
     systemSize = (L, 2)
 
     Net = prepare_net(which_net, systemSize, opt, alpha)
-    print("Total num para: ", Net.getNumPara())
+    net_num_para = Net.getNumPara()
+    print("Total num para: ", net_num_para)
+    if net_num_para < num_sample:
+        explicit_SR = False
+    else:
+        explicit_SR = True
 
     N = NQS(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
 
@@ -449,6 +454,7 @@ if __name__ == "__main__":
 
     # Thermalization
     print("Thermalizing ~~ ")
+    start_t, start_c = time.time(), time.clock()
     if batch_size > 1:
         for i in range(1000):
             N.new_config_batch()
@@ -456,13 +462,16 @@ if __name__ == "__main__":
         for i in range(1000):
             N.new_config()
 
+    end_t, end_c = time.time(), time.clock()
+    print("Thermalization time: ", end_c-start_c, end_t-start_t)
+
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
     GradW, E_avg, E_var = N.VMC(num_sample=num_sample, iteridx=0)
     # N.moving_E_avg = E_avg * l
 
-    for iteridx in range(0, 1000):
+    for iteridx in range(1, 1000+1):
         print(iteridx)
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
@@ -470,8 +479,9 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-3 * (0.995**iteridx)))
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
+
         GradW, E, E_var = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                                Gj=GradW)
+                                Gj=GradW, explicit_SR=explicit_SR)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
         if np.linalg.norm(GradW) > 1000:
             GradW = GradW/np.linalg.norm(GradW)

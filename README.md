@@ -104,7 +104,15 @@ NN_v2:  99.6%
 >6. Complex network is equivalent to a real network with learning phase and magnitude seperately. The network can share feature until the final layer which output the phase and magnitude seperately.
 
 
+### Benchmark
+L=10 AFH PBC: -4.515446e-01
+L=16 AFH PBC: -4.463935e-01
 
+ED:
+L=10 AFH OBC: -4.258035e-01
+L=16 AFH OBC: -4.319836e-01 
+DMRG bond-dim40:
+L=40 AFH OBC: -4.3853682e-01
 
 
 ### To do list
