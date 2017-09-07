@@ -212,14 +212,31 @@ class NQS():
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
 
+        # for i in range(num_sample):
+        #     Earray[i] = self.get_local_E(configArray[i:i+1])
+        Earray = self.local_E_AFH_batch(configArray)
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
+
         for i in range(num_sample):
-            # localO, localOO, localE, localEO = self.getLocal(configArray[i:i+1])
-            localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
-            Osum += localO
-            Earray[i] = localE
-            EOsum += localEO
-            # OOsum += localOO
-            Oarray[:, i] = localO
+            GList = self.NNet.backProp(configArray[i:i+1])
+            Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+
+        # Osum = np.einsum('ij->i', Oarray)
+        # EOsum = np.einsum('ij,j->i', Oarray, Earray)
+        Osum = Oarray.dot(np.ones(Oarray.shape[1]))
+        EOsum = Oarray.dot(Earray)
+
+        # for i in range(num_sample):
+        #     localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
+        #     Osum += localO
+        #     Earray[i] = localE
+        #     EOsum += localEO
+        #     Oarray[:, i] = localO
 
         if not explicit_SR:
             pass
@@ -268,18 +285,19 @@ class NQS():
             ############
             # Method 1 #
             ############
-            # invSij = np.linalg.inv(Sij)
+            invSij = np.linalg.inv(Sij)
+            Gj = invSij.dot(Fj.T)
             ############
             # Method 2 #
             ############
-            # invSij = np.linalg.pinv(Sij, 1e-6)
+            # invSij = np.linalg.pinv(Sij, 1e-3)
+            # Gj = invSij.dot(Fj.T)
             ############
             # Method 3 #
             ############
-            Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-            print("conv Gj : ", info)
+            # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            # print("conv Gj : ", info)
 
-        # Gj = invSij.dot(Fj.T)
         # Gj = Fj.T
         print("norm(G): ", np.linalg.norm(Gj),
               "norm(F):", np.linalg.norm(Fj))
@@ -289,24 +307,13 @@ class NQS():
 
         return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
 
-    def getLocal(self, config):
-        localE = self.get_local_E(config)
-
-        GList = self.NNet.backProp(config)
-        localO = np.concatenate([g.flatten() for g in GList])
-
-        localOO = np.einsum('i,j->ij', localO, localO)
-        localEO = localO * localE
-
-        return localO, localOO, localE, localEO
-
     def getLocal_no_OO(self, config):
         '''
         forming OO is extremely slow.
         test with np.einsum, np.outer
         '''
-        # localE = self.get_local_E(config)
-        localE = self.local_E_AFH_new(config)
+        localE = self.get_local_E(config)
+        # localE2 = self.local_E_AFH_old(config)
         # if (localE-localE2)>1e-12:
         #     print(np.squeeze(config).T, localE, localE2)
 
@@ -339,7 +346,7 @@ class NQS():
 
         return localE
 
-    def local_E_AFH(self, config, J=1):
+    def local_E_AFH_old(self, config, J=1):
         numData, L, inputShape1 = config.shape
         localE = 0.
         oldAmp = self.eval_amp_array(config)[0]
@@ -370,7 +377,7 @@ class NQS():
 
         return localE
 
-    def local_E_AFH_new(self, config, J=1):
+    def local_E_AFH(self, config, J=1):
         numData, L, inputShape1 = config.shape
         localE = 0.
         oldAmp = self.eval_amp_array(config)[0]
@@ -405,6 +412,43 @@ class NQS():
 
         return localE
 
+    def local_E_AFH_batch(self, config_arr, J=1):
+        num_config, L, inputShape1 = config_arr.shape
+        localE_arr = np.zeros((num_config))
+        oldAmp = self.eval_amp_array(config_arr)
+
+        # PBC
+        config_shift_copy = np.zeros((num_config, L, inputShape1))
+        config_shift_copy[:, :-1, :] = config_arr[:, 1:, :]
+        config_shift_copy[:, -1, :] = config_arr[:, 0, :]
+
+        '''
+        Sz Sz Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+        '''
+        # num_config x L
+        SzSz = np.einsum('ijk,ijk->ij', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * J / 4
+
+        # num_site(L) x num_config x num_site(L) x num_spin
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L), config_arr)
+        for i in range(L):
+            config_flip_arr[i, :, i, :] = (config_flip_arr[i, :, i, :] + 1) % 2
+            config_flip_arr[i, :, (i+1) % L, :] = (config_flip_arr[i, :, (i+1) % L, :] + 1) % 2
+
+#        for i in range(L-1):
+#            config_flip[i, i, :] = (config_flip[i, i, :] + 1) % 2
+#            config_flip[i, (i+1), :] = (config_flip[i, (i+1), :] + 1) % 2
+
+#        config_flip[L-1, 0, :] = (config_flip[L-1, 0, :] + 1) % 2
+#        config_flip[L-1, L-1, :] = (config_flip[L-1, L-1, :] + 1) % 2
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(L*num_config, L, inputShape1))
+        flip_Amp_arr = flip_Amp_arr.reshape((L, num_config))
+        # localE += -(SzSz-1).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J / oldAmp / 2
+        return localE_arr
+
 
 ########################
 #  END OF DEFINITION  #
@@ -434,10 +478,12 @@ if __name__ == "__main__":
     Net = prepare_net(which_net, systemSize, opt, alpha)
     net_num_para = Net.getNumPara()
     print("Total num para: ", net_num_para)
-    if net_num_para < num_sample:
-        explicit_SR = False
-    else:
+    if net_num_para/5 < num_sample:
+        print("forming Sij explicitly")
         explicit_SR = True
+    else:
+        print("DO NOT FORM Sij explicity")
+        explicit_SR = False
 
     N = NQS(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
 
