@@ -48,7 +48,7 @@ if __name__ == "__main__":
                 pass
         to_large_dict[''.join([str(int(ele)) for ele in X[i, :, 0]])] = i
 
-    X = X.reshape((num_train, L*2))
+    # X = X.reshape((num_train, L*2))
 
     # Y = np.zeros((num_train, 1))
     # amp_array = np.genfromtxt(open('EigenVec/EigVec_L'+str(L)+'V20W0E0.csv', 'r'))

@@ -16,9 +16,11 @@ class tf_NN:
         self.keep_prob = tf.placeholder(tf.float32)
 
         self.L = int(inputShape[0])
+        self.alpha = alpha
 
         # Variables Creation
         # Store layers weight & bias
+        '''
         self.weights = {
             'wd1': tf.Variable(tf.random_normal([(self.L), (self.L * alpha)],
                                                 stddev=np.sqrt(2./(self.L*(1+alpha))))),
@@ -37,15 +39,19 @@ class tf_NN:
         # Construct model : Tensorflow Graph is built here !
         self.pred = self.build(self.x, self.weights, self.biases,
                                self.keep_prob, inputShape)
-
+        self.para_list = self.weights.values() + self.biases.values()
+        '''
+        self.pred = self.build(self.x, inputShape)
         self.model_var_list = tf.global_variables()
-
+        self.para_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='network')
+        print("create variable")
+        for i in self.para_list:
+            print i.name
         # Define optimizer
         self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
                                               self.momentum)
 
         # Define Gradient, loss = log(wave function)
-        self.para_list = self.weights.values() + self.biases.values()
         self.grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
         # Do some operation on grads
         # Get the new gradient from outside by placeholder
@@ -71,7 +77,7 @@ class tf_NN:
         # print(self.sess.run(self.para_list[2])[:10])
         self.sess.run(self.train_op, feed_dict={i: d for i, d in
                                                 zip(self.newgrads, grad_list)})
-
+    '''
     # Create model
     def build(self, x, weights, biases, dropout, inputShape):
         x = tf.reshape(x, shape=[-1, inputShape[0], inputShape[1], 1])
@@ -87,6 +93,21 @@ class tf_NN:
         out_im = tf.add(tf.matmul(fc1, weights['out_im']), biases['out_im'])
         out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
         #    out = tf.nn.sigmoid(out)
+        print("Building the model with shape:")
+        print("Input Layer X:", x.get_shape())
+        print("FC1:", fc1.get_shape())
+        print("out:", out.get_shape())
+        return out
+    '''
+    def build(self, x, inputShape):
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, 0]
+            fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
+            fc1 = tf.nn.tanh(fc1)
+            out_re = tf_.fc_layer(fc1, self.L * self.alpha, 1, 'out_re')
+            out_im = tf_.fc_layer(fc1, self.L * self.alpha, 1, 'out_im')
+            out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+
         print("Building the model with shape:")
         print("Input Layer X:", x.get_shape())
         print("FC1:", fc1.get_shape())

@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+from functools import reduce
 
 
 def select_optimizer(optimizer, learning_rate, momentum=0):
@@ -14,16 +16,6 @@ def select_optimizer(optimizer, learning_rate, momentum=0):
         return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
     else:
         raise
-
-
-# Create some wrappers for simplicity
-def conv2d(x, W, b, strides=1, padding='SAME'):
-    # Conv2D wrapper, with bias
-    # Without relu operation
-    # y strides = 2 to contain only valid convolution
-    x = tf.nn.conv2d(x, W, strides=[1, strides, 2, 1], padding=padding)
-    x = tf.nn.bias_add(x, b)
-    return x
 
 
 def leaky_relu(x):
@@ -53,23 +45,175 @@ def complex_relu2(x):
     return tf.complex(tf.nn.relu(tf.real(x)), tf.imag(x))
 
 
-def maxpool1d(x, k=2):
-    # MaxPool2D wrapper
-    return tf.nn.max_pool(x, ksize=[1, k, 1, 1], strides=[1, k, 1, 1],
-                          padding='VALID')
+def max_pool1d(x, name, kernel_size=2, stride_size=2, padding='SAME'):
+    return tf.nn.max_pool(x, ksize=[1, kernel_size, 1, 1],
+                          strides=[1, stride_size, 1, 1],
+                          padding=padding, name=name)
 
 
-def maxpool2d(x, k=2):
-    # MaxPool2D wrapper
-    return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
-                          padding='VALID')
+def max_pool2d(x, name, kernel_size=2, stride_size=2, padding='SAME'):
+    return tf.nn.max_pool(x, ksize=[1, kernel_size, kernel_size, 1],
+                          strides=[1, stride_size, stride_size, 1],
+                          padding=padding, name=name)
 
 
-def avgpool1d(x, k=2):
-    return tf.nn.avg_pool(x, ksize=[1, k, 1, 1], strides=[1, k, 1, 1],
-                          padding='VALID')
+def avg_pool1d(x, name, kernel_size, stride_size=2, padding='SAME'):
+    return tf.nn.avg_pool(x, ksize=[1, kernel_size, 1, 1],
+                          strides=[1, stride_size, 1, 1],
+                          padding=padding, name=name)
 
 
-def avgpool2d(x, k=2):
-    return tf.nn.avg_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
-                          padding='VALID')
+def avg_pool2d(x, name, kernel_size, stride_size=2, padding='SAME'):
+    return tf.nn.avg_pool(x,
+                          ksize=[1, kernel_size, kernel_size, 1],
+                          strides=[1, stride_size, stride_size, 1],
+                          padding=padding, name=name)
+
+
+def batch_norm(bottom, phase, scope='bn'):
+    return tf.contrib.layers.batch_norm(bottom, center=True, scale=True,
+                                        is_training=phase, scope=scope,
+                                        decay=0.995)
+
+
+def conv_layer1d(self, bottom, filter_size, in_channels,
+                 out_channels, name, stride_size=1, biases=False):
+    with tf.variable_scope(name, reuse=None):
+        filt, conv_biases = self.get_conv_var1d(filter_size, in_channels,
+                                                out_channels, biases=False)
+        conv = tf.nn.conv1d(bottom, filt, stride_size, padding='SAME')
+        if not biases:
+            return conv
+        else:
+            bias = tf.nn.bias_add(conv, conv_biases)
+            return bias
+
+
+def conv_layer2d(self, bottom, filter_size, in_channels,
+                 out_channels, name, stride_size=1, biases=False):
+    with tf.variable_scope(name, reuse=None):
+        filt, conv_biases = self.get_conv_var2d(filter_size, in_channels,
+                                                out_channels, biases=False)
+        conv = tf.nn.conv2d(bottom, filt, [1, stride_size, stride_size, 1], padding='SAME')
+        if not biases:
+            return conv
+        else:
+            bias = tf.nn.bias_add(conv, conv_biases)
+            return bias
+
+
+def fc_layer(bottom, in_size, out_size, name):
+    with tf.variable_scope(name, reuse=None):
+        weights, biases = get_fc_var(in_size, out_size)
+        x = tf.reshape(bottom, [-1, in_size])
+        fc = tf.nn.bias_add(tf.matmul(x, weights), biases)
+
+    return fc
+
+
+def get_conv_var1d(filter_size, in_channels, out_channels, name="",
+                   biases=False):
+    initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0, 0.001)
+    filters = get_var(initial_value, name, 0, name + "weights")
+
+    if not biases:
+        return filters, None
+    else:
+        initial_value = tf.truncated_normal([out_channels], .0, .001)
+        biases = get_var(initial_value, name, 1, name + "biases")
+        return filters, biases
+
+
+def get_conv_var2d(filter_size, in_channels, out_channels, name="",
+                   biases=False):
+    initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
+    filters = get_var(initial_value, name, 0, name + "weights")
+
+    if not biases:
+        return filters, None
+    else:
+        initial_value = tf.truncated_normal([out_channels], .0, .001)
+        biases = get_var(initial_value, name, 1, name + "biases")
+        return filters, biases
+
+
+def get_fc_var(in_size, out_size, name=""):
+    # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.001)
+    initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
+    weights = get_var(initial_value, name, 0, name + "weights")
+
+    initial_value = tf.truncated_normal([out_size], .0, .001)
+    # initial_value = tf.zeros(out_size, dtype=np.float32)
+    biases = get_var(initial_value, name, 1, name + "biases")
+
+    return weights, biases
+
+
+def get_var(initial_value, name, idx, var_name):
+    # if self.is_training:
+    var = tf.get_variable(var_name, initializer=initial_value, trainable=True)
+    # self.var_dict[var.name] = var
+    # print var_name, var.get_shape().as_list()
+    assert var.get_shape() == initial_value.get_shape()
+    return var
+
+
+def save_npy(self, sess, npy_path="./vgg19-save.npy"):
+    assert isinstance(sess, tf.Session)
+
+    data_dict = {}
+
+    for (name, idx), var in list(self.var_dict.items()):
+        var_out = sess.run(var)
+        if name not in data_dict:
+            data_dict[name] = {}
+
+        data_dict[name][idx] = var_out
+
+    np.save(npy_path, data_dict)
+    print(("file saved", npy_path))
+    return npy_path
+
+
+def get_var_count(self):
+    count = 0
+    for v in list(self.model_var_list):
+        count += reduce(lambda x, y: x * y, v.get_shape().as_list())
+    print("Total parameter, including auxiliary variables: %d\n" % count)
+
+    count = 0
+    for v in list(self.var_dict.values()):
+        count += reduce(lambda x, y: x * y, v.get_shape().as_list())
+
+    return count
+
+
+def bottleneck_residual(self, x, in_channel, out_channel, name,
+                        stride_size=2):
+    with tf.variable_scope(name, reuse=None):
+        # Identity shortcut
+        if in_channel == out_channel:
+            shortcut = x
+            x = self.conv_layer(x, 1, in_channel, out_channel/4, "conv1")
+            # conv projection shortcut
+        else:
+            shortcut = x
+            shortcut = self.conv_layer(shortcut, 1, in_channel,
+                                       out_channel, "shortcut",
+                                       stride_size=stride_size)
+            shortcut = self.batch_norm(shortcut, phase=self.bn_is_training,
+                                       scope='shortcut/bn')
+            x = self.conv_layer(x, 1, in_channel, out_channel/4, "conv1",
+                                stride_size=stride_size)
+
+        x = self.batch_norm(x, phase=self.bn_is_training, scope='bn1')
+        x = tf.nn.relu(x)
+        x = self.conv_layer(x, 3, out_channel/4, out_channel/4, "conv2")
+        x = self.batch_norm(x, phase=self.bn_is_training, scope='bn2')
+        x = tf.nn.relu(x)
+        x = self.conv_layer(x, 1, out_channel/4, out_channel, "conv3")
+        x = self.batch_norm(x, phase=self.bn_is_training, scope='bn3')
+        x += shortcut
+        x = tf.nn.relu(x)
+
+    return x
