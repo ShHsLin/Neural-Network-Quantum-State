@@ -1,6 +1,6 @@
 import tensorflow as tf
-import numpy as np
 from functools import reduce
+import numpy as np
 
 
 def select_optimizer(optimizer, learning_rate, momentum=0):
@@ -76,11 +76,11 @@ def batch_norm(bottom, phase, scope='bn'):
                                         decay=0.995)
 
 
-def conv_layer1d(self, bottom, filter_size, in_channels,
+def conv_layer1d(bottom, filter_size, in_channels,
                  out_channels, name, stride_size=1, biases=False):
     with tf.variable_scope(name, reuse=None):
-        filt, conv_biases = self.get_conv_var1d(filter_size, in_channels,
-                                                out_channels, biases=False)
+        filt, conv_biases = get_conv_var1d(filter_size, in_channels,
+                                           out_channels, biases=biases)
         conv = tf.nn.conv1d(bottom, filt, stride_size, padding='SAME')
         if not biases:
             return conv
@@ -89,11 +89,11 @@ def conv_layer1d(self, bottom, filter_size, in_channels,
             return bias
 
 
-def conv_layer2d(self, bottom, filter_size, in_channels,
+def conv_layer2d(bottom, filter_size, in_channels,
                  out_channels, name, stride_size=1, biases=False):
     with tf.variable_scope(name, reuse=None):
-        filt, conv_biases = self.get_conv_var2d(filter_size, in_channels,
-                                                out_channels, biases=False)
+        filt, conv_biases = get_conv_var2d(filter_size, in_channels,
+                                           out_channels, biases=biases)
         conv = tf.nn.conv2d(bottom, filt, [1, stride_size, stride_size, 1], padding='SAME')
         if not biases:
             return conv
@@ -102,56 +102,99 @@ def conv_layer2d(self, bottom, filter_size, in_channels,
             return bias
 
 
-def fc_layer(bottom, in_size, out_size, name):
-    with tf.variable_scope(name, reuse=None):
-        weights, biases = get_fc_var(in_size, out_size)
-        x = tf.reshape(bottom, [-1, in_size])
-        fc = tf.nn.bias_add(tf.matmul(x, weights), biases)
+def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
+    if dtype not in [tf.complex64, tf.complex128]:
+        with tf.variable_scope(name, reuse=None):
+            weights, biases = get_fc_var(in_size, out_size, biases=biases, dtype=dtype)
+            x = tf.reshape(bottom, [-1, in_size])
+            if biases:
+                fc = tf.nn.bias_add(tf.matmul(x, weights), biases)
+            else:
+                fc = tf.matmul(x, weights)
+
+    else:
+        part_dtype = {tf.complex64: tf.float32, tf.complex128: tf.float64}
+        with tf.variable_scope(name, reuse=None):
+            real_weights, real_biases = get_fc_var(in_size, out_size, name="real_",
+                                                   biases=biases, dtype=part_dtype[dtype])
+            imag_weights, imag_biases = get_fc_var(in_size, out_size, name="imag_",
+                                                   biases=biases, dtype=part_dtype[dtype])
+            x = tf.reshape(bottom, [-1, in_size])
+            fc = tf.matmul(x, tf.complex(real_weights, imag_weights))
+            # real_fc = tf.matmul(tf.real(x), real_weights) - tf.matmul(tf.imag(x), imag_weights)
+            # imag_fc = tf.matmul(tf.real(x), imag_weights) + tf.matmul(tf.imag(x), real_weights)
+            if biases:
+                fc = tf.nn.bias_add(fc, tf.complex(real_biases, imag_biases))
+                # fc = tf.nn.bias_add(tf.complex(real_fc, imag_fc),
+                #                     tf.complex(real_biases, imag_biases))
+            else:
+                pass
+                # fc = tf.complex(real_fc, imag_fc)
 
     return fc
 
 
 def get_conv_var1d(filter_size, in_channels, out_channels, name="",
-                   biases=False):
+                   biases=False, dtype=tf.float32):
+    if dtype == tf.complex64:
+        raise NotImplementedError
+        # tensorflow optimizer does not support complex type
+    else:
+        pass
+
     initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0, 0.001)
-    filters = get_var(initial_value, name, 0, name + "weights")
+    filters = get_var(initial_value, name + "weights", dtype=dtype)
 
     if not biases:
         return filters, None
     else:
         initial_value = tf.truncated_normal([out_channels], .0, .001)
-        biases = get_var(initial_value, name, 1, name + "biases")
+        biases = get_var(initial_value, name + "biases", dtype=dtype)
         return filters, biases
 
 
 def get_conv_var2d(filter_size, in_channels, out_channels, name="",
-                   biases=False):
-    initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
-    filters = get_var(initial_value, name, 0, name + "weights")
+                   biases=False, dtype=tf.float32):
+    if dtype == tf.complex64:
+        raise NotImplementedError
+        # tensorflow optimizer does not support complex type
+    else:
+        pass
+
+    initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.1)
+    filters = get_var(initial_value, name + "weights", dtype=dtype)
 
     if not biases:
         return filters, None
     else:
         initial_value = tf.truncated_normal([out_channels], .0, .001)
-        biases = get_var(initial_value, name, 1, name + "biases")
+        biases = get_var(initial_value, name + "biases", dtype=dtype)
         return filters, biases
 
 
-def get_fc_var(in_size, out_size, name=""):
+def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float32):
     # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.001)
+    if dtype in [tf.complex64, tf.complex128]:
+        raise NotImplementedError
+        # tensorflow optimizer does not support complex type
+    else:
+        pass
+
     initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
-    weights = get_var(initial_value, name, 0, name + "weights")
+    weights = get_var(initial_value, name + "weights", dtype=dtype)
 
-    initial_value = tf.truncated_normal([out_size], .0, .001)
-    # initial_value = tf.zeros(out_size, dtype=np.float32)
-    biases = get_var(initial_value, name, 1, name + "biases")
+    if biases:
+        # initial_value = tf.truncated_normal([out_size], .0, .001, dtype=dtype)
+        initial_value = tf.zeros(out_size, dtype=dtype)
+        biases = get_var(initial_value, name + "biases", dtype=dtype)
+        return weights, biases
+    else:
+        return weights, None
 
-    return weights, biases
 
-
-def get_var(initial_value, name, idx, var_name):
+def get_var(initial_value, var_name, dtype):
     # if self.is_training:
-    var = tf.get_variable(var_name, initializer=initial_value, trainable=True)
+    var = tf.get_variable(var_name, initializer=initial_value, trainable=True, dtype=dtype)
     # self.var_dict[var.name] = var
     # print var_name, var.get_shape().as_list()
     assert var.get_shape() == initial_value.get_shape()

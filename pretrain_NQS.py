@@ -4,7 +4,8 @@ import tensorflow as tf
 import numpy as np
 
 from utils.parse_args import parse_args
-from utils.prepare_net import prepare_net
+# from utils.prepare_net import prepare_net
+from wavefunction.tf_network import tf_network
 
 if __name__ == "__main__":
 
@@ -21,9 +22,10 @@ if __name__ == "__main__":
     else:
         alpha = alpha_map[which_net]
 
-    opt = "Mom"
+    opt = args.opt  # "Mom"
     system_size = (L, 2)
-    Net = prepare_net(which_net, system_size, opt, alpha)
+    # Net = prepare_net(which_net, system_size, opt, alpha)
+    Net = tf_network(which_net, system_size, optimizer=opt, alpha=alpha)
 
     basis = []
     for line in open('EigenVec/basisMatrix'+str(L)+'.csv', 'r'):

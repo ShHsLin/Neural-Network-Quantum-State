@@ -8,7 +8,8 @@ import tensorflow as tf
 import pickle
 
 from utils.parse_args import parse_args
-from utils.prepare_net import prepare_net
+# from utils.prepare_net import prepare_net
+from wavefunction.tf_network import tf_network
 
 import time
 
@@ -39,6 +40,7 @@ class NQS():
         self.init_config(sz0_sector=True)
 
         self.NNet = Net
+        self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
 
         self.ampDic = {}
@@ -63,9 +65,6 @@ class NQS():
             self.config[:, :, 0] = x
             self.config[:, :, 1] = (x+1) % 2
             return
-
-    def getNumPara(self):
-        return self.NNet.getNumPara()
 
     def getSelfAmp(self):
         return float(self.NNet.forwardPass(self.config))
@@ -177,7 +176,7 @@ class NQS():
         self.cleanAmpDic()
 
         L = self.config.shape[1]
-        numPara = self.getNumPara()
+        numPara = self.net_num_para
         OOsum = np.zeros((numPara, numPara))
         Osum = np.zeros((numPara))
         Earray = np.zeros((num_sample))
@@ -285,8 +284,8 @@ class NQS():
             ############
             # Method 1 #
             ############
-            invSij = np.linalg.inv(Sij)
-            Gj = invSij.dot(Fj.T)
+            # invSij = np.linalg.inv(Sij)
+            # Gj = invSij.dot(Fj.T)
             ############
             # Method 2 #
             ############
@@ -295,8 +294,8 @@ class NQS():
             ############
             # Method 3 #
             ############
-            # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-            # print("conv Gj : ", info)
+            Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            print("conv Gj : ", info)
 
         # Gj = Fj.T
         print("norm(G): ", np.linalg.norm(Gj),
@@ -475,17 +474,17 @@ if __name__ == "__main__":
     H = 'AFH'
     systemSize = (L, 2)
 
-    Net = prepare_net(which_net, systemSize, opt, alpha)
-    net_num_para = Net.getNumPara()
-    print("Total num para: ", net_num_para)
-    if net_num_para/5 < num_sample:
+    # Net = prepare_net(which_net, systemSize, opt, alpha)
+    Net = tf_network(which_net, systemSize, optimizer=opt, alpha=alpha)
+    N = NQS(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
+
+    print("Total num para: ", N.net_num_para)
+    if N.net_num_para/5 < num_sample:
         print("forming Sij explicitly")
         explicit_SR = True
     else:
         print("DO NOT FORM Sij explicity")
         explicit_SR = False
-
-    N = NQS(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
 
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
@@ -519,6 +518,18 @@ if __name__ == "__main__":
 
     for iteridx in range(1, 1000+1):
         print(iteridx)
+        print("Thermalizing ~~ ")
+        start_t, start_c = time.time(), time.clock()
+        if batch_size > 1:
+            for i in range(500):
+                N.new_config_batch()
+        else:
+            for i in range(500):
+                N.new_config()
+
+        end_t, end_c = time.time(), time.clock()
+        print("Thermalization time: ", end_c-start_c, end_t-start_t)
+
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
 
@@ -540,11 +551,11 @@ if __name__ == "__main__":
             grad_list.append(GradW[grad_ind:grad_ind + var_size].reshape(var_shape))
             grad_ind += var_size
 
-        N.NNet.applyGrad(grad_list)
         #  L2 Regularization ###
-        # for idx, W in enumerate( N.NNet.sess.run(N.NNet.para_list)):
-        #        GList[idx] += W*0.1
+        # for idx, W in enumerate(N.NNet.sess.run(N.NNet.para_list)):
+        #     grad_list[idx] += W * 0.001
 
+        N.NNet.applyGrad(grad_list)
         # To save object ##
         if iteridx % 50 == 0:
             saver.save(N.NNet.sess, 'Model/VMC/'+which_net+'/L'+str(L)+'/pre')
