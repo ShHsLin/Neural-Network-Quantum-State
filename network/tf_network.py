@@ -86,39 +86,52 @@ class tf_network:
         return out
 
     def build_CNN_1d(self, x):
-        inputShape = x.get_shape().as_list()
-        # x_shape = [num_data, num_site, num_spin(channels)]
-        x = tf.reshape(x, [-1, inputShape[1], 1, inputShape[2]])
-        return self.build_CNN_2d(x)
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, 0:1]
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, num_spin(channels)]
+            # conv_layer1d(x, filter_size, in_channels, out_channels, name)
+            conv1 = tf_.conv_layer1d(x, 4, inputShape[-1], self.alpha, 'conv1',
+                                     stride_size=2)
+            conv1 = tf_.leaky_relu(conv1)
+
+            # conv2 = tf_.conv_layer1d(conv1, 4, self.alpha, self.alpha, 'conv2')
+            # conv2 = tf_.leaky_relu(conv2)
+            conv2 = conv1
+
+            # pool4 = tf_.avg_pool2d(conv4, 'pool4', 2)
+            pool4 = tf.reduce_mean(conv2, [1])
+
+            # Fully connected layer
+            # Reshape conv2 output to fit fully connected layer input
+            fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
+            pool4 = tf.reshape(pool4, [-1, fc_dim])
+            out_re = tf_.fc_layer(pool4, fc_dim, 1, 'out_re', biases=False)
+            out_im = tf_.fc_layer(pool4, fc_dim, 1, 'out_im', biases=False)
+            out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+            return out
 
     def build_CNN_2d(self, x):
         with tf.variable_scope("network", reuse=None):
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
-            # conv_layer1d(x, filter_size, in_channels, out_channels, name)
-            conv1 = tf_.conv_layer2d(x, 3, inputShape[-1], self.alpha, 'conv1')
-            conv1 = tf_.leaky_relu(conv1)
+            conv1 = tf_.conv_layer2d(x, 4, inputShape[-1], self.alpha, 'conv1',
+                                     stride_size=2)
+            conv1 = tf.nn.softplus(conv1)
 
-            conv2 = tf_.conv_layer2d(conv1, 3, self.alpha, self.alpha * 2, 'conv2')
-            conv2 = tf_.leaky_relu(conv2)
+            # conv2 = tf_.conv_layer2d(conv1, 4, self.alpha, self.alpha, 'conv2')
+            # conv2 = tf_.leaky_relu(conv2)
+            conv2 = conv1
 
-            pool2 = tf_.avg_pool2d(conv2, 'pool2', 2)
-
-            conv3 = tf_.conv_layer2d(pool2, 3, self.alpha * 2, self.alpha * 2, 'conv3')
-            conv3 = tf_.leaky_relu(conv3)
-
-            conv4 = tf_.conv_layer2d(conv3, 3, self.alpha * 2, self.alpha * 2, 'conv4')
-            conv4 = tf_.leaky_relu(conv4)
-
-            pool4 = tf_.avg_pool2d(conv4, 'pool4', 2)
-            # pool2 = tf_.avg_pool1d(
+            # pool4 = tf_.avg_pool2d(conv4, 'pool4', 2)
+            pool4 = tf.reduce_mean(conv2, [1, 2])
 
             # Fully connected layer
             # Reshape conv2 output to fit fully connected layer input
-            fc_dim = np.prod(pool4.get_shape().as_list()[1:])
+            fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
             pool4 = tf.reshape(pool4, [-1, fc_dim])
-            out_re = tf_.fc_layer(pool4, fc_dim, 1, 'out_re')
-            out_im = tf_.fc_layer(pool4, fc_dim, 1, 'out_im')
+            out_re = tf_.fc_layer(pool4, fc_dim, 1, 'out_re', biases=False)
+            out_im = tf_.fc_layer(pool4, fc_dim, 1, 'out_im', biases=False)
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
             return out
 
@@ -126,18 +139,18 @@ class tf_network:
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0]
             fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
-            fc1 = fc1 + x
             fc1 = tf.nn.softplus(fc1)
+            fc1 = fc1 + x
 
             fc2 = tf_.fc_layer(fc1, self.L * self.alpha, self.L * self.alpha, 'fc2')
-            fc2 = fc2 + fc1
             fc2 = tf.nn.softplus(fc2)
+            fc2 = fc2 + fc1
 
             fc3 = tf_.fc_layer(fc2, self.L * self.alpha, self.L * self.alpha, 'fc3')
-            fc3 = fc3 + fc2
             fc3 = tf.nn.softplus(fc3)
 
             out_re = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_re')
+            out_re = out_re + tf_.fc_layer(x, self.L, 1, 'v_bias')
             out_im = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_im')
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
 
@@ -181,17 +194,17 @@ class tf_network:
             fc1_complex = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1_complex',
                                        dtype=tf.complex64)
             fc1_complex = tf_.soft_plus(fc1_complex)
-            fc1_complex = fc1_complex + tf.complex(x, 0.)
+            # fc1_complex = fc1_complex + tf.complex(x, 0.)
 
             fc2_complex = tf_.fc_layer(fc1_complex, self.L * self.alpha, self.L * self.alpha, 'fc2_complex',
                                        dtype=tf.complex64, biases=True)
             fc2_complex = tf_.soft_plus(fc2_complex)
-            fc2_complex = fc2_complex + fc1_complex
+            # fc2_complex = fc2_complex + fc1_complex
 
             fc3_complex = tf_.fc_layer(fc2_complex, self.L * self.alpha, self.L * self.alpha, 'fc3_complex',
                                        dtype=tf.complex64, biases=True)
             fc3_complex = tf_.soft_plus(fc3_complex)
-            fc3_complex = fc3_complex  # + fc2_complex
+            # fc3_complex = fc3_complex  + fc2_complex
 
             # fc4_complex = tf.reduce_sum(fc3_complex, axis=1, keep_dims=True)
             # out = tf.multiply(tf.exp(tf.real(fc4_complex) / self.L), tf.cos(tf.imag(fc4_complex)))

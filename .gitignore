@@ -1,7 +1,6 @@
 *.pyc
 *.csv
-Model/
+wavefunction/
 log/
 EigenVec/
-Ising_CNN2_Mom/
 

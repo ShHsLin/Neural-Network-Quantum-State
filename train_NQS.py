@@ -9,7 +9,7 @@ import pickle
 
 from utils.parse_args import parse_args
 # from utils.prepare_net import prepare_net
-from wavefunction.tf_network import tf_network
+from network.tf_network import tf_network
 
 import time
 
@@ -489,7 +489,7 @@ if __name__ == "__main__":
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
     saver = tf.train.Saver(N.NNet.model_var_list)
-    ckpt = tf.train.get_checkpoint_state('Model/VMC/'+which_net+'/L'+str(L)+'/')
+    ckpt = tf.train.get_checkpoint_state('wavefunction/VMC/'+which_net+'/L'+str(L)+'/')
 
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
@@ -558,7 +558,7 @@ if __name__ == "__main__":
         N.NNet.applyGrad(grad_list)
         # To save object ##
         if iteridx % 50 == 0:
-            saver.save(N.NNet.sess, 'Model/VMC/'+which_net+'/L'+str(L)+'/pre')
+            saver.save(N.NNet.sess, 'wavefunction/VMC/'+which_net+'/L'+str(L)+'/pre')
 
     # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
     #           E_log, '%.4e', delimiter=',')

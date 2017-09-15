@@ -161,7 +161,10 @@ def get_conv_var2d(filter_size, in_channels, out_channels, name="",
     else:
         pass
 
-    initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.1)
+    initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0,
+                                        0.01)
+    # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0,
+    #                                     np.sqrt(filter_size*filter_size*(in_channels+out_channels)))
     filters = get_var(initial_value, name + "weights", dtype=dtype)
 
     if not biases:
@@ -180,6 +183,7 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float32):
     else:
         pass
 
+    # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.1)
     initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
     weights = get_var(initial_value, name + "weights", dtype=dtype)
 
