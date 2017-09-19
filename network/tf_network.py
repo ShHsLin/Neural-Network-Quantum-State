@@ -85,30 +85,88 @@ class tf_network:
 
         return out
 
+#     def build_CNN_1d(self, x):
+#         with tf.variable_scope("network", reuse=None):
+#             x = x[:, :, 0:1]
+#             inputShape = x.get_shape().as_list()
+#             # x_shape = [num_data, Lx, num_spin(channels)]
+#             # conv_layer1d(x, filter_size, in_channels, out_channels, name)
+#             conv1_re = tf_.conv_layer1d(x, 2, inputShape[-1], self.alpha, 'conv1_re',
+#                                         stride_size=2, biases=True)
+#             conv1_im = tf_.conv_layer1d(x, 2, inputShape[-1], self.alpha, 'conv1_im',
+#                                         stride_size=2, biases=True)
+#             conv1 = (tf.complex(conv1_re, conv1_im))
+#             # pool4 = tf_.avg_pool2d(conv4, 'pool4', 2)
+#             pool4 = tf.reduce_sum(conv1, [1])
+#             pool4 = tf_.soft_plus(pool4)
+#
+#             # Fully connected layer
+# #             fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
+# #             pool4 = tf.reshape(pool4, [-1, fc_dim])
+# #             out = tf_.fc_layer(pool4, fc_dim, 1, 'out', biases=False, dtype=tf.complex64)
+#             # out_re = tf_.fc_layer(pool4, fc_dim, 1, 'out_re', biases=False)
+#             # out_im = tf_.fc_layer(pool4, fc_dim, 1, 'out_im', biases=False)
+#             out = tf.reduce_sum(pool4, [1], keep_dims=True)
+#             out_re = tf.real(out)  # + tf_.fc_layer(x[:, :, 0], self.L, 1, 'v_bias_re')
+#             out_im = tf.imag(out)
+#
+#             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+#
+#         return out
+
     def build_CNN_1d(self, x):
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
             # conv_layer1d(x, filter_size, in_channels, out_channels, name)
-            conv1 = tf_.conv_layer1d(x, 4, inputShape[-1], self.alpha, 'conv1',
-                                     stride_size=2)
-            conv1 = tf_.leaky_relu(conv1)
+            conv1_re = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
+                                            stride_size=2, biases=True)
+            conv1_im = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
+                                            stride_size=2, biases=True, scale=100.)
 
-            # conv2 = tf_.conv_layer1d(conv1, 4, self.alpha, self.alpha, 'conv2')
-            # conv2 = tf_.leaky_relu(conv2)
-            conv2 = conv1
+            # conv1 = tf_.soft_plus(tf.complex(conv1_re, conv1_im))
+            # pool4 = tf.reduce_sum(conv1, [1, 2], keep_dims=False)
 
-            # pool4 = tf_.avg_pool2d(conv4, 'pool4', 2)
-            pool4 = tf.reduce_mean(conv2, [1])
+            conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
+            pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
 
             # Fully connected layer
-            # Reshape conv2 output to fit fully connected layer input
-            fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
-            pool4 = tf.reshape(pool4, [-1, fc_dim])
-            out_re = tf_.fc_layer(pool4, fc_dim, 1, 'out_re', biases=False)
-            out_im = tf_.fc_layer(pool4, fc_dim, 1, 'out_im', biases=False)
-            out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+            # fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
+            # pool4 = tf.reshape(pool4, [-1, fc_dim])
+            # out = tf_.fc_layer(pool4, fc_dim, 1, 'out', biases=False, dtype=tf.complex64)
+            conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
+                                                stride_size=2)
+            conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
+                                                stride_size=2, scale=1000.)
+            conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
+                                      [1, 2], keep_dims=False)
+            print(pool4.get_shape().as_list(), conv_bias.get_shape().as_list())
+            # out = tf.reshape(pool4 + conv_bias, [-1, 1])
+            # out_im = tf.imag(out)
+            # out_re = tf.real(out)
+            out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
+
+            # sym_bias = tf_.get_var(tf.truncated_normal([inputShape[1]], 0, 0.1),
+            #                        'sym_bias', tf.float32)
+
+            # sym_bias = tf.ones([inputShape[1]], tf.float32)
+            # sym_bias_fft = tf.fft(tf.complex(sym_bias, 0.))
+            # x_fft = tf.fft(tf.complex(x[:, :, 0], 0.))
+            # sym_phase = tf.real(tf.ifft(x_fft * tf.conj(sym_bias_fft)))
+            # theta = tf.scalar_mul(tf.constant(np.pi),
+            #                       tf.range(inputShape[1], dtype=tf.float32))
+            # sym_phase = sym_phase * tf.cos(theta)
+            # print(sym_phase.get_shape().as_list())
+            # sym_phase = tf.reduce_sum(sym_phase, [1], keep_dims=True)
+            # print(sym_phase.get_shape().as_list())
+            # sym_phase = tf.real(tf.log(tf.complex(sym_phase + 1e-8, 0.)))
+            # print(out_im.get_shape().as_list())
+            # out_im = tf.add(out_im, sym_phase)
+            # print(out_im.get_shape().as_list())
+
+            # out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+            out = tf.real(out)
             return out
 
     def build_CNN_2d(self, x):

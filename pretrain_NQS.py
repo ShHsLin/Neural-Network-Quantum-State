@@ -81,9 +81,9 @@ if __name__ == "__main__":
                                          momentum=0.9)
         train_step = Optimizer.minimize(cost)
 
-    #    from tensorflow.python import debug as tf_debug
-    #    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-    #    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+        # from tensorflow.python import debug as tf_debug
+        # sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+        # sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
         sess.run(tf.global_variables_initializer())
 
@@ -121,7 +121,7 @@ if __name__ == "__main__":
                 c = Y.flatten().dot(y.flatten())/np.linalg.norm(Y)/np.linalg.norm(y)
                 print(c)
                 total_cos_accu.append(c)
-                PLOT = False
+                PLOT = True
                 if PLOT:
                     import matplotlib.pyplot as plt
                     fig = plt.figure()

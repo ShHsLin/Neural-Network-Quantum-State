@@ -518,6 +518,7 @@ if __name__ == "__main__":
 
     for iteridx in range(1, 1000+1):
         print(iteridx)
+        '''
         print("Thermalizing ~~ ")
         start_t, start_c = time.time(), time.clock()
         if batch_size > 1:
@@ -529,6 +530,7 @@ if __name__ == "__main__":
 
         end_t, end_c = time.time(), time.clock()
         print("Thermalization time: ", end_c-start_c, end_t-start_t)
+        '''
 
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))

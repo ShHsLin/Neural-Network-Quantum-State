@@ -89,6 +89,31 @@ def conv_layer1d(bottom, filter_size, in_channels,
             return bias
 
 
+def circular_conv_1d(bottom, filter_size, in_channels, out_channels,
+                     name, stride_size=1, biases=False, scale=1.):
+    with tf.variable_scope(name, reuse=None):
+        filt, conv_biases = get_conv_var1d(filter_size, in_channels,
+                                           out_channels, biases=biases, scale=scale)
+        # bottom shape [None, Lx, channels]
+        # pad_size = filter_size - 1
+        bottom_pad = tf.concat([bottom, bottom[:, :filter_size, :]], 1)
+        conv = tf.nn.conv1d(bottom_pad, filt, stride_size, padding='VALID')
+        if not biases:
+            return conv
+        else:
+            bias = tf.nn.bias_add(conv, conv_biases)
+            return bias
+
+        '''
+        weight = tf_.get_var(tf.truncated_normal([inputShape[1]], 0, 0.001),
+                             'sym_bias', tf.float32)
+        sym_bias_fft = tf.fft(tf.complex(sym_bias, 0.))
+        x_fft = tf.fft(tf.complex(x[:, :, 0], 0.))
+        print(x_fft.get_shape().as_list(), sym_bias_fft.get_shape().as_list())
+        ... = tf.real(tf.ifft(x_fft * tf.conj(sym_bias_fft)))
+        '''
+
+
 def conv_layer2d(bottom, filter_size, in_channels,
                  out_channels, name, stride_size=1, biases=False):
     with tf.variable_scope(name, reuse=None):
@@ -135,20 +160,20 @@ def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
 
 
 def get_conv_var1d(filter_size, in_channels, out_channels, name="",
-                   biases=False, dtype=tf.float32):
+                   biases=False, dtype=tf.float32, scale=1.):
     if dtype == tf.complex64:
         raise NotImplementedError
         # tensorflow optimizer does not support complex type
     else:
         pass
 
-    initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0, 0.001)
+    initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0, 0.001*scale)
     filters = get_var(initial_value, name + "weights", dtype=dtype)
 
     if not biases:
         return filters, None
     else:
-        initial_value = tf.truncated_normal([out_channels], .0, .001)
+        initial_value = tf.truncated_normal([out_channels], .0, .001*scale)
         biases = get_var(initial_value, name + "biases", dtype=dtype)
         return filters, biases
 
