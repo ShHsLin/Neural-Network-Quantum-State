@@ -57,13 +57,15 @@ if __name__ == "__main__":
     # Y = np.zeros((num_train, 1))
     # amp_array = np.genfromtxt(open('EigenVec/EigVec_L'+str(L)+'V20W0E0.csv', 'r'))
     # for i in range(len(amp_array)):
-    #    idx = to_large_dict[''.join([str(int(ele)) for ele in newbasis[i, :, 0]])]
-    #    Y[idx] = amp_array[i]
+    #     idx = to_large_dict[''.join([str(int(ele)) for ele in newbasis[i, :, 0]])]
+    #     Y[idx] = amp_array[i]
 
     # X_nz = X[(np.abs(Y) * np.ones((1, 32)) >= 1e-15)]
     # Y_nz = Y[(np.abs(Y) >= 1e-15)]
     # X = X_nz.reshape((len(Y_nz), 32))
     # Y = Y_nz.reshape((len(Y_nz),1))
+
+    # y for all Sz sector #
     Y = np.genfromtxt('EigenVec/eig_L'+str(L)+'_PBC.csv').reshape((2**L, 1))
     print X.shape, Y.shape
 

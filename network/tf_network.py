@@ -116,36 +116,35 @@ class tf_network:
 
     def build_CNN_1d(self, x):
         with tf.variable_scope("network", reuse=None):
-            x = x[:, :, 0:1]
+            x = x[:, :, 0:1] 
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
             # conv_layer1d(x, filter_size, in_channels, out_channels, name)
             conv1_re = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=2, biases=True)
+                                            stride_size=2, biases=True, bias_scale=100.)
             conv1_im = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=2, biases=True, scale=100.)
+                                            stride_size=2, biases=True, bias_scale=300.)
 
-            # conv1 = tf_.soft_plus(tf.complex(conv1_re, conv1_im))
-            # pool4 = tf.reduce_sum(conv1, [1, 2], keep_dims=False)
+            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            pool4 = tf.reduce_sum(conv1, [1, 2], keep_dims=False)
+            pool4 = tf.exp(pool4)
 
-            conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
-            pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
+            # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
+            # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
 
             # Fully connected layer
             # fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
             # pool4 = tf.reshape(pool4, [-1, fc_dim])
             # out = tf_.fc_layer(pool4, fc_dim, 1, 'out', biases=False, dtype=tf.complex64)
+
             conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
-                                                stride_size=2)
+                                                stride_size=2, bias_scale=100.)
             conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
-                                                stride_size=2, scale=1000.)
+                                                stride_size=2, bias_scale=100.)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
                                       [1, 2], keep_dims=False)
-            print(pool4.get_shape().as_list(), conv_bias.get_shape().as_list())
-            # out = tf.reshape(pool4 + conv_bias, [-1, 1])
-            # out_im = tf.imag(out)
-            # out_re = tf.real(out)
             out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
+            # out = tf.reshape(pool4, [-1, 1])
 
             # sym_bias = tf_.get_var(tf.truncated_normal([inputShape[1]], 0, 0.1),
             #                        'sym_bias', tf.float32)
@@ -166,7 +165,8 @@ class tf_network:
             # print(out_im.get_shape().as_list())
 
             # out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
-            out = tf.real(out)
+            # out = out * tf.exp(tf.complex(0., tf.Variable([1], 1.0, dtype=tf.float32)))
+            out = tf.real((out))
             return out
 
     def build_CNN_2d(self, x):
