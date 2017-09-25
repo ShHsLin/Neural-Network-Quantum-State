@@ -1,1 +1,0 @@
---net NN_complex --l 10 --lr 1e-3 --opt RMSprop --num_sample 500

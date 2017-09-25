@@ -6,7 +6,7 @@ from scipy.sparse.linalg import LinearOperator
 import numpy as np
 import tensorflow as tf
 import pickle
-
+import os
 from utils.parse_args import parse_args
 # from utils.prepare_net import prepare_net
 from network.tf_network import tf_network
@@ -43,7 +43,6 @@ class NQS():
         self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
 
-        self.ampDic = {}
         if Hamiltonian == 'Ising':
             self.get_local_E = self.local_E_Ising
         elif Hamiltonian == 'AFH':
@@ -68,41 +67,17 @@ class NQS():
 
     def getSelfAmp(self):
         return float(self.NNet.forwardPass(self.config))
-        # configStr = ''.join([str(ele) for ele in self.config.flatten()])
-        # if configStr in self.ampDic:
-        #     return self.ampDic[configStr]
-        # else:
-        #     amp = float(self.NNet.forwardPass(self.config))
-        #     self.ampDic[configStr] = amp
-        #     return amp
 
     def get_self_amp_batch(self):
         return self.NNet.forwardPass(self.config).flatten()
 
     def eval_amp_array(self, configArray):
         return self.NNet.forwardPass(configArray).flatten()
-        # numData, inputShape0, inputShape1 = configArray.shape
-        # ampArray = np.zeros((numData))
-        # for i in range(numData):
-        #     config = configArray[i, :, :]
-        #     configStr = ''.join([str(ele) for ele in config.flatten()])
-        #     if configStr in self.ampDic:
-        #         amp = self.ampDic[configStr]
-        #     else:
-        #         amp = float(self.NNet.forwardPass(config))
-        #         self.ampDic[configStr] = amp
-
-        #     ampArray[i] = amp
-
-        # return ampArray
-
-    def cleanAmpDic(self):
-        self.ampDic = {}
 
     def new_config(self):
         L = self.config.shape[1]
 
-# Restricted to Sz = 0 sectors ##
+        # Restricted to Sz = 0 sectors ##
         randsite1 = np.random.randint(L)
         randsite2 = np.random.randint(L)
         if self.config[0, randsite1, 0] + self.config[0, randsite2, 0] == 1 and randsite1 != randsite2:
@@ -141,7 +116,7 @@ class NQS():
         batch_size = self.batch_size
         old_amp = self.get_self_amp_batch()
 
-# Restricted to Sz = 0 sectors ##
+        # Restricted to Sz = 0 sectors ##
         randsite1 = np.random.randint(L, size=(batch_size,))
         randsite2 = np.random.randint(L, size=(batch_size,))
         mask = (self.config[range(batch_size), randsite1, 0] +
@@ -173,8 +148,6 @@ class NQS():
         return np.average(energyList)
 
     def VMC(self, num_sample, iteridx=0, Gj=None, explicit_SR=False):
-        self.cleanAmpDic()
-
         L = self.config.shape[1]
         numPara = self.net_num_para
         OOsum = np.zeros((numPara, numPara))
@@ -474,8 +447,7 @@ if __name__ == "__main__":
     H = 'AFH'
     systemSize = (L, 2)
 
-    # Net = prepare_net(which_net, systemSize, opt, alpha)
-    Net = tf_network(which_net, systemSize, optimizer=opt, alpha=alpha)
+    Net = tf_network(which_net, systemSize, optimizer=opt, dim=1, alpha=alpha)
     N = NQS(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
 
     print("Total num para: ", N.net_num_para)
@@ -489,7 +461,11 @@ if __name__ == "__main__":
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
     saver = tf.train.Saver(N.NNet.model_var_list)
-    ckpt = tf.train.get_checkpoint_state('wavefunction/VMC/'+which_net+'/L'+str(L)+'/')
+
+    ckpt_path = 'wavefunction/vmc/%s_reluneg/L%da%d/' % (which_net, L, alpha)
+    if not os.path.exists(ckpt_path):
+        os.makedirs(ckpt_path)
+    ckpt = tf.train.get_checkpoint_state(ckpt_path)
 
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
@@ -560,10 +536,10 @@ if __name__ == "__main__":
         N.NNet.applyGrad(grad_list)
         # To save object ##
         if iteridx % 50 == 0:
-            saver.save(N.NNet.sess, 'wavefunction/VMC/'+which_net+'/L'+str(L)+'/pre')
+            saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
 
-    # np.savetxt('Ising_CNN2_Mom/%.e.csv' % N.NNet.learning_rate.eval(N.NNet.sess),
-    #           E_log, '%.4e', delimiter=',')
+    np.savetxt('L%d_%s_reluneg_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
+               E_log, '%.4e', delimiter=',')
 
     # save_object(N,'NNQS_AFH_L40_Mom.obj')
     # save_object(N,'CNNQS_AFH_L40_noMom.obj')

@@ -32,17 +32,28 @@ def soft_plus2(x):
     return tf.log(tf.add(tf.ones_like(x), tf.exp(x))/2.)
 
 
+# def complex_relu(x):
+#     re = tf.real(x)
+#     im = tf.imag(x)
+#     mask = tf.cast(tf.greater(re, tf.zeros_like(re)), tf.float32)
+#     re = re * mask
+#     im = im * mask  # if re>0; im*1; else: im*0
+#     return tf.complex(re, im)
+
+def complex_elu(x):
+    return tf.complex(tf.nn.elu(tf.real(x)), tf.imag(x))
+
+
 def complex_relu(x):
-    re = tf.real(x)
-    im = tf.imag(x)
-    mask = tf.cast(tf.greater(re, tf.zeros_like(re)), tf.float32)
-    re = re * mask
-    im = im * mask  # if re>0; im*1; else: im*0
-    return tf.complex(re, im)
-
-
-def complex_relu2(x):
     return tf.complex(tf.nn.relu(tf.real(x)), tf.imag(x))
+
+
+def complex_relu_m1(x):
+    return tf.complex(tf.nn.relu(tf.real(x)) - 1.0, tf.imag(x))
+
+
+def complex_relu_neg(x):
+    return tf.complex(tf.maximum(-0.7, tf.real(x)), tf.imag(x))
 
 
 def max_pool1d(x, name, kernel_size=2, stride_size=2, padding='SAME'):
@@ -90,28 +101,137 @@ def conv_layer1d(bottom, filter_size, in_channels,
 
 
 def circular_conv_1d(bottom, filter_size, in_channels, out_channels,
-                     name, stride_size=1, biases=False, bias_scale=1.):
+                     name, stride_size=1, biases=False, bias_scale=1.,
+                     FFT=False):
+    '''
+    FFT can be used instead of circular convolution. Although, the pad and conv
+    approach is relatively slow comparing to ordinary conv operation, it is still
+    much faster than FFT approach generally, since the dimension of the filter is small.
+    '''
     with tf.variable_scope(name, reuse=None):
         filt, conv_biases = get_conv_var1d(filter_size, in_channels,
                                            out_channels, biases=biases, bias_scale=bias_scale)
-        # bottom shape [None, Lx, channels]
-        # pad_size = filter_size - 1
-        bottom_pad = tf.concat([bottom, bottom[:, :filter_size-1, :]], 1)
-        conv = tf.nn.conv1d(bottom_pad, filt, stride_size, padding='VALID')
+        if not FFT:
+            # bottom shape [None, Lx, channels]
+            # pad_size = filter_size - 1
+            bottom_pad = tf.concat([bottom, bottom[:, :filter_size-1, :]], 1)
+            conv = tf.nn.conv1d(bottom_pad, filt, stride_size, padding='VALID')
+        else:
+            tf_X_fft = tf.fft(tf.complex(tf.einsum('ijk->ikj', bottom), 0.))
+            tf_W_fft = tf.fft(tf.complex(tf.einsum('jkl->klj', filt), 0.))
+            tf_XW_fft = tf.einsum('ikj,klj->iklj', (tf_X_fft), tf.conj(tf_W_fft))
+            tf_XW = tf.einsum('iklj->ijl', tf.ifft(tf_XW_fft))
+            conv = tf.real(tf_XW)
+
         if not biases:
             return conv
         else:
             bias = tf.nn.bias_add(conv, conv_biases)
             return bias
 
-        '''
-        weight = tf_.get_var(tf.truncated_normal([inputShape[1]], 0, 0.001),
-                             'sym_bias', tf.float32)
-        sym_bias_fft = tf.fft(tf.complex(sym_bias, 0.))
-        x_fft = tf.fft(tf.complex(x[:, :, 0], 0.))
-        print(x_fft.get_shape().as_list(), sym_bias_fft.get_shape().as_list())
-        ... = tf.real(tf.ifft(x_fft * tf.conj(sym_bias_fft)))
-        '''
+
+def circular_conv_1d_complex(bottom, filter_size, in_channels, out_channels,
+                             name, stride_size=1, biases=False, bias_scale=1.,
+                             FFT=False):
+    with tf.variable_scope(name, reuse=None):
+        filt_re, conv_biases_re = get_conv_var1d(filter_size, in_channels, out_channels,
+                                                 name="real_", biases=biases, bias_scale=bias_scale)
+        filt_im, conv_biases_im = get_conv_var1d(filter_size, in_channels, out_channels,
+                                                 name="imag_", biases=biases, bias_scale=bias_scale)
+        if not FFT:
+            # bottom shape [None, Lx, channels]
+            # pad_size = filter_size - 1
+            bottom_pad = tf.concat([bottom, bottom[:, :filter_size-1, :]], 1)
+            bottom_pad_re = tf.real(bottom_pad)
+            bottom_pad_im = tf.real(bottom_pad)
+            conv_re = (tf.nn.conv1d(bottom_pad_re, filt_re, stride_size, padding='VALID') -
+                       tf.nn.conv1d(bottom_pad_im, filt_im, stride_size, padding='VALID'))
+            conv_im = (tf.nn.conv1d(bottom_pad_im, filt_re, stride_size, padding='VALID') +
+                       tf.nn.conv1d(bottom_pad_re, filt_im, stride_size, padding='VALID'))
+            conv = tf.complex(conv_re, conv_im)
+        else:
+            filt = tf.complex(filt_re, filt_im)
+            tf_X_fft = tf.fft(tf.complex(tf.einsum('ijk->ikj', bottom), 0.))
+            tf_W_fft = tf.fft(tf.complex(tf.einsum('jkl->klj', filt), 0.))
+            tf_XW_fft = tf.einsum('ikj,klj->iklj', (tf_X_fft), tf.conj(tf_W_fft))
+            tf_XW = tf.einsum('iklj->ijl', tf.ifft(tf_XW_fft))
+            conv = tf.real(tf_XW)
+
+        if not biases:
+            return conv
+        else:
+            conv_biases = tf.complex(conv_biases_re, conv_biases_im)
+            bias = tf.nn.bias_add(conv, conv_biases)
+            return bias
+
+
+def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
+                     name, stride_size=1, biases=False, bias_scale=1.,
+                     FFT=False):
+    '''
+    FFT can be used instead of circular convolution. Although, the pad and conv
+    approach is relatively slow comparing to ordinary conv operation, it is still
+    much faster than FFT approach generally, since the dimension of the filter is small.
+    '''
+    with tf.variable_scope(name, reuse=None):
+        filt, conv_biases = get_conv_var2d(filter_size, in_channels,
+                                           out_channels, biases=biases, bias_scale=bias_scale)
+        if not FFT:
+            # bottom shape [None, Lx, Ly, channels]
+            # pad_size = filter_size - 1
+            bottom_pad_x = tf.concat([bottom, bottom[:, :filter_size-1, :, :]], 1)
+            bottom_pad_xy = tf.concat([bottom_pad_x, bottom_pad_x[:, :, :filter_size-1, :]], 2)
+            conv = tf.nn.conv1d(bottom_pad_xy, filt, stride_size, padding='VALID')
+        else:
+            raise NotImplementedError
+            # tf_X_fft = tf.fft(tf.complex(tf.einsum('ijk->ikj', bottom), 0.))
+            # tf_W_fft = tf.fft(tf.complex(tf.einsum('jkl->klj', filt), 0.))
+            # tf_XW_fft = tf.einsum('ikj,klj->iklj', (tf_X_fft), tf.conj(tf_W_fft))
+            # tf_XW = tf.einsum('iklj->ijl', tf.ifft(tf_XW_fft))
+            # conv = tf.real(tf_XW)
+
+        if not biases:
+            return conv
+        else:
+            bias = tf.nn.bias_add(conv, conv_biases)
+            return bias
+
+
+def circular_conv_2d_complex(bottom, filter_size, in_channels, out_channels,
+                             name, stride_size=1, biases=False, bias_scale=1.,
+                             FFT=False):
+    with tf.variable_scope(name, reuse=None):
+        filt_re, conv_biases_re = get_conv_var2d(filter_size, in_channels, out_channels,
+                                                 name="real_", biases=biases, bias_scale=bias_scale)
+        filt_im, conv_biases_im = get_conv_var2d(filter_size, in_channels, out_channels,
+                                                 name="imag_", biases=biases, bias_scale=bias_scale)
+        if not FFT:
+            # bottom shape [None, Lx, Ly, channels]
+            # pad_size = filter_size - 1
+            bottom_pad_x = tf.concat([bottom, bottom[:, :filter_size-1, :, :]], 1)
+            bottom_pad_xy = tf.concat([bottom_pad_x, bottom_pad_x[:, :, :filter_size-1, :]], 2)
+            bottom_pad_re = tf.real(bottom_pad_xy)
+            bottom_pad_im = tf.real(bottom_pad_xy)
+            conv_re = (tf.nn.conv2d(bottom_pad_re, filt_re, stride_size, padding='VALID') -
+                       tf.nn.conv2d(bottom_pad_im, filt_im, stride_size, padding='VALID'))
+            conv_im = (tf.nn.conv2d(bottom_pad_im, filt_re, stride_size, padding='VALID') +
+                       tf.nn.conv2d(bottom_pad_re, filt_im, stride_size, padding='VALID'))
+            conv = tf.complex(conv_re, conv_im)
+        else:
+            raise NotImplementedError
+            # filt = tf.complex(filt_re, filt_im)
+            # tf_X_fft = tf.fft(tf.complex(tf.einsum('ijk->ikj', bottom), 0.))
+            # tf_W_fft = tf.fft(tf.complex(tf.einsum('jkl->klj', filt), 0.))
+            # tf_XW_fft = tf.einsum('ikj,klj->iklj', (tf_X_fft), tf.conj(tf_W_fft))
+            # tf_XW = tf.einsum('iklj->ijl', tf.ifft(tf_XW_fft))
+            # conv = tf.real(tf_XW)
+
+        if not biases:
+            return conv
+        else:
+            conv_biases = tf.complex(conv_biases_re, conv_biases_im)
+            bias = tf.nn.bias_add(conv, conv_biases)
+            return bias
 
 
 def conv_layer2d(bottom, filter_size, in_channels,
@@ -175,29 +295,28 @@ def get_conv_var1d(filter_size, in_channels, out_channels, name="",
     if not biases:
         return filters, None
     else:
-        initial_value = tf.truncated_normal([out_channels], .0, .001*bias_scale)
+        initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
         biases = get_var(initial_value, name + "biases", dtype=dtype)
         return filters, biases
 
 
 def get_conv_var2d(filter_size, in_channels, out_channels, name="",
-                   biases=False, dtype=tf.float32):
+                   biases=False, dtype=tf.float32, bias_scale=1.):
     if dtype == tf.complex64:
         raise NotImplementedError
         # tensorflow optimizer does not support complex type
     else:
         pass
 
+    # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.01)
     initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0,
-                                        0.01)
-    # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0,
-    #                                     np.sqrt(2. /  (filter_size*filter_size*(in_channels+out_channels))))
+                                        np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
     filters = get_var(initial_value, name + "weights", dtype=dtype)
 
     if not biases:
         return filters, None
     else:
-        initial_value = tf.truncated_normal([out_channels], .0, .001)
+        initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
         biases = get_var(initial_value, name + "biases", dtype=dtype)
         return filters, biases
 
@@ -291,3 +410,10 @@ def bottleneck_residual(self, x, in_channel, out_channel, name,
         x = tf.nn.relu(x)
 
     return x
+
+
+def jacobian(y, x):
+    y_flat = tf.reshape(y, (-1,))
+    jacobian_flat = tf.stack(
+        [tf.gradients(y_i, x)[0] for y_i in tf.unstack(y_flat)])
+    return tf.reshape(jacobian_flat, y.shape.concatenate(x.shape))

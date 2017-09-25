@@ -14,8 +14,8 @@ def parse_args():
                         help='Name of the Neural Network. Default: NN',
                         default='NN', type=str)
     parser.add_argument('--lr', dest='lr',
-                        help='learning rate. Default: 1e-2',
-                        default=1e-2, type=float)
+                        help='learning rate. Default: 1e-3',
+                        default=1e-3, type=float)
     parser.add_argument('--num_sample', dest='num_sample',
                         help='Number of sampling in Monte Carlo process. Default: 500',
                         default=500, type=int)
@@ -23,10 +23,10 @@ def parse_args():
                         help='Batch size in Network pretraining. Default: 100',
                         default=100, type=int)
     parser.add_argument('--alpha', dest='alpha',
-                        help='controll parameter for model complexity',
-                        default=0, type=int)
+                        help='controll parameter for model complexity. Default: 4',
+                        default=4, type=int)
     parser.add_argument('--opt', dest='opt',
-                        help='optimizer for the neural network',
+                        help='optimizer for the neural network. Default: Momentum method',
                         default='Mom', type=str)
 
     if len(sys.argv) == 1:

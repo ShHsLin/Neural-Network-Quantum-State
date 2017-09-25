@@ -1,7 +1,7 @@
 import re
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.interpolate import spline
 
@@ -23,16 +23,16 @@ opt = ['Mom1e-03', 'Mom1e-02']
 fig = plt.figure()
 for n in net:
     for o in opt:
-        filename = 'L16_%s_%s_total.csv' % (n, o)
+        filename = 'L16_%s_%s_batch.csv' % (n, o)
         try:
             hand = open('../log/pretrain/'+filename, "r")
         except:
             continue
-        accuracy = np.genfromtxt(hand)
+        accuracy = np.abs(np.genfromtxt(hand))
 
-        plt.plot(accuracy, label=n+' '+o)
+        plt.plot(accuracy[::500], label=n+' '+o)
 
 plt.legend(shadow=True, loc=0, frameon=False)
 plt.ylabel('error')
 plt.show()
-fig.savefig('pretrain'+'.png')
+# fig.savefig('pretrain'+'.png')
