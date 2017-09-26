@@ -22,7 +22,7 @@ class tf_network:
             self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1], inputShape[2]])
             self.Lx = int(inputShape[0])
             self.Ly = int(inputShape[1])
-            self.LxLY = self.Lx * self.Ly
+            self.LxLy = self.Lx * self.Ly
             self.channels = int(inputShape[2])
             if self.channels > 2:
                 print("Not yet implemented for tJ, Hubbard model")
@@ -79,7 +79,6 @@ class tf_network:
         return sum([np.prod(w.get_shape().as_list()) for w in self.para_list])
 
     def applyGrad(self, grad_list):
-        # print(self.sess.run(self.para_list[2])[:10])
         self.sess.run(self.train_op, feed_dict={i: d for i, d in
                                                 zip(self.newgrads, grad_list)})
 
@@ -90,6 +89,17 @@ class tf_network:
             fc1 = tf.nn.tanh(fc1)
             out_re = tf_.fc_layer(fc1, self.L * self.alpha, 1, 'out_re')
             out_im = tf_.fc_layer(fc1, self.L * self.alpha, 1, 'out_im')
+            out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+
+        return out
+
+    def build_NN_2d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0]
+            fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
+            fc1 = tf.nn.tanh(fc1)
+            out_re = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out_re')
+            out_im = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out_im')
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
 
         return out
@@ -105,6 +115,21 @@ class tf_network:
             fc3 = tf.nn.tanh(fc3)
             out_re = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_re')
             out_im = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_im')
+            out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+
+        return out
+
+    def build_NN3_2d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0]
+            fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
+            fc1 = tf.nn.tanh(fc1)
+            fc2 = tf_.fc_layer(fc1, self.LxLy * self.alpha, self.LxLy * self.alpha, 'fc2')
+            fc2 = tf.nn.tanh(fc2)
+            fc3 = tf_.fc_layer(fc2, self.LxLy * self.alpha, self.LxLy * self.alpha, 'fc3')
+            fc3 = tf.nn.tanh(fc3)
+            out_re = tf_.fc_layer(fc3, self.LxLy * self.alpha, 1, 'out_re')
+            out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha, 1, 'out_im')
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
 
         return out
@@ -465,7 +490,11 @@ class tf_network:
             raise NotImplementedError
 
     def build_network_2d(self, which_net, x):
-        if which_net == "RBM":
+        if which_net == "NN":
+            return self.build_NN_2d(x)
+        elif which_net == "NN3":
+            return self.build_NN3_2d(x)
+        elif which_net == "RBM":
             return self.build_RBM_2d(x)
         elif which_net == "sRBM":
             return self.build_sRBM_2d(x)

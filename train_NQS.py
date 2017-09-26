@@ -5,10 +5,8 @@ import scipy.sparse.linalg
 from scipy.sparse.linalg import LinearOperator
 import numpy as np
 import tensorflow as tf
-import pickle
 import os
 from utils.parse_args import parse_args
-# from utils.prepare_net import prepare_net
 from network.tf_network import tf_network
 
 import time
@@ -21,23 +19,14 @@ So easily to switch model
 """
 
 
-def save_object(obj, filename):
-    with open(filename, 'wb') as output:
-        pickle.dump(obj, output, pickle.HIGHEST_PROTOCOL)
-
-
-def read_object(filename):
-    with open(filename, 'r') as input:
-        return pickle.load(input)
-
-
-class NQS():
+class NQS_1d():
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
                                dtype=int)
         self.batch_size = batch_size
         self.inputShape = inputShape
         self.init_config(sz0_sector=True)
+        self.corrlength = 50
 
         self.NNet = Net
         self.net_num_para = self.NNet.getNumPara()
@@ -157,10 +146,7 @@ class NQS():
         Oarray = np.zeros((numPara, num_sample))
 
         start_c, start_t = time.clock(), time.time()
-        if self.batch_size > 100:
-            corrlength = 50
-        else:
-            corrlength = 15
+        corrlength = self.corrlength
         configDim = list(self.config.shape)
         configDim[0] = num_sample
         configArray = np.zeros(configDim)
@@ -421,10 +407,341 @@ class NQS():
         localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J / oldAmp / 2
         return localE_arr
 
+############################
+#  END OF DEFINITION NQS1d #
+############################
 
-########################
-#  END OF DEFINITION  #
-########################
+
+class NQS_2d():
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1):
+        '''
+        config = [batch_size, Lx, Ly, local_dim]
+        config represent the product state basis of the model
+        in one-hot representation
+        Spin-1/2 model: local_dim = 2
+        Hubbard model: local_dim = 4
+        '''
+        self.config = np.zeros((batch_size, inputShape[0], inputShape[1], inputShape[2]),
+                               dtype=int)
+        self.batch_size = batch_size
+        self.inputShape = inputShape
+        self.Lx = inputShape[0]
+        self.Ly = inputShape[1]
+        self.LxLy = self.Lx*self.Ly
+        if self.Lx != self.Ly:
+            print("not a square lattice !!!")
+
+        self.init_config(sz0_sector=True)
+        self.corrlength = 50
+
+        self.NNet = Net
+        self.net_num_para = self.NNet.getNumPara()
+        self.moving_E_avg = None
+
+        if Hamiltonian == 'Ising':
+            raise NotImplementedError
+        elif Hamiltonian == 'AFH':
+            pass
+
+    def init_config(self, sz0_sector=True):
+        if sz0_sector:
+            for i in range(self.batch_size):
+                x = np.random.randint(2, size=(self.Lx, self.Ly))
+                while(np.sum(x) != self.LxLy/2):
+                    x = np.random.randint(2, size=(self.Lx, self.Ly))
+
+                self.config[i, :, :, 0] = x
+                self.config[i, :, :, 1] = (x+1) % 2
+
+            return
+        else:
+            x = np.random.randint(2, size=(self.batch_size, self.Lx, self.Ly))
+            self.config[:, :, :, 0] = x
+            self.config[:, :, :, 1] = (x+1) % 2
+            return
+
+    def getSelfAmp(self):
+        return float(self.NNet.forwardPass(self.config))
+
+    def get_self_amp_batch(self):
+        return self.NNet.forwardPass(self.config).flatten()
+
+    def eval_amp_array(self, configArray):
+        return self.NNet.forwardPass(configArray).flatten()
+
+    def new_config(self):
+        '''
+        Implementation for
+        1.) random swap transition in spin-1/2 model
+        2.) Restricted to Sz = 0 sectors
+        '''
+        randsite1_x = np.random.randint(self.Lx)
+        randsite1_y = np.random.randint(self.Ly)
+        randsite2_x = np.random.randint(self.Lx)
+        randsite2_y = np.random.randint(self.Ly)
+        cond1 = (self.config[0, randsite1_x, randsite1_y, 0] +
+                 self.config[0, randsite2_x, randsite2_y, 0]) == 1
+        cond2 = randsite1_x != randsite2_x
+        cond3 = randsite1_y != randsite2_y
+        if cond1 and cond2 and cond3:
+            tempconfig = self.config.copy()
+            tempconfig[0, randsite1_x, randsite1_y, :] = (tempconfig[0, randsite1_x, randsite1_y, :] + 1) % 2
+            tempconfig[0, randsite2_x, randsite2_y, :] = (tempconfig[0, randsite2_x, randsite2_y, :] + 1) % 2
+            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+            if np.random.rand() < np.amin([1., ratio**2]):
+                self.config = tempconfig
+            else:
+                pass
+        else:
+            pass
+
+#        tempconfig = self.config.copy()
+#        if np.random.rand() < 0.5:
+#            randsite = np.random.randint(L)
+#            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
+#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#        else:
+#            randsite = np.random.randint(L)
+#            randsite2 = np.random.randint(L)
+#            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
+#            tempconfig[0, randsite2, :] = (tempconfig[0, randsite2, :] + 1) % 2
+#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#            if np.random.rand() < np.amin([1., ratio**2]):
+#                self.config = tempconfig
+#            else:
+#                pass
+
+        return
+
+    def new_config_batch(self):
+        '''
+        Implementation for
+        1.) random swap transition in spin-1/2 model
+        2.) Restricted to Sz = 0 sectors
+        3.) vectorized for batch update
+        '''
+        batch_size = self.batch_size
+        old_amp = self.get_self_amp_batch()
+
+        # Restricted to Sz = 0 sectors ##
+        randsite1_x = np.random.randint(self.Lx, size=(batch_size,))
+        randsite1_y = np.random.randint(self.Ly, size=(batch_size,))
+        randsite2_x = np.random.randint(self.Lx, size=(batch_size,))
+        randsite2_y = np.random.randint(self.Ly, size=(batch_size,))
+        mask = (self.config[range(batch_size), randsite1_x, randsite1_y, 0] +
+                self.config[range(batch_size), randsite2_x, randsite2_y, 0]) == 1
+
+        flip_config = self.config.copy()
+        flip_config[range(batch_size), randsite1_x, randsite1_y, :] += 1
+        flip_config[range(batch_size), randsite1_x, randsite1_y, :] %= 2
+        flip_config[range(batch_size), randsite2_x, randsite2_y, :] += 1
+        flip_config[range(batch_size), randsite2_x, randsite2_y, :] %= 2
+
+        ratio = np.power(np.divide(self.eval_amp_array(flip_config), old_amp),  2)
+        mask2 = np.random.random_sample((batch_size,)) < ratio
+        final_mask = np.logical_and(mask, mask2)
+        # update self.config
+        self.config[final_mask] = flip_config[final_mask]
+        return
+
+    def VMC(self, num_sample, iteridx=0, Gj=None, explicit_SR=False):
+        numPara = self.net_num_para
+        OOsum = np.zeros((numPara, numPara))
+        Osum = np.zeros((numPara))
+        Earray = np.zeros((num_sample))
+        EOsum = np.zeros((numPara))
+        Oarray = np.zeros((numPara, num_sample))
+
+        start_c, start_t = time.clock(), time.time()
+        corrlength = self.corrlength
+        configDim = list(self.config.shape)
+        configDim[0] = num_sample
+        configArray = np.zeros(configDim)
+
+        if (self.batch_size == 1):
+            for i in range(1, 1 + num_sample * corrlength):
+                self.new_config()
+                if i % corrlength == 0:
+                    configArray[i / corrlength - 1] = self.config[0]
+
+        else:
+            for i in range(1, 1 + num_sample * corrlength / self.batch_size):
+                self.new_config_batch()
+                bs = self.batch_size
+                if i % corrlength == 0:
+                    i_c = i/corrlength
+                    configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
+                else:
+                    pass
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
+
+        # for i in range(num_sample):
+        #     Earray[i] = self.get_local_E(configArray[i:i+1])
+        Earray = self.local_E_AFH2d_batch(configArray)
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
+
+        for i in range(num_sample):
+            GList = self.NNet.backProp(configArray[i:i+1])
+            Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+
+        # Osum = np.einsum('ij->i', Oarray)
+        # EOsum = np.einsum('ij,j->i', Oarray, Earray)
+        Osum = Oarray.dot(np.ones(Oarray.shape[1]))
+        EOsum = Oarray.dot(Earray)
+
+        # for i in range(num_sample):
+        #     localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
+        #     Osum += localO
+        #     Earray[i] = localE
+        #     EOsum += localEO
+        #     Oarray[:, i] = localO
+
+        if not explicit_SR:
+            pass
+        else:
+            OOsum = Oarray.dot(Oarray.T)
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
+        start_c, start_t = time.clock(), time.time()
+
+        Eavg = np.average(Earray)
+        Evar = np.var(Earray)
+        # print(self.getSelfAmp())
+        print(self.get_self_amp_batch()[:5])
+        print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / self.LxLy / np.sqrt(num_sample))
+
+        #####################################
+        #  Fj = 2<O_iH>-2<H><O_i>
+        #####################################
+        if self.moving_E_avg is None:
+            Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
+        else:
+            self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+            Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
+            print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
+
+        if not explicit_SR:
+            def implicit_S(v):
+                avgO = Osum.flatten()/num_sample
+                finalv = - avgO.dot(v) * avgO
+                finalv += Oarray.dot((Oarray.T.dot(v)))/num_sample
+                return finalv  # + v * 1e-4
+
+            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
+
+            Gj, info = scipy.sparse.linalg.minres(implicit_Sij, Fj, x0=Gj)
+            print("conv Gj : ", info)
+        else:
+            #####################################
+            # S_ij = <O_i O_j > - <O_i><O_j>   ##
+            #####################################
+            Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2)
+            # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
+            # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
+            Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
+            ############
+            # Method 1 #
+            ############
+            # invSij = np.linalg.inv(Sij)
+            # Gj = invSij.dot(Fj.T)
+            ############
+            # Method 2 #
+            ############
+            # invSij = np.linalg.pinv(Sij, 1e-3)
+            # Gj = invSij.dot(Fj.T)
+            ############
+            # Method 3 #
+            ############
+            Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            print("conv Gj : ", info)
+
+        # Gj = Fj.T
+        print("norm(G): ", np.linalg.norm(Gj),
+              "norm(F):", np.linalg.norm(Fj))
+
+        end_c, end_t = time.clock(), time.time()
+        print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
+
+        return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
+
+    def local_E_AFH2d_batch(self, config_arr, J=1):
+        '''
+        Basic idea is due to the fact that
+        Sz Sz Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+        '''
+        num_config, Lx, Ly, local_dim = config_arr.shape
+        localE_arr = np.zeros((num_config))
+        oldAmp = self.eval_amp_array(config_arr)
+
+        # S_ij dot S_(i+1)j
+        # PBC
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        config_shift_copy[:, :-1, :, :] = config_arr[:, 1:, :, :]
+        config_shift_copy[:, -1, :, :] = config_arr[:, 0, :, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] += 1
+                config_flip_arr[i, j, :, i, j, :] %= 2
+                config_flip_arr[i, j, :, (i+1) % L, j, :] += 1
+                config_flip_arr[i, j, :, (i+1) % L, j, :] %= 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                   Lx, Ly, local_dim))
+        flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
+
+        ########################
+        # PBC : S_ij dot S_i(j+1)
+        ########################
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        config_shift_copy[:, :, :-1, :] = config_arr[:, :, 1:, :]
+        config_shift_copy[:, :, -1, :] = config_arr[:, :, 0, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] += 1
+                config_flip_arr[i, j, :, i, j, :] %= 2
+                config_flip_arr[i, j, :, i, (j+1) % L, :] += 1
+                config_flip_arr[i, j, :, i, (j+1) % L, :] %= 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                   Lx, Ly, local_dim))
+        flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
+        return localE_arr
+
+############################
+#  END OF DEFINITION NQS2d #
+############################
 
 
 if __name__ == "__main__":
@@ -445,10 +762,19 @@ if __name__ == "__main__":
     opt = args.opt
     batch_size = args.batch_size
     H = 'AFH'
-    systemSize = (L, 2)
+    dim = 2
+    if dim == 1:
+        systemSize = (L, 2)
+    elif dim == 2:
+        systemSize = (L, L, 2)
+    else:
+        raise NotImplementedError
 
-    Net = tf_network(which_net, systemSize, optimizer=opt, dim=1, alpha=alpha)
-    N = NQS(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
+    Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha)
+    if dim == 1:
+        N = NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
+    else:
+        N = NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
 
     print("Total num para: ", N.net_num_para)
     if N.net_num_para/5 < num_sample:
@@ -462,7 +788,7 @@ if __name__ == "__main__":
     var_list = tf.global_variables()
     saver = tf.train.Saver(N.NNet.model_var_list)
 
-    ckpt_path = 'wavefunction/vmc/%s_reluneg/L%da%d/' % (which_net, L, alpha)
+    ckpt_path = 'wavefunction/vmc%dd/%s/L%da%d/' % (dim, which_net, L, alpha)
     if not os.path.exists(ckpt_path):
         os.makedirs(ckpt_path)
     ckpt = tf.train.get_checkpoint_state(ckpt_path)
@@ -538,16 +864,10 @@ if __name__ == "__main__":
         if iteridx % 50 == 0:
             saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
 
-    np.savetxt('L%d_%s_reluneg_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
+    np.savetxt('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
                E_log, '%.4e', delimiter=',')
 
-    # save_object(N,'NNQS_AFH_L40_Mom.obj')
-    # save_object(N,'CNNQS_AFH_L40_noMom.obj')
-
     '''
-    Task0
-    Rewrite it as batch to improve the speed
-
     Task1
     Write down again the Probability assumption
     and the connection with deep learning model

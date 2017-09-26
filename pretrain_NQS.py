@@ -4,7 +4,6 @@ import tensorflow as tf
 import numpy as np
 
 from utils.parse_args import parse_args
-# from utils.prepare_net import prepare_net
 from network.tf_network import tf_network
 import network.tf_wrapper as tf_
 
@@ -26,8 +25,7 @@ if __name__ == "__main__":
 
     opt = args.opt  # "Mom"
     system_size = (L, 2)
-    # Net = prepare_net(which_net, system_size, opt, alpha)
-    Net = tf_network(which_net, system_size, optimizer=opt, alpha=alpha)
+    Net = tf_network(which_net, system_size, optimizer=opt, dim=1, alpha=alpha)
 
     basis = []
     for line in open('EigenVec/basisMatrix'+str(L)+'.csv', 'r'):
@@ -67,6 +65,7 @@ if __name__ == "__main__":
 
     # y for all Sz sector #
     Y = np.genfromtxt('EigenVec/eig_L'+str(L)+'_PBC.csv').reshape((2**L, 1))
+    # Y = np.sign(Y)
     print X.shape, Y.shape
 
     with Net.sess as sess:
