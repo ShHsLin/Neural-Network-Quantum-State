@@ -28,6 +28,13 @@ def parse_args():
     parser.add_argument('--opt', dest='opt',
                         help='optimizer for the neural network. Default: Momentum method',
                         default='Mom', type=str)
+    parser.add_argument('--H', dest='H',
+                        help='target Hamiltonian for optimization. Default: AFH',
+                        default='AFH', type=str)
+    parser.add_argument('--dim', dest='dim',
+                        help='Dimension of the system. 1d: chain, 2d: square lattice.'
+                        'Input should be integer. Default: 1',
+                        default=1, type=int)
 
     if len(sys.argv) == 1:
         parser.print_help()

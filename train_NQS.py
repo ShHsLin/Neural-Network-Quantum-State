@@ -32,10 +32,15 @@ class NQS_1d():
         self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
 
+        print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
-            self.get_local_E = self.local_E_Ising
+            self.get_local_E_batch = self.local_E_Ising_batch
         elif Hamiltonian == 'AFH':
-            self.get_local_E = self.local_E_AFH
+            self.get_local_E_batch = self.local_E_AFH_batch
+        elif Hamiltonian == 'J1J2':
+            self.get_local_E_batch = self.local_E_J1J2_batch
+        else:
+            raise NotImplementedError
 
     def init_config(self, sz0_sector=True):
         if sz0_sector:
@@ -172,7 +177,8 @@ class NQS_1d():
 
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(configArray[i:i+1])
-        Earray = self.local_E_AFH_batch(configArray)
+
+        Earray = self.get_local_E_batch(configArray)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
@@ -371,6 +377,12 @@ class NQS_1d():
         return localE
 
     def local_E_AFH_batch(self, config_arr, J=1):
+        '''
+        Base on the fact that, in one-hot representation
+        Sz Sz Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+        '''
         num_config, L, inputShape1 = config_arr.shape
         localE_arr = np.zeros((num_config))
         oldAmp = self.eval_amp_array(config_arr)
@@ -380,11 +392,6 @@ class NQS_1d():
         config_shift_copy[:, :-1, :] = config_arr[:, 1:, :]
         config_shift_copy[:, -1, :] = config_arr[:, 0, :]
 
-        '''
-        Sz Sz Interaction
-        SzSz = 1 if uu or dd
-        SzSz = 0 if ud or du
-        '''
         # num_config x L
         SzSz = np.einsum('ijk,ijk->ij', config_arr, config_shift_copy)
         localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * J / 4
@@ -395,17 +402,67 @@ class NQS_1d():
             config_flip_arr[i, :, i, :] = (config_flip_arr[i, :, i, :] + 1) % 2
             config_flip_arr[i, :, (i+1) % L, :] = (config_flip_arr[i, :, (i+1) % L, :] + 1) % 2
 
-#        for i in range(L-1):
-#            config_flip[i, i, :] = (config_flip[i, i, :] + 1) % 2
-#            config_flip[i, (i+1), :] = (config_flip[i, (i+1), :] + 1) % 2
-
-#        config_flip[L-1, 0, :] = (config_flip[L-1, 0, :] + 1) % 2
-#        config_flip[L-1, L-1, :] = (config_flip[L-1, L-1, :] + 1) % 2
         flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(L*num_config, L, inputShape1))
         flip_Amp_arr = flip_Amp_arr.reshape((L, num_config))
         # localE += -(SzSz-1).dot(flip_Amp) * J / oldAmp / 2
         localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J / oldAmp / 2
         return localE_arr
+
+    def local_E_J1J2_batch(self, config_arr, J1=1, J2=1):
+        '''
+        Base on the fact that, in one-hot representation
+        Sz Sz Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+        '''
+        num_config, L, inputShape1 = config_arr.shape
+        localE_arr = np.zeros((num_config))
+        oldAmp = self.eval_amp_array(config_arr)
+
+        ####################
+        # PBC   J1 term   ##
+        ####################
+        config_shift_copy = np.zeros((num_config, L, inputShape1))
+        config_shift_copy[:, :-1, :] = config_arr[:, 1:, :]
+        config_shift_copy[:, -1, :] = config_arr[:, 0, :]
+
+        # num_config x L
+        SzSz = np.einsum('ijk,ijk->ij', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * J1 / 4
+
+        # num_site(L) x num_config x num_site(L) x num_spin
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L), config_arr)
+        for i in range(L):
+            config_flip_arr[i, :, i, :] = (config_flip_arr[i, :, i, :] + 1) % 2
+            config_flip_arr[i, :, (i+1) % L, :] = (config_flip_arr[i, :, (i+1) % L, :] + 1) % 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(L*num_config, L, inputShape1))
+        flip_Amp_arr = flip_Amp_arr.reshape((L, num_config))
+        # localE += -(SzSz-1).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J1 / oldAmp / 2
+
+        ######################
+        # PBC  J2 term      ##
+        ######################
+        config_shift_copy[:, :-2, :] = config_arr[:, 2:, :]
+        config_shift_copy[:, -2:, :] = config_arr[:, :2, :]
+
+        # num_config x L
+        SzSz = np.einsum('ijk,ijk->ij', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * J2 / 4
+
+        # num_site(L) x num_config x num_site(L) x num_spin
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L), config_arr)
+        for i in range(L):
+            config_flip_arr[i, :, i, :] = (config_flip_arr[i, :, i, :] + 1) % 2
+            config_flip_arr[i, :, (i+2) % L, :] = (config_flip_arr[i, :, (i+2) % L, :] + 1) % 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(L*num_config, L, inputShape1))
+        flip_Amp_arr = flip_Amp_arr.reshape((L, num_config))
+        # localE += -(SzSz-1).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J2 / oldAmp / 2
+        return localE_arr
+
 
 ############################
 #  END OF DEFINITION NQS1d #
@@ -438,10 +495,17 @@ class NQS_2d():
         self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
 
+        print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             raise NotImplementedError
+            self.get_local_E_batch = self.local_E_Ising_batch
         elif Hamiltonian == 'AFH':
-            pass
+            self.get_local_E_batch = self.local_E_AFH2d_batch
+        elif Hamiltonian == 'J1J2':
+            raise NotImplementedError
+            self.get_local_E_batch = self.local_E_J1J2_batch
+        else:
+            raise NotImplementedError
 
     def init_config(self, sz0_sector=True):
         if sz0_sector:
@@ -579,7 +643,7 @@ class NQS_2d():
 
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(configArray[i:i+1])
-        Earray = self.local_E_AFH2d_batch(configArray)
+        Earray = self.get_local_E_batch(configArray)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
@@ -745,7 +809,9 @@ class NQS_2d():
 
 
 if __name__ == "__main__":
-
+    ###############################
+    #  Read the input argument ####
+    ###############################
     alpha_map = {"NN": 2, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
                  "NN_RBM": 2}
 
@@ -761,8 +827,8 @@ if __name__ == "__main__":
 
     opt = args.opt
     batch_size = args.batch_size
-    H = 'AFH'
-    dim = 2
+    H = args.H
+    dim = args.dim
     if dim == 1:
         systemSize = (L, 2)
     elif dim == 2:
@@ -864,8 +930,11 @@ if __name__ == "__main__":
         if iteridx % 50 == 0:
             saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
 
-    np.savetxt('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
+    log_file = open('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
+                    'a')
+    np.savetxt(log_file,
                E_log, '%.4e', delimiter=',')
+    log_file.close()
 
     '''
     Task1

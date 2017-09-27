@@ -24,19 +24,25 @@ This work is inspired by the paper from,
 
 ### How to run the Code
 
-to run the variational monte carlo,
+To run the variational monte carlo,
 ```
-python NQS.py --net [which_net] --l [L] --lr [learning_rate] --num_sample [num_monte_carlo_sampling]
-```
-to run the pretraining, 
-```
-python pretrain.py --net [which_net] --l [L] 
+python train_NQS.py --net [which_net] --l [L] --lr [learning_rate] --num_sample [num_monte_carlo_sampling]
 ```
 L is the system size, which_net should be the network name.
 For example
 ```
-python NQS.py --net NN3 --l 20 --lr 1e-3 --num_sample 500
+python train_NQS.py --net NN3 --l 20 --lr 1e-3 --num_sample 500
 ```
+To see detailed of the input arguments, run
+```
+python train_NQS.py --help
+```
+ 
+To run the pretraining, one first need to provide the exact eigenstate in the EigenVec folder, (I will add python code in the future) 
+```
+python pretrain.py --net [which_net] --l [L] 
+```
+
 
 
 ###   Network Architecture
@@ -131,8 +137,10 @@ L=40 AFH OBC: -4.3853682e-01
      - [x] RBM Network
 - [ ] Test Pretrain Accuracy
 - [ ] Neural Network Projected Quantum State (NNPQS)
-- [ ] Test VMC Accuracy
-     - [ ] NNQS
+- [x] Test VMC Accuracy
+     - [x] NNQS 1d AFH
+     - [x] NNQS 2d AFH
+     - [ ] NNQS 1d J1J2
      - [ ] NNPQS 
 - [ ] Properties
      - [ ] Scaling behavior of the number of parameters 
