@@ -1,15 +1,15 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+import os
+import time
 import scipy.sparse.linalg
 from scipy.sparse.linalg import LinearOperator
 import numpy as np
 import tensorflow as tf
-import os
 from utils.parse_args import parse_args
 from network.tf_network import tf_network
 
-import time
 
 """
 1.  Should move config out as an indep class
@@ -408,7 +408,7 @@ class NQS_1d():
         localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J / oldAmp / 2
         return localE_arr
 
-    def local_E_J1J2_batch(self, config_arr, J1=1, J2=1):
+    def local_E_J1J2_batch(self, config_arr, J1=1., J2=1.):
         '''
         Base on the fact that, in one-hot representation
         Sz Sz Interaction
@@ -816,19 +816,13 @@ if __name__ == "__main__":
                  "NN_RBM": 2}
 
     args = parse_args()
-    L = args.L
-    which_net = args.which_net
-    lr = args.lr
-    num_sample = args.num_sample
+    (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
     if args.alpha != 0:
         alpha = args.alpha
     else:
         alpha = alpha_map[which_net]
 
-    opt = args.opt
-    batch_size = args.batch_size
-    H = args.H
-    dim = args.dim
+    opt, batch_size, H, dim  = args.opt, args.batch_size, args.H, args.dim
     if dim == 1:
         systemSize = (L, 2)
     elif dim == 2:
@@ -935,7 +929,6 @@ if __name__ == "__main__":
     np.savetxt(log_file,
                E_log, '%.4e', delimiter=',')
     log_file.close()
-
     '''
     Task1
     Write down again the Probability assumption

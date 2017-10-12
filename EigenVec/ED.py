@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 
 def gen_pair(row, V):
     '''
-    assume row is an in order array
-    generate a cyclic pairs in the row array given.
+    assume row is an in order array generate a cyclic pairs
+    in the row array given with interaction strength V.
     For example: row = [1, 2, 3, 5]
     will gives [(1, 2, V), (2, 3, V), (3, 5, V), (5, 1, V)]
     '''
@@ -70,7 +70,7 @@ def solve_1d_J1J2(L, J1=1, J2=1):
 
     evals_small, evecs_small = eigsh(H, 6, which='SA')
     print evals_small / L / 4.
-    return
+    return evals_small, evecs_small
 
 
 def solve_2d_AFH(Lx, Ly, J=1):
@@ -94,12 +94,22 @@ def solve_2d_AFH(Lx, Ly, J=1):
 
     evals_small, evecs_small = eigsh(H, 6, which='SA')
     print evals_small / Lx / Ly / 4.
-    return
+    return evals_small, evecs_small
 
 
 if __name__ == "__main__":
-    # solve_1d_J1J2(10)
-    solve_2d_AFH(4, 4)
+    import sys
+    model = sys.argv[1]
+    if model == '1dJ1J2':
+        L, J1, J2 = sys.argv[2:]
+        L, J1, J2 = int(L), float(J1), float(J2)
+        print("python 1dJ1J2 L=%d J1=%d J2=%d" % (L, J1, J2) )
+        evals_small, evecs_small = solve_1d_J1J2(L, J1, J2)
+    elif model == '2dAFH':
+        evals_small, evecs_small = solve_2d_AFH(4, 4)
+    else:
+        print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
+        raise NotImplementedError
 
 # plt.plot(np.real(evecs_small[:, 0]), label='real')
 # plt.plot(np.imag(evecs_small[:, 0]), label='imag')

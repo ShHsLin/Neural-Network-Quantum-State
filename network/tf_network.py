@@ -86,12 +86,35 @@ class tf_network:
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0]
             fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
-            fc1 = tf.nn.tanh(fc1)
+            fc1 = tf.cos(fc1)
             out_re = tf_.fc_layer(fc1, self.L * self.alpha, 1, 'out_re')
             out_im = tf_.fc_layer(fc1, self.L * self.alpha, 1, 'out_im')
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
 
         return out
+
+    def build_ZNet_1d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, 0]
+            fc1_amp = tf_.fc_layer(x, self.L, self.L * self.alpha / 2, 'fc1_amp')
+            fc1_amp = tf.nn.tanh(fc1_amp)
+            fc2_amp = tf_.fc_layer(fc1_amp, self.L * self.alpha / 2, self.L * self.alpha / 2,
+                                   'fc2_amp')
+            fc2_amp = tf.nn.tanh(fc2_amp)
+            out_amp = tf_.fc_layer(fc2_amp, self.L * self.alpha / 2, 1, 'out_amp')
+            # out_amp = tf.nn.sigmoid(out_amp)
+
+            fc1_sign = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_sign')
+            fc1_sign = tf.cos(fc1_sign)
+            fc2_sign = tf_.fc_layer(fc1_sign, self.L * self.alpha, self.L * self.alpha, 'fc2_sign')
+            fc2_sign = tf.nn.tanh(fc2_sign)
+            out_sign = tf_.fc_layer(fc2_sign, self.L * self.alpha, 1, 'out_sign')
+            out_sign = tf.nn.tanh(out_sign)
+            out = tf.multiply(out_amp, out_sign)
+
+        return out
+
+
 
     def build_NN_2d(self, x):
         with tf.variable_scope("network", reuse=None):
@@ -466,6 +489,8 @@ class tf_network:
     def build_network_1d(self, which_net, x):
         if which_net == "NN":
             return self.build_NN_1d(x)
+        elif which_net == "ZNet":
+            return self.build_ZNet_1d(x)
         elif which_net == "NN3":
             return self.build_NN3_1d(x)
         elif which_net == "CNN":

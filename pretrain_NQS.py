@@ -28,7 +28,7 @@ if __name__ == "__main__":
     Net = tf_network(which_net, system_size, optimizer=opt, dim=1, alpha=alpha)
 
     basis = []
-    for line in open('EigenVec/basisMatrix'+str(L)+'.csv', 'r'):
+    for line in open('EigenVec/Sz0_basisMatrix'+str(L)+'.csv', 'r'):
         basis.append(line[:-1])
 
     newbasis = np.zeros((len(basis), L, 2))
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         sess.run(tf.global_variables_initializer())
 
         print len(Net.model_var_list), len(Net.para_list)
-        saver = tf.train.Saver(Net.model_var_list)  # Net.model_var_list)
+        saver = tf.train.Saver(Net.model_var_list)
         ckpt_path = 'wavefunction/Pretrain/'+which_net+'/L'+str(L)
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)
