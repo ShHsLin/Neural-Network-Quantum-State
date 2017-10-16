@@ -50,6 +50,27 @@ def build_H(pairs, L):
     H = scipy.sparse.csr_matrix(H)
     return H
 
+def spin_spin_correlation(site_i, site_j, L, vector):
+    Sz = np.array([[1., 0.],
+                   [0., -1.]])
+
+    print("correlation between", site_i, site_j)
+    hz = scipy.sparse.kron(scipy.sparse.eye(2 ** (site_i - 1)), Sz)
+    hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (site_j - site_i - 1)))
+    hz = scipy.sparse.kron(hz, Sz)
+    hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (L - site_j)))
+    SzSz = scipy.sparse.csr_matrix(hz)
+    return vector.conjugate().dot(SzSz.dot(vector))
+
+def sz_expectation(site_i, vector):
+    Sz = np.array([[1., 0.],
+                   [0., -1.]])
+
+    print("spin z expectation value on site %d" % site_i)
+    hz = scipy.sparse.kron(scipy.sparse.eye(2 ** (site_i - 1)), Sz)
+    hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (L - site_i)))
+    Sz = scipy.sparse.csr_matrix(hz)
+    return vector.conjugate().dot(Sz.dot(vector))
 
 def solve_1d_J1J2(L, J1=1, J2=1):
     lattice = np.arange(L, dtype=int) + 1
@@ -103,13 +124,35 @@ if __name__ == "__main__":
     if model == '1dJ1J2':
         L, J1, J2 = sys.argv[2:]
         L, J1, J2 = int(L), float(J1), float(J2)
-        print("python 1dJ1J2 L=%d J1=%d J2=%d" % (L, J1, J2) )
+        print("python 1dJ1J2 L=%d J1=%f J2=%f" % (L, J1, J2) )
         evals_small, evecs_small = solve_1d_J1J2(L, J1, J2)
     elif model == '2dAFH':
         evals_small, evecs_small = solve_2d_AFH(4, 4)
     else:
         print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
         raise NotImplementedError
+
+    for i in range(1,L+1):
+        print sz_expectation(i, evecs_small[:,0])
+
+
+    SzSz=[1]
+    for i in range(2, L+1):
+        SzSz.append(spin_spin_correlation(1, i, L, evecs_small[:,0]))
+
+    SzSz = np.real(np.array(SzSz))
+    log_file = open('spin_spin_cor_L%d_J2_%d.csv' % (L, J2*10), 'w')
+    np.savetxt(log_file, SzSz/4., '%.4e', delimiter=',')
+    log_file.close()
+
+    
+    vec_r = np.real(evecs_small[:,0])
+    vec_i = np.imag(evecs_small[:,0])
+    if np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)) < 1e-6:
+        print("Eigen Vec can be casted as real")
+        log_file = open('ES_L%d_J2_%d.csv' % (L, J2*10), 'w')
+        np.savetxt(log_file, vec_r/np.linalg.norm(vec_r), '%.8e', delimiter=',')
+        log_file.close()
 
 # plt.plot(np.real(evecs_small[:, 0]), label='real')
 # plt.plot(np.imag(evecs_small[:, 0]), label='imag')

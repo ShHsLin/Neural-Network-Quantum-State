@@ -12,6 +12,9 @@ from network.tf_network import tf_network
 
 
 """
+Should add spin-spin correlation in 2d
+should add vmc_observable in 2d
+
 1.  Should move config out as an indep class
 So that easily to change from 1d problem to 2d problem?
 2.  Rewrite the h, J,... etc in a class model
@@ -140,6 +143,44 @@ class NQS_1d():
                 pass
         print(energyList)
         return np.average(energyList)
+
+    def VMC_observable(self, num_sample):
+        L = self.config.shape[1]
+        numPara = self.net_num_para
+
+        start_c, start_t = time.clock(), time.time()
+        corrlength = self.corrlength
+        configDim = list(self.config.shape)
+        configDim[0] = num_sample
+        configArray = np.zeros(configDim)
+
+        if (self.batch_size == 1):
+            for i in range(1, 1 + num_sample * corrlength):
+                self.new_config()
+                if i % corrlength == 0:
+                    configArray[i / corrlength - 1, :, :] = self.config[0, :, :]
+
+        else:
+            for i in range(1, 1 + num_sample * corrlength / self.batch_size):
+                self.new_config_batch()
+                bs = self.batch_size
+                if i % corrlength == 0:
+                    i_c = i/corrlength
+                    configArray[(i_c-1)*bs: i_c*bs, :, :] = self.config[:, :, :]
+                else:
+                    pass
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
+
+        # for i in range(num_sample):
+        #     Earray[i] = self.get_local_E(configArray[i:i+1])
+
+        SzSz = self.spin_spin_correlation(configArray)
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( spin-spin-correlation ): ", end_c - start_c, end_t - start_t)
+        return SzSz
 
     def VMC(self, num_sample, iteridx=0, Gj=None, explicit_SR=False):
         L = self.config.shape[1]
@@ -375,6 +416,25 @@ class NQS_1d():
         localE += -(SzSz-1).dot(flip_Amp) * J / oldAmp / 2
 
         return localE
+
+    def spin_spin_correlation(self, config_arr):
+        '''
+        Compute the spin-spin correlation <S_i S_j>
+        without average over i
+        '''
+        num_config, L, inputShape1 = config_arr.shape
+
+        config_shift_copy = np.zeros((num_config, L, inputShape1))
+        SzSz_j = [0.25]
+        for j in range(1,L):
+            config_shift_copy[:, :-j, :] = config_arr[:, j:, :]
+            config_shift_copy[:, -j:, :] = config_arr[:, :j, :]
+            SzSz = np.einsum('ijk,ijk->', config_arr, config_shift_copy) / L / num_config
+            # SzSz average over L and num_config
+            # In this convention SzSz = 1 or 0
+            SzSz_j.append((SzSz-0.5)/2.)
+
+        return(np.array(SzSz_j))
 
     def local_E_AFH_batch(self, config_arr, J=1):
         '''
@@ -875,8 +935,9 @@ if __name__ == "__main__":
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
-    GradW, E_avg, E_var = N.VMC(num_sample=num_sample, iteridx=0)
+    GradW = None
     # N.moving_E_avg = E_avg * l
+    N.VMC_observable(num_sample=num_sample)
 
     for iteridx in range(1, 1000+1):
         print(iteridx)
