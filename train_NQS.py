@@ -220,6 +220,10 @@ class NQS_1d():
         #     Earray[i] = self.get_local_E(configArray[i:i+1])
 
         Earray = self.get_local_E_batch(configArray)
+        ####################################
+        ## TO perform adiabatic H0 --> H1 ##
+        ####################################
+        # Earray = self.local_E_J1J2_batch(configArray, J1=1., J2=0.5 + iteridx*0.0005)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)

@@ -145,7 +145,6 @@ if __name__ == "__main__":
     np.savetxt(log_file, SzSz/4., '%.4e', delimiter=',')
     log_file.close()
 
-    
     vec_r = np.real(evecs_small[:,0])
     vec_i = np.imag(evecs_small[:,0])
     if np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)) < 1e-6:
