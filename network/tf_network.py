@@ -297,6 +297,7 @@ class tf_network:
             return out
 
     def build_FCN3_1d(self, x):
+        act = tf_.soft_plus2
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
@@ -306,26 +307,37 @@ class tf_network:
                                             stride_size=2, biases=True, bias_scale=100.)
             conv1_im = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=2, biases=True, bias_scale=300.)
-            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
-            conv2 = tf_.circular_conv_1d_complex(conv1, inputShape[1]/2, self.alpha, self.alpha,
-                                                 'conv2_complex', stride_size=1, biases=True,
+            conv1 = act(tf.complex(conv1_re, conv1_im))
+            conv2 = tf_.circular_conv_1d_complex(conv1, inputShape[1]/2, self.alpha, self.alpha*2,
+                                                 'conv2_complex', stride_size=2, biases=True,
                                                  bias_scale=100.)
-            conv2 = tf_.soft_plus2(conv2)
-            conv3 = tf_.circular_conv_1d_complex(conv2, inputShape[1]/2, self.alpha, self.alpha,
+            conv2 = act(conv2)
+            conv3 = tf_.circular_conv_1d_complex(conv2, inputShape[1]/4, self.alpha*2, self.alpha*2,
                                                  'conv3_complex', stride_size=1, biases=True,
                                                  bias_scale=100.)
-            conv3 = tf_.soft_plus2(conv3)
+            conv3 = act(conv3)
 
+            ## Pooling
             pool4 = tf.reduce_sum(conv3, [1, 2], keep_dims=False)
             pool4 = tf.exp(pool4)
+            # out = tf.reshape(pool4, [-1, 1])
 
+            ## FC layer
+            # conv3 = tf.reduce_sum(conv3, [1], keep_dims=False)
+            # conv3 = tf.reshape(conv3, [-1, self.alpha*2])
+            # out = tf_.fc_layer(conv3, self.alpha*2, 1, 'out_complex',
+            #                    biases=True, dtype=tf.complex64)
+            # out = tf.reshape(tf.exp(out), [-1])
+
+            ## Conv bias
             conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
                                                 stride_size=2, bias_scale=100.)
             conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
                                                 stride_size=2, bias_scale=100.)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
                                       [1, 2], keep_dims=False)
-            out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
+            out = tf.reshape(tf.multiply(tf.exp(pool4), tf.exp(conv_bias)), [-1, 1])
+
             out = tf.real((out))
             return out
 

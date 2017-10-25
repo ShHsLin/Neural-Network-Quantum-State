@@ -943,7 +943,7 @@ if __name__ == "__main__":
     # N.moving_E_avg = E_avg * l
     N.VMC_observable(num_sample=num_sample)
 
-    for iteridx in range(1, 1000+1):
+    for iteridx in range(1, 2000+1):
         print(iteridx)
         '''
         print("Thermalizing ~~ ")

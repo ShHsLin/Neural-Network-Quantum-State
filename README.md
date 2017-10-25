@@ -31,7 +31,7 @@ python train_NQS.py --net [which_net] --l [L] --lr [learning_rate] --num_sample 
 L is the system size, which_net should be the network name.
 For example
 ```
-python train_NQS.py --net NN3 --l 20 --lr 1e-3 --num_sample 500
+python train_NQS.py --net sRBM --l 20 --num_sample 1000 --batch_size 200 --H AFH
 ```
 To see detailed of the input arguments, run
 ```
