@@ -273,9 +273,9 @@ class tf_network:
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
             # conv_layer1d(x, filter_size, in_channels, out_channels, name)
-            conv1_re = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
+            conv1_re = tf_.circular_conv_1d(x, inputShape[1]/2, inputShape[-1], self.alpha, 'conv1_re',
                                             stride_size=2, biases=True, bias_scale=100.)
-            conv1_im = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
+            conv1_im = tf_.circular_conv_1d(x, inputShape[1]/2, inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=2, biases=True, bias_scale=300.)
             conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
             conv2 = tf_.circular_conv_1d_complex(conv1, inputShape[1]/2, self.alpha, self.alpha,
@@ -283,16 +283,18 @@ class tf_network:
                                                  bias_scale=100.)
             conv2 = tf_.soft_plus2(conv2)
 
-            pool4 = tf.reduce_sum(conv2, [1, 2], keep_dims=False)
-            pool4 = tf.exp(pool4)
+            pool3 = tf.reduce_sum(conv2, [1, 2], keep_dims=False)
+            pool3 = tf.exp(pool3)
 
-            conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
-                                                stride_size=2, bias_scale=100.)
-            conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
-                                                stride_size=2, bias_scale=100.)
-            conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-                                      [1, 2], keep_dims=False)
-            out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
+            ## Conv Bias
+            # conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
+            #                                     stride_size=2, bias_scale=100.)
+            # conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
+            #                                     stride_size=2, bias_scale=100.)
+            # conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
+            #                           [1, 2], keep_dims=False)
+            # out = tf.reshape(tf.multiply(pool3, tf.exp(conv_bias)), [-1, 1])
+            out = tf.reshape(pool3, [-1, 1])
             out = tf.real((out))
             return out
 
@@ -336,7 +338,8 @@ class tf_network:
                                                 stride_size=2, bias_scale=100.)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
                                       [1, 2], keep_dims=False)
-            out = tf.reshape(tf.multiply(tf.exp(pool4), tf.exp(conv_bias)), [-1, 1])
+            conv_bias = tf.exp(conv_bias)
+            out = tf.reshape(tf.multiply(pool4, conv_bias), [-1, 1])
 
             out = tf.real((out))
             return out

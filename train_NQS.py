@@ -23,7 +23,7 @@ So easily to switch model
 
 
 class NQS_1d():
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1):
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
                                dtype=int)
         self.batch_size = batch_size
@@ -41,6 +41,7 @@ class NQS_1d():
         elif Hamiltonian == 'AFH':
             self.get_local_E_batch = self.local_E_AFH_batch
         elif Hamiltonian == 'J1J2':
+            self.J2 = J2
             self.get_local_E_batch = self.local_E_J1J2_batch
         else:
             raise NotImplementedError
@@ -472,7 +473,9 @@ class NQS_1d():
         localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J / oldAmp / 2
         return localE_arr
 
-    def local_E_J1J2_batch(self, config_arr, J1=1., J2=1.):
+    def local_E_J1J2_batch(self, config_arr):
+        J1 = 1.
+        J2 = self.J2
         '''
         Base on the fact that, in one-hot representation
         Sz Sz Interaction
@@ -534,7 +537,7 @@ class NQS_1d():
 
 
 class NQS_2d():
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1):
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None):
         '''
         config = [batch_size, Lx, Ly, local_dim]
         config represent the product state basis of the model
@@ -567,6 +570,7 @@ class NQS_2d():
             self.get_local_E_batch = self.local_E_AFH2d_batch
         elif Hamiltonian == 'J1J2':
             raise NotImplementedError
+            self.J2 = J2
             self.get_local_E_batch = self.local_E_J1J2_batch
         else:
             raise NotImplementedError
@@ -880,7 +884,7 @@ if __name__ == "__main__":
                  "NN_RBM": 2}
 
     args = parse_args()
-    (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
+    (L, which_net, lr, num_sample, J2) = (args.L, args.which_net, args.lr, args.num_sample, args.J2)
     if args.alpha != 0:
         alpha = args.alpha
     else:
@@ -896,9 +900,9 @@ if __name__ == "__main__":
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha)
     if dim == 1:
-        N = NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
+        N = NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2)
     else:
-        N = NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
+        N = NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2)
 
     print("Total num para: ", N.net_num_para)
     if N.net_num_para/5 < num_sample:
@@ -941,9 +945,8 @@ if __name__ == "__main__":
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
     GradW = None
     # N.moving_E_avg = E_avg * l
-    N.VMC_observable(num_sample=num_sample)
 
-    for iteridx in range(1, 2000+1):
+    for iteridx in range(1, 1000+1):
         print(iteridx)
         '''
         print("Thermalizing ~~ ")

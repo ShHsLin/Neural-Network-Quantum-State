@@ -35,6 +35,11 @@ def parse_args():
                         help='Dimension of the system. 1d: chain, 2d: square lattice.'
                         'Input should be integer. Default: 1',
                         default=1, type=int)
+    parser.add_argument('--J2', dest='J2',
+                        help='The J2/J1 value in J1J2 model'
+                        ' Default: 1.',
+                        default=1., type=float)
+
 
     if len(sys.argv) == 1:
         parser.print_help()
