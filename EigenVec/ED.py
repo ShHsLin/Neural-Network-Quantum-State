@@ -14,6 +14,16 @@ def gen_pair(row, V):
     '''
     return [(row[i], row[(i + 1) % len(row)], V) for i in xrange(len(row))]
 
+def gen_pair_2d_nnn(plaquette, V):
+    '''
+    assume the plaquette indices are given in cyclic order,
+    return two pair of the cross nnn term interaction.
+    For example: plaquette = [  1, 2,
+                                5, 6]
+    wiil gives[(1, 6, V), (2, 5, V)]
+    '''
+    return [(plaquette[0], plaquette[2], V), (plaquette[1], plaquette[3], V)]
+
 
 def build_H(pairs, L):
     Sx = np.array([[0., 1.],
@@ -72,7 +82,7 @@ def sz_expectation(site_i, vector):
     Sz = scipy.sparse.csr_matrix(hz)
     return vector.conjugate().dot(Sz.dot(vector))
 
-def solve_1d_J1J2(L, J1=1, J2=1):
+def solve_1d_J1J2(L, J1=1, J2=0.):
     lattice = np.arange(L, dtype=int) + 1
     print lattice
     pairs = []
@@ -94,7 +104,7 @@ def solve_1d_J1J2(L, J1=1, J2=1):
     return evals_small, evecs_small
 
 
-def solve_2d_AFH(Lx, Ly, J=1):
+def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
     lattice = np.zeros((Lx, Ly), dtype=int)
     for i in range(Lx):
         for j in range(Ly):
@@ -102,13 +112,24 @@ def solve_2d_AFH(Lx, Ly, J=1):
 
     print lattice
     pairs = []
+    # NN interaction : J1
     for i in range(Lx):
         print lattice[i, :]
-        pairs = pairs + gen_pair(lattice[i, :], J)
+        pairs = pairs + gen_pair(lattice[i, :], J1)
 
     for j in range(Ly):
         print lattice[:, j]
-        pairs = pairs + gen_pair(lattice[:, j], J)
+        pairs = pairs + gen_pair(lattice[:, j], J1)
+
+    # NNN interaction : J2
+    for i in range(Lx):
+        for j in range(Ly):
+            plaquette=[lattice[i,j]]
+            plaquette.append(lattice[(i+1)%Lx, j])
+            plaquette.append(lattice[(i+1)%Lx, (j+1)%Ly])
+            plaquette.append(lattice[i, (j+1)%Ly])
+            pairs = pairs + gen_pair_2d_nnn(plaquette, J2)
+
 
     print('all pairs', pairs)
     H = build_H(pairs, Lx*Ly)
@@ -126,12 +147,14 @@ if __name__ == "__main__":
         L, J1, J2 = int(L), float(J1), float(J2)
         print("python 1dJ1J2 L=%d J1=%f J2=%f" % (L, J1, J2) )
         evals_small, evecs_small = solve_1d_J1J2(L, J1, J2)
-    elif model == '2dAFH':
-        evals_small, evecs_small = solve_2d_AFH(4, 4)
+    elif model == '2dJ1J2':
+        Lx, Ly, J1, J2 = sys.argv[2:]
+        Lx, Ly, J1, J2 = int(Lx), int(Ly), float(J1), float(J2)
+        evals_small, evecs_small = solve_2d_J1J2(Lx, Ly, J1, J2)
     else:
         print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
         raise NotImplementedError
-
+'''
     for i in range(1,L+1):
         print sz_expectation(i, evecs_small[:,0])
 
@@ -152,6 +175,7 @@ if __name__ == "__main__":
         log_file = open('ES_L%d_J2_%d.csv' % (L, J2*10), 'w')
         np.savetxt(log_file, vec_r/np.linalg.norm(vec_r), '%.8e', delimiter=',')
         log_file.close()
+'''
 
 # plt.plot(np.real(evecs_small[:, 0]), label='real')
 # plt.plot(np.imag(evecs_small[:, 0]), label='imag')
