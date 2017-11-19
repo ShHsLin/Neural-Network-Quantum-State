@@ -567,11 +567,10 @@ class NQS_2d():
             raise NotImplementedError
             self.get_local_E_batch = self.local_E_Ising_batch
         elif Hamiltonian == 'AFH':
-            self.get_local_E_batch = self.local_E_AFH2d_batch
+            self.get_local_E_batch = self.local_E_2dAFH_batch
         elif Hamiltonian == 'J1J2':
-            raise NotImplementedError
             self.J2 = J2
-            self.get_local_E_batch = self.local_E_J1J2_batch
+            self.get_local_E_batch = self.local_E_2dJ1J2_batch
         else:
             raise NotImplementedError
 
@@ -804,7 +803,7 @@ class NQS_2d():
 
         return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
 
-    def local_E_AFH2d_batch(self, config_arr, J=1):
+    def local_E_2dAFH_batch(self, config_arr, J=1):
         '''
         Basic idea is due to the fact that
         Sz Sz Interaction
@@ -871,6 +870,140 @@ class NQS_2d():
         localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
         return localE_arr
 
+    def local_E_2dJ1J2_batch(self, config_arr):
+        J1 = 1.
+        J2 = self.J2
+        '''
+        Basic idea is due to the fact that
+        Sz Sz Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+        '''
+        num_config, Lx, Ly, local_dim = config_arr.shape
+        localE_arr = np.zeros((num_config))
+        oldAmp = self.eval_amp_array(config_arr)
+
+
+        ########################
+        # PBC : J1 S_ij dot S_(i+1)j
+        ########################
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        config_shift_copy[:, :-1, :, :] = config_arr[:, 1:, :, :]
+        config_shift_copy[:, -1, :, :] = config_arr[:, 0, :, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J1 / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] += 1
+                config_flip_arr[i, j, :, i, j, :] %= 2
+                config_flip_arr[i, j, :, (i+1) % L, j, :] += 1
+                config_flip_arr[i, j, :, (i+1) % L, j, :] %= 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                   Lx, Ly, local_dim))
+        flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(flip_Amp) * J1 / oldAmp / 2
+        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J1 / oldAmp / 2
+
+        ########################
+        # PBC : J1 S_ij dot S_i(j+1)
+        ########################
+        # config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        config_shift_copy[:, :, :-1, :] = config_arr[:, :, 1:, :]
+        config_shift_copy[:, :, -1, :] = config_arr[:, :, 0, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J1 / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] += 1
+                config_flip_arr[i, j, :, i, j, :] %= 2
+                config_flip_arr[i, j, :, i, (j+1) % L, :] += 1
+                config_flip_arr[i, j, :, i, (j+1) % L, :] %= 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                   Lx, Ly, local_dim))
+        flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J1 / oldAmp / 2
+
+        ########################
+        # PBC : J2 S_ij dot S_(i+1)(j+1)
+        ########################
+        # moving the origin config 1 down and 1 left
+        config_shift_copy[:, :-1, :-1, :] = config_arr[:, 1:, 1:, :]
+        config_shift_copy[:, :-1, -1, :] = config_arr[:, 1:, 0, :]
+        config_shift_copy[:, -1, :-1, :] = config_arr[:, 0, 1:, :]
+        config_shift_copy[:, -1, -1, :] = config_arr[:, 0, 0, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J2 / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] += 1
+                config_flip_arr[i, j, :, i, j, :] %= 2
+                config_flip_arr[i, j, :, (i+1) % L, (j+1) % L, :] += 1
+                config_flip_arr[i, j, :, (i+1) % L, (j+1) % L, :] %= 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                   Lx, Ly, local_dim))
+        flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J2 / oldAmp / 2
+
+        ########################
+        # PBC : J2 S_ij dot S_(i+1)(j-1)
+        ########################
+        # moving the origin config 1 up and 1 left
+        config_shift_copy[:, :-1, 1:, :] = config_arr[:, 1:, :-1, :]
+        config_shift_copy[:, -1, 1:, :] = config_arr[:, 0, :-1, :]
+        config_shift_copy[:, :-1, 0, :] = config_arr[:, 1:, -1, :]
+        config_shift_copy[:, -1, 0, :] = config_arr[:, 0, -1, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J2 / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] += 1
+                config_flip_arr[i, j, :, i, j, :] %= 2
+                config_flip_arr[i, j, :, (i+1) % L, (j-1+L) % L, :] += 1
+                config_flip_arr[i, j, :, (i+1) % L, (j-1+L) % L, :] %= 2
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                   Lx, Ly, local_dim))
+        flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(flip_Amp) * J / oldAmp / 2
+        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J2 / oldAmp / 2
+
+        return localE_arr
+
+
+
 ############################
 #  END OF DEFINITION NQS2d #
 ############################
@@ -901,8 +1034,11 @@ if __name__ == "__main__":
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha)
     if dim == 1:
         N = NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2)
-    else:
+    elif dim == 2:
         N = NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2)
+    else:
+        print("DIM error")
+        raise
 
     print("Total num para: ", N.net_num_para)
     if N.net_num_para/5 < num_sample:

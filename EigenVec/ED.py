@@ -135,7 +135,7 @@ def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
     H = build_H(pairs, Lx*Ly)
 
     evals_small, evecs_small = eigsh(H, 6, which='SA')
-    print evals_small / Lx / Ly / 4.
+    print('Energy : ', evals_small / Lx / Ly / 4.)
     return evals_small, evecs_small
 
 
