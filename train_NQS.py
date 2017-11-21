@@ -801,7 +801,7 @@ class NQS_2d():
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
-        return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
+        return Gj, Eavg / self.LxLy, Evar / self.LxLy / np.sqrt(num_sample)
 
     def local_E_2dAFH_batch(self, config_arr, J=1):
         '''

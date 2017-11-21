@@ -72,7 +72,7 @@ def spin_spin_correlation(site_i, site_j, L, vector):
     SzSz = scipy.sparse.csr_matrix(hz)
     return vector.conjugate().dot(SzSz.dot(vector))
 
-def sz_expectation(site_i, vector):
+def sz_expectation(site_i, vector, L):
     Sz = np.array([[1., 0.],
                    [0., -1.]])
 
@@ -138,6 +138,16 @@ def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
     print('Energy : ', evals_small / Lx / Ly / 4.)
     return evals_small, evecs_small
 
+def check_phase(vector):
+    '''
+    check the phase of one site translation
+    '''
+    new_vector = np.zeros_like(vector)
+    len_v = new_vector.size
+    new_vector[:len_v/2] = vector[::2]
+    new_vector[len_v/2:] = vector[1::2]
+    return new_vector.conjugate().dot(vector)
+
 
 if __name__ == "__main__":
     import sys
@@ -145,29 +155,35 @@ if __name__ == "__main__":
     if model == '1dJ1J2':
         L, J1, J2 = sys.argv[2:]
         L, J1, J2 = int(L), float(J1), float(J2)
+        N = L
         print("python 1dJ1J2 L=%d J1=%f J2=%f" % (L, J1, J2) )
         evals_small, evecs_small = solve_1d_J1J2(L, J1, J2)
     elif model == '2dJ1J2':
         Lx, Ly, J1, J2 = sys.argv[2:]
         Lx, Ly, J1, J2 = int(Lx), int(Ly), float(J1), float(J2)
+        N = Lx * Ly
         evals_small, evecs_small = solve_2d_J1J2(Lx, Ly, J1, J2)
     else:
         print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
         raise NotImplementedError
-'''
-    for i in range(1,L+1):
-        print sz_expectation(i, evecs_small[:,0])
+
+    print("check one site translation phase : {:.2f}".format(check_phase(evecs_small[:,0])))
+
+    for i in range(1,N+1):
+        print("Sz at i={0} , {1:.6f} ".format(i, sz_expectation(i, evecs_small[:,0], N)))
 
 
     SzSz=[1]
-    for i in range(2, L+1):
-        SzSz.append(spin_spin_correlation(1, i, L, evecs_small[:,0]))
+    for i in range(2, N+1):
+        SzSz.append(spin_spin_correlation(1, i, N, evecs_small[:,0]))
 
     SzSz = np.real(np.array(SzSz))
-    log_file = open('spin_spin_cor_L%d_J2_%d.csv' % (L, J2*10), 'w')
-    np.savetxt(log_file, SzSz/4., '%.4e', delimiter=',')
-    log_file.close()
+    print("SzSz: ", SzSz)
+#     log_file = open('spin_spin_cor_L%d_J2_%d.csv' % (L, J2*10), 'w')
+#     np.savetxt(log_file, SzSz/4., '%.4e', delimiter=',')
+#     log_file.close()
 
+'''
     vec_r = np.real(evecs_small[:,0])
     vec_i = np.imag(evecs_small[:,0])
     if np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)) < 1e-6:
