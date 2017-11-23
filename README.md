@@ -26,7 +26,7 @@ This work is inspired by the paper from,
 
 To run the variational monte carlo,
 ```
-python train_NQS.py --net [which_net] --l [L] --lr [learning_rate] --num_sample [num_monte_carlo_sampling]
+python train_NQS.py --net [which_net] --dim [dim] --l [L] --lr [learning_rate] --num_sample [num_monte_carlo_sampling]
 ```
 L is the system size, which_net should be the network name.
 For example
@@ -38,6 +38,7 @@ To see detailed of the input arguments, run
 python train_NQS.py --help
 ```
  
+
 To run the pretraining, one first need to provide the exact eigenstate in the EigenVec folder, (I will add python code in the future) 
 ```
 python pretrain.py --net [which_net] --l [L] 
