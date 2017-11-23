@@ -48,11 +48,11 @@ python pretrain.py --net [which_net] --l [L]
 ### Result
 
 #### 1d J1J2
-!["please let me know if the figures are not displayed on the website."](<img src="/Figures/1dvmc.pdf" width="630" height="300”>)
+![please let me know if the figures are not displayed on the website.](/Figures/1dvmc.pdf)
 In 1d the result does not seem to be good for having multiple layers, especially after the state is dimerized.
 
 #### 2d J1J2
-!["please let me know if the figures are not displayed on the website."](<img src="/Figures/2dvmc.pdf" width="630" height="300”>)
+![please let me know if the figures are not displayed on the website.](/Figures/2dvmc.pdf)
  In 2d the result seems to be good for FCN2.
 
 ###   Network Architecture
