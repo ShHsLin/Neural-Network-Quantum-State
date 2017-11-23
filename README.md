@@ -31,7 +31,7 @@ python train_NQS.py --net [which_net] --l [L] --lr [learning_rate] --num_sample 
 L is the system size, which_net should be the network name.
 For example
 ```
-python train_NQS.py --net sRBM --l 20 --num_sample 1000 --batch_size 200 --H AFH
+python train_NQS.py --net sRBM --dim 1 --l 20 --num_sample 1000 --batch_size 200 --H AFH
 ```
 To see detailed of the input arguments, run
 ```
@@ -44,9 +44,19 @@ python pretrain.py --net [which_net] --l [L]
 ```
 
 
+### Result
+
+#### 1d J1J2
+!["please let me know if the figures are not displayed on the website."](<img src="/Figures/1dvmc.pdf" width="630" height="300”>)
+In 1d the result does not seem to be good for having multiple layers, especially after the state is dimerized.
+
+#### 2d J1J2
+!["please let me know if the figures are not displayed on the website."](<img src="/Figures/2dvmc.pdf" width="630" height="300”>)
+ In 2d the result seems to be good for FCN2.
 
 ###   Network Architecture
 
+Relevent codes are in /network/tf_network.py   
 * **1-hidden layer NN version1(NN_v1)**   
 *input_layer -> affine -> tanh -> affine ->  output_layer*
 * **1-hidden layer NN version2(NN_v2)**   
@@ -111,23 +121,24 @@ NN_v2:  99.6%
 
 
 ### Benchmark
+
+ED:    
 L=10 AFH PBC: -4.515446e-01    
-L=16 AFH PBC: -4.463935e-01    
-L=40 AFH PBC: -4.4366e-01    
-2d 4x4 AFH PBC: -0.7017802
-   
-ED:   
+L=16 AFH PBC: -4.463935e-01       
 L=10 AFH OBC: -4.258035e-01   
-L=16 AFH OBC: -4.319836e-01    
+L=16 AFH OBC: -4.319836e-01     
+2d 4x4 AFH PBC: -0.7017802   
+
 DMRG bond-dim40:   
 L=40 AFH OBC: -4.3853682e-01   
+L=40 AFH PBC: -4.4366e-01    
    
 
 ### To do list
 
 - [x] Variational Monte Carlo (VMC) with NNQS
 - [x] Pretraining with eigenvector given.
-- [ ] Different NNQS
+- [x] Different NNQS
      - [x] 1-hidden layer NN
      - [x] 3-hidden layer NN
      - [x] 1 conv +  1-hidden layer NN
@@ -140,13 +151,11 @@ L=40 AFH OBC: -4.3853682e-01
 - [x] Test VMC Accuracy
      - [x] NNQS 1d AFH
      - [x] NNQS 2d AFH
-     - [ ] NNQS 1d J1J2
+     - [x] NNQS 1d J1J2
+     - [x] NNQS 2d J1J2
      - [ ] NNPQS 
 - [ ] Properties
      - [ ] Scaling behavior of the number of parameters 
      - [ ] Entanglement structure
      - [ ] transfer learning ( known WF or smaller system WF )
      
-
-
-
