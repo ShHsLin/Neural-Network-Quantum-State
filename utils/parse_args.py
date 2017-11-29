@@ -16,6 +16,11 @@ def parse_args():
     parser.add_argument('--lr', dest='lr',
                         help='learning rate. Default: 1e-3',
                         default=1e-3, type=float)
+    parser.add_argument('--num_iter', dest='num_iter',
+                        help='number of iteration for optimization. It is suggested'
+                        ' that the multiplication of learning rate and number of iteration'
+                        ' be around one, i.e. lr * num_iter = 1.  Default: 1000',
+                        default=3333, type=int)
     parser.add_argument('--num_sample', dest='num_sample',
                         help='Number of sampling in Monte Carlo process. Default: 500',
                         default=500, type=int)

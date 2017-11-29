@@ -352,7 +352,6 @@ def get_var(initial_value, var_name, dtype):
     assert var.get_shape() == initial_value.get_shape()
     return var
 
-
 def save_npy(self, sess, npy_path="./vgg19-save.npy"):
     assert isinstance(sess, tf.Session)
 
@@ -412,6 +411,36 @@ def bottleneck_residual(self, x, in_channel, out_channel, name,
         x = tf.nn.relu(x)
 
     return x
+
+def get_jastrow_var(n_body, dimension, name="", dtype=tf.float32):
+    '''
+    return a 2-body jastrow factor.
+    If n_body = 2: J(dim,dim)
+    '''
+    if n_body != 2:
+        raise NotImplementedError
+
+    j_factor_size = [dimension] * n_body
+    initial_value = tf.random_uniform(j_factor_size, minval=-.1, maxval=.1, dtype=dtype)
+    weights = get_var(initial_value, name + "weights", dtype=dtype)
+    weights_upper = tf.matrix_band_part(weights, 0, -1)
+    weights_symm = 0.5 * (weights_upper + tf.transpose(weights_upper))
+    return weights_symm
+
+def jastrow_2d_amp(config_array, Lx, Ly, local_d, name, sym=False):
+    with tf.variable_scope(name, reuse=None):
+        total_dim = Lx * Ly * local_d
+        # get symmetry weights matrix, (total_dim x total_dim )
+        weights_symm_re = get_jastrow_var(2, total_dim, name="real_", dtype=tf.float32)
+        weights_symm_im = get_jastrow_var(2, total_dim, name="imag_", dtype=tf.float32)
+
+        config_vector = tf.reshape(config_array, [-1, total_dim])
+        C2_array = tf.einsum('ij,ik->ijk', config_vector, config_vector)
+        C2_array = tf.multiply(tf.complex(C2_array, tf.zeros_like(C2_array)),
+                               tf.complex(weights_symm_re, weights_symm_im))
+        amp_array = tf.reduce_prod(C2_array, keep_dims=True)
+
+    return amp_array
 
 
 def jacobian(y, x):

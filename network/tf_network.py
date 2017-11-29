@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-import tf_wrapper as tf_
+from . import tf_wrapper as tf_
 
 
 class tf_network:
@@ -41,7 +41,7 @@ class tf_network:
         self.para_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='network')
         print("create variable")
         for i in self.para_list:
-            print i.name
+            print(i.name)
         # Define optimizer
         self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
                                               self.momentum)
@@ -534,6 +534,16 @@ class tf_network:
             return out
 
 
+    def build_Jastrow_2d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, :]
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # def jastrow_2d_amp(config_array, Lx, Ly, local_d, name, sym=False):
+            out = tf_.jastrow_2d_amp(x, inputShape[1], inputShape[2], inputShape[-1], 'jastrow')
+            out = tf.real((out))
+            return out
+
 
     def build_network_1d(self, which_net, x):
         if which_net == "NN":
@@ -574,5 +584,7 @@ class tf_network:
             return self.build_sRBM_2d(x)
         elif which_net == "FCN2":
             return self.build_FCN2_2d(x)
+        elif which_net == "Jastrow":
+            return self.build_Jastrow_2d(x)
         else:
             raise NotImplementedError

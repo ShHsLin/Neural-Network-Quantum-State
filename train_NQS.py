@@ -205,11 +205,11 @@ class NQS_1d():
                     configArray[i / corrlength - 1, :, :] = self.config[0, :, :]
 
         else:
-            for i in range(1, 1 + num_sample * corrlength / self.batch_size):
+            for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
                 self.new_config_batch()
                 bs = self.batch_size
                 if i % corrlength == 0:
-                    i_c = i/corrlength
+                    i_c = int(i/corrlength)
                     configArray[(i_c-1)*bs: i_c*bs, :, :] = self.config[:, :, :]
                 else:
                     pass
@@ -1023,7 +1023,8 @@ if __name__ == "__main__":
     else:
         alpha = alpha_map[which_net]
 
-    opt, batch_size, H, dim  = args.opt, args.batch_size, args.H, args.dim
+    opt, batch_size, H, dim, num_iter  = (args.opt, args.batch_size,
+                                          args.H, args.dim, args.num_iter)
     if dim == 1:
         systemSize = (L, 2)
     elif dim == 2:
@@ -1082,7 +1083,7 @@ if __name__ == "__main__":
     GradW = None
     # N.moving_E_avg = E_avg * l
 
-    for iteridx in range(1, 1000+1):
+    for iteridx in range(1, num_iter+1):
         print(iteridx)
         '''
         print("Thermalizing ~~ ")
