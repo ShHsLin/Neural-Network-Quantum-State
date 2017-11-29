@@ -12,7 +12,7 @@ def gen_pair(row, V):
     For example: row = [1, 2, 3, 5]
     will gives [(1, 2, V), (2, 3, V), (3, 5, V), (5, 1, V)]
     '''
-    return [(row[i], row[(i + 1) % len(row)], V) for i in xrange(len(row))]
+    return [(row[i], row[(i + 1) % len(row)], V) for i in range(len(row))]
 
 def gen_pair_2d_nnn(plaquette, V):
     '''
@@ -84,7 +84,7 @@ def sz_expectation(site_i, vector, L):
 
 def solve_1d_J1J2(L, J1=1, J2=0.):
     lattice = np.arange(L, dtype=int) + 1
-    print lattice
+    print(lattice)
     pairs = []
     J1 = J1
     for i in range(1, L + 1):
@@ -100,7 +100,7 @@ def solve_1d_J1J2(L, J1=1, J2=0.):
     H = build_H(pairs, L)
 
     evals_small, evecs_small = eigsh(H, 6, which='SA')
-    print evals_small / L / 4.
+    print(evals_small / L / 4.)
     return evals_small, evecs_small
 
 
@@ -110,15 +110,15 @@ def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
         for j in range(Ly):
             lattice[i, j] = int(j * Lx + (i+1))
 
-    print lattice
+    print(lattice)
     pairs = []
     # NN interaction : J1
     for i in range(Lx):
-        print lattice[i, :]
+        print(lattice[i, :])
         pairs = pairs + gen_pair(lattice[i, :], J1)
 
     for j in range(Ly):
-        print lattice[:, j]
+        print(lattice[:, j])
         pairs = pairs + gen_pair(lattice[:, j], J1)
 
     # NNN interaction : J2

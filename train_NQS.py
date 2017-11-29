@@ -696,11 +696,11 @@ class NQS_2d():
                     configArray[i / corrlength - 1] = self.config[0]
 
         else:
-            for i in range(1, 1 + num_sample * corrlength / self.batch_size):
+            for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
                 self.new_config_batch()
                 bs = self.batch_size
                 if i % corrlength == 0:
-                    i_c = i/corrlength
+                    i_c = int(i/corrlength)
                     configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
                 else:
                     pass
