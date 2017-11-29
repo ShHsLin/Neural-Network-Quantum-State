@@ -144,9 +144,26 @@ def check_phase(vector):
     '''
     new_vector = np.zeros_like(vector)
     len_v = new_vector.size
-    new_vector[:len_v/2] = vector[::2]
-    new_vector[len_v/2:] = vector[1::2]
+    new_vector[:int(len_v/2)] = vector[::2]
+    new_vector[int(len_v/2):] = vector[1::2]
     return new_vector.conjugate().dot(vector)
+
+
+def store_eig_vec(evals_small, evecs_small, filename):
+    idx_min = np.argmin(evals_small)
+    print("GS energy: %f" % evals_small[idx_min])
+    vec_r = np.real(evecs_small[:,idx_min])
+    vec_i = np.imag(evecs_small[:,idx_min])
+    if np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)) < 1e-6:
+        print("Eigen Vec can be casted as real")
+        log_file = open(filename, 'wb')
+        np.savetxt(log_file, vec_r/np.linalg.norm(vec_r), fmt='%.8e', delimiter=',')
+        log_file.close()
+    else:
+        print(np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)))
+        print("Complex Eigen Vec !!!")
+
+    return
 
 
 if __name__ == "__main__":
@@ -158,11 +175,15 @@ if __name__ == "__main__":
         N = L
         print("python 1dJ1J2 L=%d J1=%f J2=%f" % (L, J1, J2) )
         evals_small, evecs_small = solve_1d_J1J2(L, J1, J2)
+        eig_filename = 'EigVec/ES_%s_L%d_J2_%d.csv' % (model[:2], L, J2*10)
+        store_eig_vec(evals_small, evecs_small, eig_filename)
     elif model == '2dJ1J2':
         Lx, Ly, J1, J2 = sys.argv[2:]
         Lx, Ly, J1, J2 = int(Lx), int(Ly), float(J1), float(J2)
         N = Lx * Ly
         evals_small, evecs_small = solve_2d_J1J2(Lx, Ly, J1, J2)
+        eig_filename = 'EigVec/ES_%s_L%dx%d_J2_%d.csv' % (model[:2], Lx, Ly, J2*10)
+        store_eig_vec(evals_small, evecs_small, eig_filename)
     else:
         print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
         raise NotImplementedError
@@ -183,15 +204,7 @@ if __name__ == "__main__":
 #     np.savetxt(log_file, SzSz/4., '%.4e', delimiter=',')
 #     log_file.close()
 
-'''
-    vec_r = np.real(evecs_small[:,0])
-    vec_i = np.imag(evecs_small[:,0])
-    if np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)) < 1e-6:
-        print("Eigen Vec can be casted as real")
-        log_file = open('ES_L%d_J2_%d.csv' % (L, J2*10), 'w')
-        np.savetxt(log_file, vec_r/np.linalg.norm(vec_r), '%.8e', delimiter=',')
-        log_file.close()
-'''
+
 
 # plt.plot(np.real(evecs_small[:, 0]), label='real')
 # plt.plot(np.imag(evecs_small[:, 0]), label='imag')

@@ -7,8 +7,9 @@ The original motivation is to study the obtain the ground state of quantum many 
 
 ### Requirements
 
-  - python 2.7
-  - numpy, tensorflow
+  - python 2.7 or >= 3
+  - numpy, tensorflow 1.4
+  Note that with tensorflow <= 1.3, Jastrow wavefunction seems not to work properly.
 
 
 
@@ -147,6 +148,7 @@ L=40 AFH PBC: -4.4366e-01
      - [x] 1-hidden layer Complex NN
      - [x] 3-hidden layer Complex NN
      - [x] RBM Network
+     - [x] Jastrow wavefunction (2d)
 - [ ] Test Pretrain Accuracy
 - [ ] Neural Network Projected Quantum State (NNPQS)
 - [x] Test VMC Accuracy
