@@ -1,4 +1,4 @@
-
+from __future__ import absolute_import
 import os
 import tensorflow as tf
 import numpy as np
@@ -65,9 +65,9 @@ if __name__ == "__main__":
     # Y = Y_nz.reshape((len(Y_nz),1))
 
     # y for all Sz sector #
-    Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'.csv').reshape((2**L, 1))
+    Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(J2)+'.csv').reshape((2**L, 1))
     # Y = np.sign(Y)
-    print(X.shape, Y.shape)
+    print X.shape, Y.shape
 
     with Net.sess as sess:
 
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
         sess.run(tf.global_variables_initializer())
 
-        print(len(Net.model_var_list), len(Net.para_list))
+        print len(Net.model_var_list), len(Net.para_list)
         saver = tf.train.Saver(Net.model_var_list)
         ckpt_path = 'wavefunction/Pretrain/'+which_net+'/L'+str(L)
         if not os.path.exists(ckpt_path):
@@ -103,23 +103,23 @@ if __name__ == "__main__":
 
         #    sess.run(learning_rate.assign(0.1 * (0.8**(i/10000))))
         print("-------- Start training -------\n")
-        print(("Total num para: ", Net.getNumPara()))
+        print("Total num para: ", Net.getNumPara())
 
         p = (np.abs(Y)).flatten()
-        p = p + 100./batch_size
+        p = p + 0.1/batch_size
         p = p/sum(p)
 
         total_cos_accu = []
         batch_cos_accu = []
         # import pdb;pdb.set_trace()
 
-        for i in range(100000+1):
+        for i in xrange(100000+1):
             # batch_mask = np.random.choice(len(Y), batch_size)  # ,p=Y*Y)
             batch_mask = np.random.choice(len(Y), batch_size, p=p)
 
             if i % 5000 == 0:
                 y = sess.run(Net.pred, feed_dict={Net.x: X})
-                print(('y norm : ', np.linalg.norm(y)))
+                print('y norm : ', np.linalg.norm(y))
                 c = Y.flatten().dot(y.flatten())/np.linalg.norm(Y)/np.linalg.norm(y)
                 print(c)
                 total_cos_accu.append(c)
@@ -137,8 +137,8 @@ if __name__ == "__main__":
             batch_cos_accu.append(-c)
 
             if i % 500 == 0:
-                print(("step:", i, " cosine accuracy:", -c, "Y norm",
-                      np.linalg.norm(Y[batch_mask]), "y norm:", np.linalg.norm(y)))
+                print("step:", i, " cosine accuracy:", -c, "Y norm",
+                      np.linalg.norm(Y[batch_mask]), "y norm:", np.linalg.norm(y))
 # "dot:",
 # y.T.dot(Y[batch_mask])[0]/np.linalg.norm(Y[batch_mask])/np.linalg.norm(y))
                 saver.save(sess, ckpt_path + '/pre')

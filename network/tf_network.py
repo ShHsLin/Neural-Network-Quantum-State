@@ -390,16 +390,20 @@ class tf_network:
             fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
             fc1 = tf.complex(fc1_re, fc1_im)
-            fc2 = tf.cosh(fc1)
 
             v_bias_re = tf_.fc_layer(x, self.L, 1, 'v_bias_re')
             v_bias_im = tf_.fc_layer(x, self.L, 1, 'v_bias_im')
-            # log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
-            # log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
-            # out = tf.real(tf.exp(log_prob))
-            v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
-            out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
-            out = tf.real(out)
+
+            # !!! The implementation below fail for calculting gradient !!!
+            # !!! forward prediction is correct !!!
+            # fc2 = tf.cosh(fc1)
+            # v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
+            # out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
+            # out = tf.real(out)
+            fc2 = tf.log(tf.cosh(fc1))
+            log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+            log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
+            out = tf.real(tf.exp(log_prob))
 
         return out
 
@@ -503,14 +507,21 @@ class tf_network:
             fc1_re = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_im') * 100
             fc1 = tf.complex(fc1_re, fc1_im)
-            fc2 = tf.cosh(fc1)
             # fc2 = tf_.complex_relu(fc1)
 
+            # fc2 = tf.cosh(fc1)
+            # v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
+            # v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im') * 100
+            # v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
+            # out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
+            # out = tf.real(out)
+
+            fc2 = tf.log(tf.cosh(fc1))
             v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
-            v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im') * 100
-            v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
-            out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
-            out = tf.real(out)
+            v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im')
+            log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+            log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
+            out = tf.real(tf.exp(log_prob))
 
         return out
 
