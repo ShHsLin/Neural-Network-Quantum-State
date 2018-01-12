@@ -60,6 +60,16 @@ def build_H(pairs, L):
     H = scipy.sparse.csr_matrix(H)
     return H
 
+def build_Sx(L):
+    Sx = np.array([[0., 1.],
+                   [1., 0.]])
+    hx = scipy.sparse.csr_matrix(Sx)
+    for i in range(1,L):
+        print(i)
+        hx = scipy.sparse.kron(hx, Sx)
+
+    return hx
+
 def spin_spin_correlation(site_i, site_j, L, vector):
     Sz = np.array([[1., 0.],
                    [0., -1.]])
@@ -132,6 +142,7 @@ def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
 
 
     print('all pairs', pairs)
+    global H
     H = build_H(pairs, Lx*Ly)
 
     evals_small, evecs_small = eigsh(H, 6, which='SA')
@@ -154,14 +165,18 @@ def store_eig_vec(evals_small, evecs_small, filename):
     print("GS energy: %f" % evals_small[idx_min])
     vec_r = np.real(evecs_small[:,idx_min])
     vec_i = np.imag(evecs_small[:,idx_min])
-    if np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)) < 1e-6:
+    vec_r = vec_r / np.linalg.norm(vec_r)
+    vec_i = vec_i / np.linalg.norm(vec_i)
+    if np.abs(vec_r.dot(vec_i)) - 1. < 1e-6:
         print("Eigen Vec can be casted as real")
         log_file = open(filename, 'wb')
-        np.savetxt(log_file, vec_r/np.linalg.norm(vec_r), fmt='%.8e', delimiter=',')
+        np.savetxt(log_file, vec_r, fmt='%.8e', delimiter=',')
         log_file.close()
     else:
-        print(np.abs(vec_r.dot(vec_i) - np.linalg.norm(vec_r)*np.linalg.norm(vec_i)))
+        print(np.abs(vec_r.dot(vec_i)) - 1.)
         print("Complex Eigen Vec !!!")
+        print("The real part <E> : %f " %  vec_r.T.dot(H.dot(vec_r)) )
+        print("The imag part <E> : %f " %  vec_i.T.dot(H.dot(vec_i)) )
 
     return
 
@@ -189,6 +204,10 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     print("check one site translation phase : {:.2f}".format(check_phase(evecs_small[:,0])))
+
+    # sum_Sx = build_Sx(16)
+    # x=evecs_small[:,0]
+    # print("sum Sx expectation value : ", x.conjugate().dot(sum_Sx.dot(x)))
 
     for i in range(1,N+1):
         print("Sz at i={0} , {1:.6f} ".format(i, sz_expectation(i, evecs_small[:,0], N)))
