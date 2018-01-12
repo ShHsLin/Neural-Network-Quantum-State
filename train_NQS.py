@@ -1131,8 +1131,7 @@ if __name__ == "__main__":
 
     log_file = open('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
                     'a')
-    np.savetxt(log_file,
-               E_log, '%.4e', delimiter=',')
+    np.savetxt(log_file, E_log, '%.6e', delimiter=',')
     log_file.close()
     '''
     Task1

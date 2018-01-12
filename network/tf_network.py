@@ -383,6 +383,27 @@ class tf_network:
 
         return out
 
+    def build_RBM_cosh_1d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            # inputShape = x.get_shape().as_list()
+            x = x[:, :, 0]
+            fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
+            fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
+            fc1 = tf.complex(fc1_re, fc1_im)
+            fc2 = tf.cosh(fc1)
+
+            v_bias_re = tf_.fc_layer(x, self.L, 1, 'v_bias_re')
+            v_bias_im = tf_.fc_layer(x, self.L, 1, 'v_bias_im')
+            # log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+            # log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
+            # out = tf.real(tf.exp(log_prob))
+            v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
+            out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
+            out = tf.real(out)
+
+        return out
+
+
     def build_sRBM_1d(self, x):
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0:1]
@@ -458,7 +479,7 @@ class tf_network:
             inputShape = x.get_shape().as_list()
             b_size, Lx, Ly, _ = inputShape
             LxLy = Lx * Ly
-            x = tf.reshape(x[:, :, : 0], [-1, LxLy])
+            x = tf.reshape(x[:, :, :, 0], [-1, LxLy])
             fc1_re = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_im')
             fc1 = tf.complex(fc1_re, fc1_im)
@@ -470,6 +491,26 @@ class tf_network:
             log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
             out = tf.real(tf.exp(log_prob))
+
+        return out
+
+    def build_RBM_cosh_2d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            inputShape = x.get_shape().as_list()
+            b_size, Lx, Ly, _ = inputShape
+            LxLy = Lx * Ly
+            x = tf.reshape(x[:, :, :, 0], [-1, LxLy])
+            fc1_re = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_re')
+            fc1_im = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_im') * 100
+            fc1 = tf.complex(fc1_re, fc1_im)
+            fc2 = tf.cosh(fc1)
+            # fc2 = tf_.complex_relu(fc1)
+
+            v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
+            v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im') * 100
+            v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
+            out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
+            out = tf.real(out)
 
         return out
 
@@ -566,6 +607,8 @@ class tf_network:
             return self.build_NN3_complex(x)
         elif which_net == "RBM":
             return self.build_RBM_1d(x)
+        elif which_net == "RBM_cosh":
+            return self.build_RBM_cosh_1d(x)
         elif which_net == "sRBM":
             return self.build_sRBM_1d(x)
         elif which_net == "ResNet":
@@ -580,6 +623,8 @@ class tf_network:
             return self.build_NN3_2d(x)
         elif which_net == "RBM":
             return self.build_RBM_2d(x)
+        elif which_net == "RBM_cosh":
+            return self.build_RBM_cosh_2d(x)
         elif which_net == "sRBM":
             return self.build_sRBM_2d(x)
         elif which_net == "FCN2":
