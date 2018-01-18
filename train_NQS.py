@@ -1,6 +1,4 @@
-from __future__ import absolute_import
-from __future__ import print_function
-
+from memory_profiler import profile
 import os
 import time
 import scipy.sparse.linalg
@@ -117,12 +115,12 @@ class NQS_1d():
         # Restricted to Sz = 0 sectors ##
         randsite1 = np.random.randint(L, size=(batch_size,))
         randsite2 = np.random.randint(L, size=(batch_size,))
-        mask = (self.config[range(batch_size), randsite1, 0] +
-                self.config[range(batch_size), randsite2, 0]) == 1
+        mask = (self.config[np.arange(batch_size), randsite1, 0] +
+                self.config[np.arange(batch_size), randsite2, 0]) == 1
 
         flip_config = self.config.copy()
-        flip_config[range(batch_size), randsite1, :] = (flip_config[range(batch_size), randsite1, :] + 1) % 2
-        flip_config[range(batch_size), randsite2, :] = (flip_config[range(batch_size), randsite2, :] + 1) % 2
+        flip_config[np.arange(batch_size), randsite1, :] = (flip_config[np.arange(batch_size), randsite1, :] + 1) % 2
+        flip_config[np.arange(batch_size), randsite2, :] = (flip_config[np.arange(batch_size), randsite2, :] + 1) % 2
 
         ratio = np.power(np.divide(self.eval_amp_array(flip_config), old_amp),  2)
         mask2 = np.random.random_sample((batch_size,)) < ratio
@@ -229,6 +227,19 @@ class NQS_1d():
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
 
+
+        Eavg = np.average(Earray)
+        Evar = np.var(Earray)
+        print(self.get_self_amp_batch()[:5])
+        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
+        Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+        Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+        print("norm(G): ", np.linalg.norm(Gj))
+        return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
+
+
         for i in range(num_sample):
             GList = self.NNet.backProp(configArray[i:i+1])
             Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
@@ -256,12 +267,6 @@ class NQS_1d():
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
         start_c, start_t = time.clock(), time.time()
-
-        Eavg = np.average(Earray)
-        Evar = np.var(Earray)
-        # print(self.getSelfAmp())
-        print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
 
         #####################################
         #  Fj = 2<O_iH>-2<H><O_i>
@@ -314,6 +319,7 @@ class NQS_1d():
 
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
+        import pdb;pdb.set_trace()
 
         return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
 
@@ -659,14 +665,14 @@ class NQS_2d():
         randsite1_y = np.random.randint(self.Ly, size=(batch_size,))
         randsite2_x = np.random.randint(self.Lx, size=(batch_size,))
         randsite2_y = np.random.randint(self.Ly, size=(batch_size,))
-        mask = (self.config[range(batch_size), randsite1_x, randsite1_y, 0] +
-                self.config[range(batch_size), randsite2_x, randsite2_y, 0]) == 1
+        mask = (self.config[np.arange(batch_size), randsite1_x, randsite1_y, 0] +
+                self.config[np.arange(batch_size), randsite2_x, randsite2_y, 0]) == 1
 
         flip_config = self.config.copy()
-        flip_config[range(batch_size), randsite1_x, randsite1_y, :] += 1
-        flip_config[range(batch_size), randsite1_x, randsite1_y, :] %= 2
-        flip_config[range(batch_size), randsite2_x, randsite2_y, :] += 1
-        flip_config[range(batch_size), randsite2_x, randsite2_y, :] %= 2
+        flip_config[np.arange(batch_size), randsite1_x, randsite1_y, :] += 1
+        flip_config[np.arange(batch_size), randsite1_x, randsite1_y, :] %= 2
+        flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :] += 1
+        flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :] %= 2
 
         ratio = np.power(np.divide(self.eval_amp_array(flip_config), old_amp),  2)
         mask2 = np.random.random_sample((batch_size,)) < ratio
@@ -835,6 +841,7 @@ class NQS_2d():
                 config_flip_arr[i, j, :, (i+1) % L, j, :] += 1
                 config_flip_arr[i, j, :, (i+1) % L, j, :] %= 2
 
+        import pdb;pdb.set_trace()
         flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
                                                                    Lx, Ly, local_dim))
         flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))

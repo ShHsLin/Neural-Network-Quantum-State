@@ -46,8 +46,14 @@ class tf_network:
         self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
                                               self.momentum)
 
-        # Define Gradient, loss = log(wave function)
-        self.grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
+        # (1.)
+        # Define Log Gradient, loss = log(wave function)
+        self.log_grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
+        # (2.)
+        # Define Energy Gradient, loss = E(wave function)
+        self.E_loc = tf.placeholder(tf.float32, [None, 1])
+        # self.E_grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
+
         # Pseudo Code for batch Gradient
         # examples = tf.split(self.x)
         # weight_copies = [tf.identity(self.para_list) for x in examples]
@@ -57,7 +63,7 @@ class tf_network:
 
         # Do some operation on grads
         # Get the new gradient from outside by placeholder
-        self.newgrads = [tf.placeholder(tf.float32, g.get_shape()) for g in self.grads]
+        self.newgrads = [tf.placeholder(tf.float32, g.get_shape()) for g in self.log_grads]
         self.train_op = self.optimizer.apply_gradients(zip(self.newgrads,
                                                            self.para_list))
 
@@ -70,7 +76,22 @@ class tf_network:
         return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def backProp(self, X0):
-        return self.sess.run(self.grads, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
+
+    def vanilla_back_prop(self, X0, E_loc_array):
+        E_vec = (self.E_loc - tf.reduce_mean(self.E_loc))
+        log_psi = tf.log(self.pred)
+        # Implementation below fail for unknown reason
+        # Not sure whether it is bug from tensorflow or not.
+        # 
+        # E = tf.reduce_sum(tf.multiply(E_vec, log_psi))
+        # E = (tf.multiply(E_vec, log_psi))
+        # return self.sess.run(tf.gradients(E, self.para_list),
+
+        # because grad_ys has to have the same shape as ys
+        # we need to reshape E_loc_array as [None, 1]
+        return self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
+                             feed_dict={self.x: X0, self.E_loc: E_loc_array.reshape([-1, 1])})
 
     def getNumPara(self):
         for i in self.para_list:

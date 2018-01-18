@@ -11,8 +11,8 @@ def parse_args():
                         help='system size. Default: 10',
                         default=10, type=int)
     parser.add_argument('--net', dest='which_net',
-                        help='Name of the Neural Network. Default: NN',
-                        default='NN', type=str)
+                        help='Name of the Neural Network. Default: sRBM',
+                        default='sRBM', type=str)
     parser.add_argument('--lr', dest='lr',
                         help='learning rate. Default: 1e-3',
                         default=1e-3, type=float)
@@ -22,11 +22,11 @@ def parse_args():
                         ' be around one, i.e. lr * num_iter = 1.  Default: 1500',
                         default=1500, type=int)
     parser.add_argument('--num_sample', dest='num_sample',
-                        help='Number of sampling in Monte Carlo process. Default: 500',
-                        default=500, type=int)
+                        help='Number of sampling in Monte Carlo process. Default: 5000',
+                        default=5000, type=int)
     parser.add_argument('--batch_size', dest='batch_size',
-                        help='Batch size in Network pretraining. Default: 100',
-                        default=100, type=int)
+                        help='Batch size in Network pretraining. Default: 500',
+                        default=500, type=int)
     parser.add_argument('--alpha', dest='alpha',
                         help='controll parameter for model complexity. Default: 4',
                         default=4, type=int)
@@ -47,8 +47,9 @@ def parse_args():
 
 
     if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(1)
+        pass
+        # parser.print_help()
+        # sys.exit(1)
 
     args = parser.parse_args()
     return args
