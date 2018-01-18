@@ -181,7 +181,7 @@ class NQS_1d():
         print("monte carlo time ( spin-spin-correlation ): ", end_c - start_c, end_t - start_t)
         return SzSz
 
-    def VMC(self, num_sample, iteridx=0, Gj=None, explicit_SR=False):
+    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
         L = self.config.shape[1]
         numPara = self.net_num_para
         OOsum = np.zeros((numPara, numPara))
@@ -227,18 +227,19 @@ class NQS_1d():
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
 
-
-        Eavg = np.average(Earray)
-        Evar = np.var(Earray)
-        print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
-        Glist = self.NNet.vanilla_back_prop(configArray, Earray)
-        Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-        print("norm(G): ", np.linalg.norm(Gj))
-        return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
-
+        if not SR:
+            Eavg = np.average(Earray)
+            Evar = np.var(Earray)
+            print(self.get_self_amp_batch()[:5])
+            print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
+            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
+            end_c, end_t = time.clock(), time.time()
+            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+            print("norm(G): ", np.linalg.norm(Gj))
+            return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
+        else:
+            pass
 
         for i in range(num_sample):
             GList = self.NNet.backProp(configArray[i:i+1])
@@ -264,9 +265,15 @@ class NQS_1d():
         else:
             OOsum = Oarray.dot(Oarray.T)
 
+
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
         start_c, start_t = time.clock(), time.time()
+
+        Eavg = np.average(Earray)
+        Evar = np.var(Earray)
+        print(self.get_self_amp_batch()[:5])
+        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))
 
         #####################################
         #  Fj = 2<O_iH>-2<H><O_i>
@@ -319,7 +326,6 @@ class NQS_1d():
 
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
-        import pdb;pdb.set_trace()
 
         return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
 
@@ -681,7 +687,7 @@ class NQS_2d():
         self.config[final_mask] = flip_config[final_mask]
         return
 
-    def VMC(self, num_sample, iteridx=0, Gj=None, explicit_SR=False):
+    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
         numPara = self.net_num_para
         OOsum = np.zeros((numPara, numPara))
         Osum = np.zeros((numPara))
@@ -720,6 +726,20 @@ class NQS_2d():
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
+
+        if not SR:
+            Eavg = np.average(Earray)
+            Evar = np.var(Earray)
+            print(self.get_self_amp_batch()[:5])
+            print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / self.LxLy / np.sqrt(num_sample))
+            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
+            end_c, end_t = time.clock(), time.time()
+            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+            print("norm(G): ", np.linalg.norm(Gj))
+            return Gj, Eavg / self.LxLy, Evar / self.LxLy / np.sqrt(num_sample)
+        else:
+            pass
 
         for i in range(num_sample):
             GList = self.NNet.backProp(configArray[i:i+1])
@@ -841,7 +861,6 @@ class NQS_2d():
                 config_flip_arr[i, j, :, (i+1) % L, j, :] += 1
                 config_flip_arr[i, j, :, (i+1) % L, j, :] %= 2
 
-        import pdb;pdb.set_trace()
         flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
                                                                    Lx, Ly, local_dim))
         flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
@@ -1024,7 +1043,7 @@ if __name__ == "__main__":
                  "NN_RBM": 2}
 
     args = parse_args()
-    (L, which_net, lr, num_sample, J2) = (args.L, args.which_net, args.lr, args.num_sample, args.J2)
+    (L, which_net, lr, num_sample, J2, SR) = (args.L, args.which_net, args.lr, args.num_sample, args.J2, bool(args.SR))
     if args.alpha != 0:
         alpha = args.alpha
     else:
@@ -1049,12 +1068,16 @@ if __name__ == "__main__":
         raise
 
     print("Total num para: ", N.net_num_para)
-    if N.net_num_para/5 < num_sample:
-        print("forming Sij explicitly")
-        explicit_SR = True
+    if SR:
+        print("Using Stochastic Reconfiguration")
+        if N.net_num_para/5 < num_sample:
+            print("forming Sij explicitly")
+            explicit_SR = True
+        else:
+            print("DO NOT FORM Sij explicity")
+            explicit_SR = False
     else:
-        print("DO NOT FORM Sij explicity")
-        explicit_SR = False
+        print("Using plain gradient descent")
 
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
@@ -1114,7 +1137,7 @@ if __name__ == "__main__":
         # num_sample = 500 + iteridx/10
 
         GradW, E, E_var = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                                Gj=GradW, explicit_SR=explicit_SR)
+                                SR=SR, Gj=GradW, explicit_SR=explicit_SR)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
         if np.linalg.norm(GradW) > 1000:
             GradW = GradW/np.linalg.norm(GradW)
@@ -1136,10 +1159,17 @@ if __name__ == "__main__":
         if iteridx % 50 == 0:
             saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
 
-    log_file = open('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
-                    'a')
-    np.savetxt(log_file, E_log, '%.6e', delimiter=',')
-    log_file.close()
+    if SR:
+        log_file = open('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
+                        'a')
+        np.savetxt(log_file, E_log, '%.6e', delimiter=',')
+        log_file.close()
+    else:
+        log_file = open('L%d_%s_a%s_%s%.e_S%d_noSR.csv' % (L, which_net, alpha, opt, lr, num_sample),
+                        'a')
+        np.savetxt(log_file, E_log, '%.6e', delimiter=',')
+        log_file.close()
+
     '''
     Task1
     Write down again the Probability assumption

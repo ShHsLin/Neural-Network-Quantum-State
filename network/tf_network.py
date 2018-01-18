@@ -90,6 +90,11 @@ class tf_network:
 
         # because grad_ys has to have the same shape as ys
         # we need to reshape E_loc_array as [None, 1]
+        '''
+        1. returning list of numpy array
+        2.  should add an upper bound for batch gradient.
+            otherwise, it would often lead to memory issue
+        '''
         return self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
                              feed_dict={self.x: X0, self.E_loc: E_loc_array.reshape([-1, 1])})
 

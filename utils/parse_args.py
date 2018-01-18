@@ -44,6 +44,11 @@ def parse_args():
                         help='The J2/J1 value in J1J2 model'
                         ' Default: 1.',
                         default=1., type=float)
+    parser.add_argument('--SR', dest='SR',
+                        help='Using Stochastic Reconfiguration (SR) method or not.'
+                        ' Giving True(1) or False(0). Default: 1.',
+                        default=1., type=int)
+
 
 
     if len(sys.argv) == 1:
