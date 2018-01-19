@@ -122,8 +122,10 @@ class NQS_1d():
         flip_config[np.arange(batch_size), randsite1, :] = (flip_config[np.arange(batch_size), randsite1, :] + 1) % 2
         flip_config[np.arange(batch_size), randsite2, :] = (flip_config[np.arange(batch_size), randsite2, :] + 1) % 2
 
-        ratio = np.power(np.divide(self.eval_amp_array(flip_config), old_amp),  2)
-        mask2 = np.random.random_sample((batch_size,)) < ratio
+        ratio = np.divide(np.abs(self.eval_amp_array(flip_config))+1e-45, np.abs(old_amp)+1e-45 )
+        ratio_square = np.power(ratio,  2)
+        mask2 = np.random.random_sample((batch_size,)) < ratio_square
+
         final_mask = np.logical_and(mask, mask2)
         # update self.config
         # import pdb;pdb.set_trace()
@@ -680,8 +682,9 @@ class NQS_2d():
         flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :] += 1
         flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :] %= 2
 
-        ratio = np.power(np.divide(self.eval_amp_array(flip_config), old_amp),  2)
-        mask2 = np.random.random_sample((batch_size,)) < ratio
+        ratio = np.divide(np.abs(self.eval_amp_array(flip_config))+1e-45, np.abs(old_amp)+1e-45 )
+        ratio_square = np.power(ratio,  2)
+        mask2 = np.random.random_sample((batch_size,)) < ratio_square
         final_mask = np.logical_and(mask, mask2)
         # update self.config
         self.config[final_mask] = flip_config[final_mask]
@@ -1091,6 +1094,7 @@ if __name__ == "__main__":
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
         print("Restore from last check point")
+        # print(N.NNet.sess.run(N.NNet.para_list))
     else:
         print("No checkpoint found")
 
