@@ -28,6 +28,9 @@ class NQS_1d():
         self.inputShape = inputShape
         self.init_config(sz0_sector=True)
         self.corrlength = 50
+        self.max_batch_size = 5000
+        if self.batch_size > self.max_batch_size:
+            print("batch_size > max_batch_size, memory error may occur")
 
         self.NNet = Net
         self.net_num_para = self.NNet.getNumPara()
@@ -68,7 +71,18 @@ class NQS_1d():
         return self.NNet.forwardPass(self.config).flatten()
 
     def eval_amp_array(self, configArray):
-        return self.NNet.forwardPass(configArray).flatten()
+        # (batch_size, inputShape[0], inputShape[1])
+        array_shape = configArray.shape
+        max_size = self.max_batch_size
+        if array_shape[0] <= max_size:
+            return self.NNet.forwardPass(configArray).flatten()
+        else:
+            amp_array = np.empty((array_shape[0], ), dtype=np.float64)
+            for idx in range(array_shape[0] // max_size):
+                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+
+            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            return amp_array
 
     def new_config(self):
         L = self.config.shape[1]
@@ -228,7 +242,6 @@ class NQS_1d():
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
-
         if not SR:
             Eavg = np.average(Earray)
             Evar = np.var(Earray)
@@ -571,6 +584,9 @@ class NQS_2d():
 
         self.init_config(sz0_sector=True)
         self.corrlength = 50
+        self.max_batch_size = 5000
+        if self.batch_size > self.max_batch_size:
+            print("batch_size > max_batch_size, memory error may occur")
 
         self.NNet = Net
         self.net_num_para = self.NNet.getNumPara()
@@ -612,7 +628,18 @@ class NQS_2d():
         return self.NNet.forwardPass(self.config).flatten()
 
     def eval_amp_array(self, configArray):
-        return self.NNet.forwardPass(configArray).flatten()
+        # (batch_size, inputShape[0], inputShape[1], inputShape[2])
+        array_shape = configArray.shape
+        max_size = self.max_batch_size
+        if array_shape[0] <= max_size:
+            return self.NNet.forwardPass(configArray).flatten()
+        else:
+            amp_array = np.empty((array_shape[0], ), dtype=np.float64)
+            for idx in range(array_shape[0] // max_size):
+                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+
+            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            return amp_array
 
     def new_config(self):
         '''
@@ -1080,6 +1107,7 @@ if __name__ == "__main__":
             print("DO NOT FORM Sij explicity")
             explicit_SR = False
     else:
+        explicit_SR = None
         print("Using plain gradient descent")
 
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
@@ -1102,7 +1130,7 @@ if __name__ == "__main__":
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
     if batch_size > 1:
-        for i in range(1000):
+        for i in range(3000):
             N.new_config_batch()
     else:
         for i in range(1000):
