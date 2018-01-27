@@ -558,11 +558,14 @@ class tf_network:
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
             conv1_re = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=2, biases=True, bias_scale=100., FFT=False)
+                                            stride_size=2, biases=True, bias_scale=1, FFT=False)
+                                            # stride_size=2, biases=True, bias_scale=3000.*2/64/self.alpha, FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=2, biases=True, bias_scale=300., FFT=False)
+                                            stride_size=2, biases=True, bias_scale=1, FFT=False)
+                                            # stride_size=2, biases=True, bias_scale=3140.*2/64/self.alpha, FFT=False)
 
             conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
             pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
             pool4 = tf.exp(pool4)
 
@@ -570,9 +573,9 @@ class tf_network:
             # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
 
             conv_bias_re = tf_.circular_conv_2d(x, 2, inputShape[-1], 1, 'conv_bias_re',
-                                                stride_size=2, bias_scale=100., FFT=False)
+                                                stride_size=2, bias_scale=1., FFT=False)
             conv_bias_im = tf_.circular_conv_2d(x, 2, inputShape[-1], 1, 'conv_bias_im',
-                                                stride_size=2, bias_scale=100., FFT=False)
+                                                stride_size=2, bias_scale=1., FFT=False)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
                                       [1, 2, 3], keep_dims=False)
             out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
@@ -586,17 +589,17 @@ class tf_network:
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
             conv1_re = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=1, biases=True, bias_scale=100., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=1, biases=True, bias_scale=300., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
             conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1], self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
-                                                 bias_scale=100.)
+                                                 bias_scale=1.)
             conv2 = tf_.soft_plus2(conv2)
 
-            pool3 = tf.reduce_sum(conv2, [1, 2, 3], keep_dims=False)
+            pool3 = tf.reduce_mean(conv2, [1, 2, 3], keep_dims=False)
             pool3 = tf.exp(pool3)
 
             ## Conv Bias
