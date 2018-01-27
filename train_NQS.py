@@ -221,8 +221,8 @@ class NQS_1d():
         else:
             for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
                 self.new_config_batch()
-                bs = self.batch_size
                 if i % corrlength == 0:
+                    bs = self.batch_size
                     i_c = int(i/corrlength)
                     configArray[(i_c-1)*bs: i_c*bs, :, :] = self.config[:, :, :]
                 else:
@@ -639,6 +639,7 @@ class NQS_2d():
                 amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
             amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            # import pdb;pdb.set_trace()
             return amp_array
 
     def new_config(self):
@@ -700,6 +701,12 @@ class NQS_2d():
         randsite1_y = np.random.randint(self.Ly, size=(batch_size,))
         randsite2_x = np.random.randint(self.Lx, size=(batch_size,))
         randsite2_y = np.random.randint(self.Ly, size=(batch_size,))
+        # rand_direct = np.random.randint(4, size=(batch_size,))
+        # rand_dx = (rand_direct // 2 - 0.5) * 2
+        # rand_dy = (rand_direct % 2 - 0.5) * 2
+        # randsite2_x = np.array( (randsite1_x + self.Lx + rand_dx) % self.Lx, dtype=np.int32)
+        # randsite2_y = np.array( (randsite1_y + self.Ly + rand_dy) % self.Ly, dtype=np.int32)
+
         mask = (self.config[np.arange(batch_size), randsite1_x, randsite1_y, 0] +
                 self.config[np.arange(batch_size), randsite2_x, randsite2_y, 0]) == 1
 
@@ -1130,7 +1137,7 @@ if __name__ == "__main__":
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
     if batch_size > 1:
-        for i in range(3000):
+        for i in range(1000):
             N.new_config_batch()
     else:
         for i in range(1000):
