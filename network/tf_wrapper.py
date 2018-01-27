@@ -32,20 +32,22 @@ def soft_plus2(x):
     return tf.log(tf.add(tf.ones_like(x), tf.exp(x))/2.)
 
 
-# def complex_relu(x):
-#     re = tf.real(x)
-#     im = tf.imag(x)
-#     mask = tf.cast(tf.greater(re, tf.zeros_like(re)), tf.float32)
-#     re = re * mask
-#     im = im * mask  # if re>0; im*1; else: im*0
-#     return tf.complex(re, im)
+def complex_relu(x):
+    re = tf.real(x)
+    # im = tf.imag(x)
+    return tf.where(tf.greater(re, tf.zeros_like(re)), x, tf.complex(tf.nn.elu(re),
+                                                                     tf.zeros_like(re)))
+    # mask = tf.cast(tf.greater(re, tf.zeros_like(re)), tf.float32)
+    # re = re * mask
+    # im = im * mask  # if re>0; im*1; else: im*0
+    # return tf.complex(re, im)
 
 def complex_elu(x):
     return tf.complex(tf.nn.elu(tf.real(x)), tf.imag(x))
 
 
-def complex_relu(x):
-    return tf.complex(tf.nn.relu(tf.real(x)), tf.imag(x))
+# def complex_relu(x):
+#     return tf.complex(tf.nn.relu(tf.real(x)), tf.imag(x))
 
 
 def complex_relu_m1(x):
@@ -312,7 +314,8 @@ def get_conv_var2d(filter_size, in_channels, out_channels, name="",
 
     # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.01)
     initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0,
-                                        np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
+                                        np.sqrt(1. / (filter_size * filter_size * in_channels )))
+                                        # np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
     filters = get_var(initial_value, name + "weights", dtype=dtype)
 
     if not biases:
