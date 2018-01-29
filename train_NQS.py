@@ -67,6 +67,7 @@ if __name__ == "__main__":
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
         print("Restore from last check point")
+        # import pdb;pdb.set_trace()
         # print(N.NNet.sess.run(N.NNet.para_list))
     else:
         print("No checkpoint found")
