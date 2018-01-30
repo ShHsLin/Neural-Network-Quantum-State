@@ -135,7 +135,12 @@ if __name__ == "__main__":
         N.NNet.applyGrad(grad_list)
         # To save object ##
         if iteridx % 50 == 0:
-            saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
+            if np.isnan(E_log[-1]):
+                break
+            else:
+                saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
+        else:
+            pass
 
     if SR:
         log_file = open('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
