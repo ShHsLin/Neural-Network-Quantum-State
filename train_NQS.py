@@ -18,7 +18,11 @@ if __name__ == "__main__":
                  "NN_RBM": 2}
 
     args = parse_args()
-    (L, which_net, lr, num_sample, J2, SR) = (args.L, args.which_net, args.lr, args.num_sample, args.J2, bool(args.SR))
+    (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
+    (J2, SR, reg, path) = (args.J2, bool(args.SR), args.reg, args.path)
+    if len(path)>0 and path[-1] != '/':
+        path = path + '/'
+
     if args.alpha != 0:
         alpha = args.alpha
     else:
@@ -59,24 +63,24 @@ if __name__ == "__main__":
     var_list = tf.global_variables()
     saver = tf.train.Saver(N.NNet.model_var_list)
 
-    ckpt_path = 'wavefunction/vmc%dd/%s/L%da%d/' % (dim, which_net, L, alpha)
+    ckpt_path = path + 'wavefunction/vmc%dd/%s/L%da%d/' % (dim, which_net, L, alpha)
     if not os.path.exists(ckpt_path):
         os.makedirs(ckpt_path)
     ckpt = tf.train.get_checkpoint_state(ckpt_path)
 
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
-        print("Restore from last check point")
+        print("Restore from last check point, stored at %s" % ckpt_path)
         # import pdb;pdb.set_trace()
         # print(N.NNet.sess.run(N.NNet.para_list))
     else:
-        print("No checkpoint found")
+        print("No checkpoint found, at %s " %ckpt_path)
 
     # Thermalization
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
     if batch_size > 1:
-        for i in range(1000):
+        for i in range(2000):
             N.new_config_batch()
     else:
         for i in range(1000):
@@ -130,25 +134,29 @@ if __name__ == "__main__":
 
         #  L2 Regularization ###
         # for idx, W in enumerate(N.NNet.sess.run(N.NNet.para_list)):
-        #     grad_list[idx] += W * 0.001
+        #     grad_list[idx] += W * reg
 
         N.NNet.applyGrad(grad_list)
         # To save object ##
         if iteridx % 50 == 0:
             if np.isnan(E_log[-1]):
+                print("nan in Energy, stop!")
                 break
             else:
+                print(" Wavefunction saved ~ ")
                 saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
         else:
             pass
 
     if SR:
-        log_file = open('L%d_%s_a%s_%s%.e_S%d.csv' % (L, which_net, alpha, opt, lr, num_sample),
+        log_file = open(path + 'L%d_%s_a%s_%s%.e_S%d.csv' %
+                        (L, which_net, alpha, opt, lr, num_sample),
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()
     else:
-        log_file = open('L%d_%s_a%s_%s%.e_S%d_noSR.csv' % (L, which_net, alpha, opt, lr, num_sample),
+        log_file = open(path + 'L%d_%s_a%s_%s%.e_S%d_noSR.csv' %
+                        (L, which_net, alpha, opt, lr, num_sample),
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()

@@ -48,6 +48,16 @@ def parse_args():
                         help='Using Stochastic Reconfiguration (SR) method or not.'
                         ' Giving True(1) or False(0). Default: 1.',
                         default=1., type=int)
+    parser.add_argument('--reg', dest='reg',
+                        help='Scaling factor for fixed scale weight decay for regularization'
+                        ', s.t. gradient +=  scale * W.  Default: 0.',
+                        default=0., type=float)
+    parser.add_argument('--path', dest='path',
+                        help='path to the directory where wavefunction and E_log are saved. '
+                        'Default: \'\'',
+                        default='', type=str)
+
+
 
 
 

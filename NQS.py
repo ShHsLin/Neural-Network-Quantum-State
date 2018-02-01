@@ -697,8 +697,10 @@ class NQS_2d():
         # Restricted to Sz = 0 sectors ##
         randsite1_x = np.random.randint(self.Lx, size=(batch_size,))
         randsite1_y = np.random.randint(self.Ly, size=(batch_size,))
+        # Random Update
         # randsite2_x = np.random.randint(self.Lx, size=(batch_size,))
         # randsite2_y = np.random.randint(self.Ly, size=(batch_size,))
+        # Local Update, (0) right (1) upper right (2) up 
         rand_direct = np.random.randint(3, size=(batch_size,))
         rand_dx = 1 - (rand_direct // 2)
         rand_dy = (rand_direct + 1) // 2
