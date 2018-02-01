@@ -149,16 +149,25 @@ def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
     print('Energy : ', evals_small / Lx / Ly / 4.)
     return evals_small, evecs_small
 
-def check_phase(vector):
+def check_phase(vector, dim=1, site=None):
     '''
     check the phase of one site translation
     '''
-    new_vector = np.zeros_like(vector)
-    len_v = new_vector.size
-    new_vector[:int(len_v/2)] = vector[::2]
-    new_vector[int(len_v/2):] = vector[1::2]
-    return new_vector.conjugate().dot(vector)
-
+    if dim==1:
+        new_vector = np.zeros_like(vector)
+        len_v = new_vector.size
+        new_vector[:int(len_v/2)] = vector[::2]
+        new_vector[int(len_v/2):] = vector[1::2]
+        return new_vector.conjugate().dot(vector)
+    if dim==2:
+        new_vector = np.copy(vector)
+        len_v = new_vector.size
+        for i in range(site):
+            temp_vec = np.zeros_like(new_vector)
+            temp_vec[:int(len_v/2)] = new_vector[::2]
+            temp_vec[int(len_v/2):] = new_vector[1::2]
+            new_vector = np.copy(temp_vec)
+        return new_vector.conjugate().dot(vector)
 
 def store_eig_vec(evals_small, evecs_small, filename):
     idx_min = np.argmin(evals_small)
@@ -192,6 +201,7 @@ if __name__ == "__main__":
         evals_small, evecs_small = solve_1d_J1J2(L, J1, J2)
         eig_filename = 'EigVec/ES_%s_L%d_J2_%d.csv' % (model[:2], L, J2*10)
         store_eig_vec(evals_small, evecs_small, eig_filename)
+        print("check one site translation phase : {:.2f}".format(check_phase(evecs_small[:,0])))
     elif model == '2dJ1J2':
         Lx, Ly, J1, J2 = sys.argv[2:]
         Lx, Ly, J1, J2 = int(Lx), int(Ly), float(J1), float(J2)
@@ -199,11 +209,11 @@ if __name__ == "__main__":
         evals_small, evecs_small = solve_2d_J1J2(Lx, Ly, J1, J2)
         eig_filename = 'EigVec/ES_%s_L%dx%d_J2_%d.csv' % (model[:2], Lx, Ly, J2*10)
         store_eig_vec(evals_small, evecs_small, eig_filename)
+        print("check n={0:d} site translation phase : {1:.2f}".format(Lx, check_phase(evecs_small[:,0], 2, Lx)))
     else:
         print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
         raise NotImplementedError
 
-    print("check one site translation phase : {:.2f}".format(check_phase(evecs_small[:,0])))
 
     # sum_Sx = build_Sx(16)
     # x=evecs_small[:,0]
