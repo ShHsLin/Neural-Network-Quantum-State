@@ -615,6 +615,34 @@ class tf_network:
             out = tf.real((out))
             return out
 
+    def build_FCN3_2d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0:1]
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # conv_layer2d(x, filter_size, in_channels, out_channels, name)
+            conv1_re = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_re',
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
+            conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
+            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+
+            conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
+                                                 'conv2_complex', stride_size=2, biases=True,
+                                                 bias_scale=1.)
+            conv2 = tf_.soft_plus2(conv2)
+
+            conv3 = tf_.circular_conv_2d_complex(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2,
+                                                 'conv3_complex', stride_size=1, biases=True,
+                                                 bias_scale=1.)
+
+            pool4 = tf.reduce_sum(conv3[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
+                    tf.reduce_sum(conv3[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
+            pool4 = tf.exp(pool4)
+
+            out = tf.reshape(pool4, [-1, 1])
+            out = tf.real((out))
+            return out
 
     def build_Jastrow_2d(self, x):
         with tf.variable_scope("network", reuse=None):
@@ -670,6 +698,8 @@ class tf_network:
             return self.build_sRBM_2d(x)
         elif which_net == "FCN2":
             return self.build_FCN2_2d(x)
+        elif which_net == "FCN3":
+            return self.build_FCN3_2d(x)
         elif which_net == "Jastrow":
             return self.build_Jastrow_2d(x)
         else:

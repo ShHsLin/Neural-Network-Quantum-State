@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from utils.parse_args import parse_args
 from network.tf_network import tf_network
-from train_NQS import *
+import NQS
 
 
 if __name__ == "__main__":
@@ -36,9 +36,9 @@ if __name__ == "__main__":
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha)
     if dim == 1:
-        N = NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
+        N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
     else:
-        N = NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
+        N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size)
 
     print("Total num para: ", N.net_num_para)
     if N.net_num_para/5 < num_sample:
