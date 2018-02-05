@@ -17,7 +17,7 @@ So easily to switch model
 
 
 class NQS_1d():
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None):
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
                                dtype=int)
         self.batch_size = batch_size
@@ -31,6 +31,7 @@ class NQS_1d():
         self.NNet = Net
         self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
+        self.reg = reg
 
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
@@ -244,6 +245,10 @@ class NQS_1d():
             print(self.get_self_amp_batch()[:5])
             print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            # Reg
+            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+                Glist[idx] += W * self.reg
+
             Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
@@ -291,6 +296,7 @@ class NQS_1d():
         #####################################
         if self.moving_E_avg is None:
             Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
+            Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
             Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
@@ -560,7 +566,7 @@ class NQS_1d():
 
 
 class NQS_2d():
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None):
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.):
         '''
         config = [batch_size, Lx, Ly, local_dim]
         config represent the product state basis of the model
@@ -587,6 +593,7 @@ class NQS_2d():
         self.NNet = Net
         self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
+        self.reg = reg
 
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
@@ -779,6 +786,10 @@ class NQS_2d():
             print(self.get_self_amp_batch()[:5])
             print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / self.LxLy / np.sqrt(num_sample))
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            # Reg
+            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+                Glist[idx] += W * self.reg
+
             Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
@@ -826,6 +837,8 @@ class NQS_2d():
         #####################################
         if self.moving_E_avg is None:
             Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
+            Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
+
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
             Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
