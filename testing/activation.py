@@ -22,7 +22,10 @@ def relu(x):
 def prelu(x, a=0.05):
     return np.maximum(x, x*a)
 
-act = relu
+def cosh(x):
+    return np.cosh(x)
+
+act = cosh
 
 x=np.arange(-5,5,0.1)
 plt.plot(x, act(x))

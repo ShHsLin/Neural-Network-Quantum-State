@@ -20,6 +20,7 @@ if __name__ == "__main__":
     args = parse_args()
     (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
     (J2, SR, reg, path) = (args.J2, bool(args.SR), args.reg, args.path)
+    (act) = (args.act)
     if len(path)>0 and path[-1] != '/':
         path = path + '/'
 
@@ -37,11 +38,11 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
-    Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha)
+    Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha, activation=act)
     if dim == 1:
-        N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2)
+        N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2, reg=reg)
     elif dim == 2:
-        N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2)
+        N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2, reg=reg)
     else:
         print("DIM error")
         raise
@@ -49,7 +50,7 @@ if __name__ == "__main__":
     print("Total num para: ", N.net_num_para)
     if SR:
         print("Using Stochastic Reconfiguration")
-        if N.net_num_para/5 < num_sample:
+        if N.net_num_para/1 < num_sample:
             print("forming Sij explicitly")
             explicit_SR = True
         else:
@@ -63,7 +64,7 @@ if __name__ == "__main__":
     var_list = tf.global_variables()
     saver = tf.train.Saver(N.NNet.model_var_list)
 
-    ckpt_path = path + 'wavefunction/vmc%dd/%s/L%da%d/' % (dim, which_net, L, alpha)
+    ckpt_path = path + 'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim, which_net, act, L, alpha)
     if not os.path.exists(ckpt_path):
         os.makedirs(ckpt_path)
     ckpt = tf.train.get_checkpoint_state(ckpt_path)
@@ -149,14 +150,14 @@ if __name__ == "__main__":
             pass
 
     if SR:
-        log_file = open(path + 'L%d_%s_a%s_%s%.e_S%d.csv' %
-                        (L, which_net, alpha, opt, lr, num_sample),
+        log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
+                        (L, which_net, act, alpha, opt, lr, num_sample),
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()
     else:
-        log_file = open(path + 'L%d_%s_a%s_%s%.e_S%d_noSR.csv' %
-                        (L, which_net, alpha, opt, lr, num_sample),
+        log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' %
+                        (L, which_net, act, alpha, opt, lr, num_sample),
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()
