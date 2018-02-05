@@ -56,6 +56,11 @@ def parse_args():
                         help='path to the directory where wavefunction and E_log are saved. '
                         'Default: \'\'',
                         default='', type=str)
+    parser.add_argument('--act', dest='act',
+                        help='nonlinear activation function in the network'
+                        'Default: softplus2',
+                        default='softplus2', type=str)
+
 
 
 

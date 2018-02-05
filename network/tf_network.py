@@ -5,7 +5,8 @@ from . import tf_wrapper as tf_
 
 class tf_network:
     def __init__(self, which_net, inputShape, optimizer, dim,
-                 learning_rate=0.1125, momentum=0.90, alpha=2):
+                 learning_rate=0.1125, momentum=0.90, alpha=2,
+                 activation=None):
         # Parameters
         self.learning_rate = tf.Variable(learning_rate)
         self.momentum = tf.Variable(momentum)
@@ -13,6 +14,7 @@ class tf_network:
 
         # tf Graph input
         self.alpha = alpha
+        self.activation = activation
         self.keep_prob = tf.placeholder(tf.float32)
         if dim == 1:
             self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1]])
@@ -36,7 +38,7 @@ class tf_network:
             raise NotImplementedError
 
         # Variables Creation
-        self.pred = self.build_network(which_net, self.x)
+        self.pred = self.build_network(which_net, self.x, self.activation)
         self.model_var_list = tf.global_variables()
         self.para_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='network')
         print("create variable")
@@ -140,8 +142,6 @@ class tf_network:
 
         return out
 
-
-
     def build_NN_2d(self, x):
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, :, 0]
@@ -152,6 +152,16 @@ class tf_network:
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
 
         return out
+
+    def build_NN_linear_2d(self, x):
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0]
+            fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
+            fc1 = tf.nn.tanh(fc1)
+            out = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out')
+
+        return out
+
 
     def build_NN3_1d(self, x):
         with tf.variable_scope("network", reuse=None):
@@ -196,7 +206,7 @@ class tf_network:
 #             conv1 = (tf.complex(conv1_re, conv1_im))
 #             # pool4 = tf_.avg_pool2d(conv4, 'pool4', 2)
 #             pool4 = tf.reduce_sum(conv1, [1])
-#             pool4 = tf_.soft_plus(pool4)
+#             pool4 = tf_.softplus(pool4)
 #
 #             # Fully connected layer
 # #             fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
@@ -223,7 +233,7 @@ class tf_network:
             conv1_im = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=2, biases=True, bias_scale=300., FFT=False)
 
-            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
             pool4 = tf.reduce_sum(conv1, [1, 2], keep_dims=False)
             pool4 = tf.exp(pool4)
 
@@ -303,11 +313,11 @@ class tf_network:
                                             stride_size=1, biases=True, bias_scale=100.)
             conv1_im = tf_.circular_conv_1d(x, inputShape[1]/2, inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=1, biases=True, bias_scale=300.)
-            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
             conv2 = tf_.circular_conv_1d_complex(conv1, inputShape[1]/2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
                                                  bias_scale=100.)
-            conv2 = tf_.soft_plus2(conv2)
+            conv2 = tf_.softplus2(conv2)
 
             pool3 = tf.reduce_sum(conv2, [1, 2], keep_dims=False)
             pool3 = tf.exp(pool3)
@@ -325,7 +335,7 @@ class tf_network:
             return out
 
     def build_FCN3_1d(self, x):
-        act = tf_.soft_plus2
+        act = tf_.softplus2
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
@@ -398,7 +408,7 @@ class tf_network:
             fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
             fc1 = tf.complex(fc1_re, fc1_im)
-            fc2 = tf_.soft_plus2(fc1)
+            fc2 = tf_.softplus2(fc1)
             # fc2 = tf_.complex_relu(fc1)
 
             v_bias_re = tf_.fc_layer(x, self.L, 1, 'v_bias_re')
@@ -445,7 +455,7 @@ class tf_network:
             conv1_im = tf_.circular_conv_1d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=2, biases=True, bias_scale=300., FFT=False)
 
-            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
             pool4 = tf.reduce_sum(conv1, [1, 2], keep_dims=False)
             pool4 = tf.exp(pool4)
 
@@ -467,7 +477,7 @@ class tf_network:
             x = x[:, :, 0]
             fc1_complex = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1_complex',
                                        dtype=tf.complex64)
-            fc1_complex = tf_.soft_plus(fc1_complex)
+            fc1_complex = tf_.softplus(fc1_complex)
 
             fc2_complex = tf_.fc_layer(fc1_complex, self.L * self.alpha, 1, 'fc2_complex',
                                        dtype=tf.complex64, biases=True)
@@ -482,17 +492,17 @@ class tf_network:
             x = x[:, :, 0]
             fc1_complex = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1_complex',
                                        dtype=tf.complex64)
-            fc1_complex = tf_.soft_plus(fc1_complex)
+            fc1_complex = tf_.softplus(fc1_complex)
             # fc1_complex = fc1_complex + tf.complex(x, 0.)
 
             fc2_complex = tf_.fc_layer(fc1_complex, self.L * self.alpha, self.L * self.alpha, 'fc2_complex',
                                        dtype=tf.complex64, biases=True)
-            fc2_complex = tf_.soft_plus(fc2_complex)
+            fc2_complex = tf_.softplus(fc2_complex)
             # fc2_complex = fc2_complex + fc1_complex
 
             fc3_complex = tf_.fc_layer(fc2_complex, self.L * self.alpha, self.L * self.alpha, 'fc3_complex',
                                        dtype=tf.complex64, biases=True)
-            fc3_complex = tf_.soft_plus(fc3_complex)
+            fc3_complex = tf_.softplus(fc3_complex)
             # fc3_complex = fc3_complex  + fc2_complex
 
             # fc4_complex = tf.reduce_sum(fc3_complex, axis=1, keep_dims=True)
@@ -513,7 +523,7 @@ class tf_network:
             fc1_re = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_im')
             fc1 = tf.complex(fc1_re, fc1_im)
-            fc2 = tf_.soft_plus2(fc1)
+            fc2 = tf_.softplus2(fc1)
             # fc2 = tf_.complex_relu(fc1)
 
             v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
@@ -564,7 +574,7 @@ class tf_network:
                                             stride_size=2, biases=True, bias_scale=1, FFT=False)
                                             # stride_size=2, biases=True, bias_scale=3140.*2/64/self.alpha, FFT=False)
 
-            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
             # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
             pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
             pool4 = tf.exp(pool4)
@@ -582,7 +592,8 @@ class tf_network:
             out = tf.real((out))
             return out
 
-    def build_FCN2_2d(self, x):
+    def build_FCN2_2d(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, :, 0:1]
             inputShape = x.get_shape().as_list()
@@ -592,28 +603,49 @@ class tf_network:
                                             stride_size=1, biases=True, bias_scale=1., FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=1, biases=True, bias_scale=3., FFT=False)
-            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
                                                  bias_scale=1.)
-            conv2 = tf_.soft_plus2(conv2)
+            conv2 = act(conv2)
 
             pool3 = tf.reduce_sum(conv2[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
                     tf.reduce_sum(conv2[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
-            pool3 = tf.exp(pool3)
 
-            ## Conv Bias
-            # conv_bias_re = tf_.circular_conv_2d(x, 2, inputShape[-1], 1, 'conv_bias_re',
-            #                                     stride_size=2, bias_scale=100.)
-            # conv_bias_im = tf_.circular_conv_2d(x, 2, inputShape[-1], 1, 'conv_bias_im',
-            #                                     stride_size=2, bias_scale=100.)
-            # conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-            #                           [1, 2], keep_dims=False)
-            # out = tf.reshape(tf.multiply(pool3, tf.exp(conv_bias)), [-1, 1])
-            out = tf.reshape(pool3, [-1, 1])
+            pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
+            pool3_imag = tf.imag(pool3)
+            out = tf.exp(tf.complex(pool3_real,pool3_imag))
+            out = tf.reshape(tf.real(out), [-1, 1])
+        return out
+
+    def build_FCN2v1_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0:1]
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # conv_layer2d(x, filter_size, in_channels, out_channels, name)
+            conv1_re = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_re',
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
+            conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
+            conv1 = act(tf.complex(conv1_re, conv1_im))
+
+            conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
+                                                 'conv2_complex', stride_size=2, biases=True,
+                                                 bias_scale=1.)
+            conv2 = act(conv2)
+
+            pool3 = tf.reduce_sum(conv2, [1, 2, 3], keep_dims=False)
+            pool3_real = tf.clip_by_value(tf.real(pool3), -60., 60.)
+            pool3_imag = tf.imag(pool3)
+            out = tf.exp(tf.complex(pool3_real,pool3_imag))
             out = tf.real((out))
-            return out
+
+            out = tf.reshape(out, [-1, 1])
+        return out
+
 
     def build_FCN3_2d(self, x):
         with tf.variable_scope("network", reuse=None):
@@ -625,12 +657,12 @@ class tf_network:
                                             stride_size=1, biases=True, bias_scale=1., FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=1, biases=True, bias_scale=3., FFT=False)
-            conv1 = tf_.soft_plus2(tf.complex(conv1_re, conv1_im))
+            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
                                                  bias_scale=1.)
-            conv2 = tf_.soft_plus2(conv2)
+            conv2 = tf_.softplus2(conv2)
 
             conv3 = tf_.circular_conv_2d_complex(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2,
                                                  'conv3_complex', stride_size=1, biases=True,
@@ -655,7 +687,7 @@ class tf_network:
             return out
 
 
-    def build_network_1d(self, which_net, x):
+    def build_network_1d(self, which_net, x, activation):
         if which_net == "NN":
             return self.build_NN_1d(x)
         elif which_net == "ZNet":
@@ -685,9 +717,11 @@ class tf_network:
         else:
             raise NotImplementedError
 
-    def build_network_2d(self, which_net, x):
+    def build_network_2d(self, which_net, x, activation):
         if which_net == "NN":
             return self.build_NN_2d(x)
+        if which_net == "NN_linear":
+            return self.build_NN_linear_2d(x)
         elif which_net == "NN3":
             return self.build_NN3_2d(x)
         elif which_net == "RBM":
@@ -697,7 +731,9 @@ class tf_network:
         elif which_net == "sRBM":
             return self.build_sRBM_2d(x)
         elif which_net == "FCN2":
-            return self.build_FCN2_2d(x)
+            return self.build_FCN2_2d(x, activation)
+        elif which_net == "FCN2v1":
+            return self.build_FCN2v1_2d(x, activation)
         elif which_net == "FCN3":
             return self.build_FCN3_2d(x)
         elif which_net == "Jastrow":

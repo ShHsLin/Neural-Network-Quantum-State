@@ -17,18 +17,27 @@ def select_optimizer(optimizer, learning_rate, momentum=0):
     else:
         raise
 
+def select_activation(activation):
+    if activation == 'softplus2':
+        return softplus2
+    elif activation == 'softplus':
+        return softplus
+    elif activation == 'c_relu':
+        return c_relu
+    elif activation == 'relu':
+        return tf.nn.relu
+    elif activation == 'c_elu':
+        return c_elu
+
 
 def leaky_relu(x):
     return tf.maximum(0.01*x, x)
-    # return tf.nn.sigmoid(x)
-    # return tf.nn.tanh(x)
 
-
-def soft_plus(x):
+def softplus(x):
     return tf.log(tf.add(tf.ones_like(x), tf.exp(x)))
 
 
-def soft_plus2(x):
+def softplus2(x):
     return tf.log(tf.add(tf.ones_like(x), tf.exp(x))/2.)
 
 
@@ -42,8 +51,11 @@ def complex_relu(x):
     # im = im * mask  # if re>0; im*1; else: im*0
     # return tf.complex(re, im)
 
-def complex_elu(x):
-    return tf.complex(tf.nn.elu(tf.real(x)), tf.imag(x))
+def c_relu(x):
+    return tf.complex(tf.nn.relu(tf.real(x)), tf.nn.relu(tf.imag(x)))
+
+def c_elu(x):
+    return tf.complex(tf.nn.elu(tf.real(x)), tf.nn.elu(tf.imag(x)))
 
 
 # def complex_relu(x):
