@@ -67,6 +67,15 @@ class NQS_1d():
     def get_self_amp_batch(self):
         return self.NNet.forwardPass(self.config).flatten()
 
+    def update_stabilizer(self):
+        current_amp = self.get_self_amp_batch()
+        max_abs_amp = np.max(np.abs(current_amp))
+        log_max_abs_amp = np.log(max_abs_amp)
+        print("exp_stabilier = %.5e, increments = %.5e " % (self.NNet.sess.run(self.NNet.exp_stabilizer),
+                                                            log_max_abs_amp))
+        self.NNet.exp_stabilizer_add(log_max_abs_amp)
+        return
+
     def eval_amp_array(self, configArray):
         # (batch_size, inputShape[0], inputShape[1])
         array_shape = configArray.shape
@@ -629,6 +638,15 @@ class NQS_2d():
 
     def get_self_amp_batch(self):
         return self.NNet.forwardPass(self.config).flatten()
+
+    def update_stabilizer(self):
+        current_amp = self.get_self_amp_batch()
+        max_abs_amp = np.max(np.abs(current_amp))
+        log_max_abs_amp = np.log(max_abs_amp)
+        print("exp_stabilier = %.5e, increments = %.5e " % (self.NNet.sess.run(self.NNet.exp_stabilizer),
+                                                            log_max_abs_amp))
+        self.NNet.exp_stabilizer_add(log_max_abs_amp)
+        return
 
     def eval_amp_array(self, configArray):
         # (batch_size, inputShape[0], inputShape[1], inputShape[2])

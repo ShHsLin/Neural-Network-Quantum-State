@@ -62,24 +62,47 @@ if __name__ == "__main__":
 
     var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
     var_list = tf.global_variables()
-    saver = tf.train.Saver(N.NNet.model_var_list)
+    try:
+        saver = tf.train.Saver(N.NNet.model_var_list)
 
-    ckpt_path = path + 'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim, which_net, act, L, alpha)
-    if not os.path.exists(ckpt_path):
-        os.makedirs(ckpt_path)
-    ckpt = tf.train.get_checkpoint_state(ckpt_path)
+        ckpt_path = path + 'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim, which_net, act, L, alpha)
+        if not os.path.exists(ckpt_path):
+            os.makedirs(ckpt_path)
+        ckpt = tf.train.get_checkpoint_state(ckpt_path)
 
-    if ckpt and ckpt.model_checkpoint_path:
-        saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
-        print("Restore from last check point, stored at %s" % ckpt_path)
-        # import pdb;pdb.set_trace()
-        # print(N.NNet.sess.run(N.NNet.para_list))
-    else:
-        print("No checkpoint found, at %s " %ckpt_path)
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
+            print("Restore from last check point, stored at %s" % ckpt_path)
+            # print(N.NNet.sess.run(N.NNet.para_list))
+        else:
+            print("No checkpoint found, at %s " %ckpt_path)
+
+    except Exception as e:
+        print(e)
+        print("import weights only, not include stabilier, may cause numerical instability")
+        saver = tf.train.Saver(N.NNet.para_list)
+
+        ckpt_path = path + 'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim, which_net, act, L, alpha)
+        if not os.path.exists(ckpt_path):
+            os.makedirs(ckpt_path)
+        ckpt = tf.train.get_checkpoint_state(ckpt_path)
+
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
+            print("Restore from last check point, stored at %s" % ckpt_path)
+            # print(N.NNet.sess.run(N.NNet.para_list))
+        else:
+            print("No checkpoint found, at %s " %ckpt_path)
+
+        saver = tf.train.Saver(N.NNet.model_var_list)
+        ckpt = tf.train.get_checkpoint_state(ckpt_path)
+
+
 
     # Thermalization
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
+    N.update_stabilizer()
     if batch_size > 1:
         for i in range(2000):
             N.new_config_batch()
@@ -98,6 +121,7 @@ if __name__ == "__main__":
 
     for iteridx in range(1, num_iter+1):
         print(iteridx)
+        N.update_stabilizer()
         '''
         print("Thermalizing ~~ ")
         start_t, start_c = time.time(), time.clock()

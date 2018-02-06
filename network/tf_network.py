@@ -8,14 +8,16 @@ class tf_network:
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None):
         # Parameters
-        self.learning_rate = tf.Variable(learning_rate)
-        self.momentum = tf.Variable(momentum)
+        self.learning_rate = tf.Variable(learning_rate, name='learning_rate')
+        self.momentum = tf.Variable(momentum, name='momentum')
+        self.exp_stabilizer = tf.Variable(0., name="exp_stabilizer")
         # dropout = 0.75  # Dropout, probability to keep units
 
         # tf Graph input
         self.alpha = alpha
         self.activation = activation
         self.keep_prob = tf.placeholder(tf.float32)
+        self.dx_exp_stabilizer = tf.placeholder(tf.float32)
         if dim == 1:
             self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1]])
             self.L = int(inputShape[0])
@@ -69,7 +71,11 @@ class tf_network:
         self.train_op = self.optimizer.apply_gradients(zip(self.newgrads,
                                                            self.para_list))
 
-        # Initializing the variables
+        self.update_exp_stabilizer = self.exp_stabilizer.assign(self.exp_stabilizer +
+                                                                self.dx_exp_stabilizer)
+
+        # Initializing All the variables and operation, all operation and variables should 
+        # be defined before here.!!!!
         init = tf.global_variables_initializer()
         self.sess = tf.Session()
         self.sess.run(init)
@@ -110,6 +116,9 @@ class tf_network:
         self.sess.run(self.train_op, feed_dict={i: d for i, d in
                                                 zip(self.newgrads, grad_list)})
 
+    def exp_stabilizer_add(self, increments):
+        self.sess.run(self.update_exp_stabilizer, feed_dict={self.dx_exp_stabilizer: increments})
+
     def build_NN_1d(self, x):
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0]
@@ -142,34 +151,38 @@ class tf_network:
 
         return out
 
-    def build_NN_2d(self, x):
+    def build_NN_2d(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, :, 0]
             fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
-            fc1 = tf.nn.tanh(fc1)
+            fc1 = act(fc1)
             out_re = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out_re')
+            out_re = tf.clip_by_value(out_re, -60., 60.)
             out_im = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out_im')
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
 
         return out
 
-    def build_NN_linear_2d(self, x):
+    def build_NN_linear_2d(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, :, 0]
             fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
-            fc1 = tf.nn.tanh(fc1)
+            fc1 = act(fc1)
             out = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out')
 
         return out
 
 
-    def build_NN3_1d(self, x):
+    def build_NN3_1d(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, 0]
             fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
-            fc1 = tf.nn.tanh(fc1)
+            fc1 = act(fc1)
             fc2 = tf_.fc_layer(fc1, self.L * self.alpha, self.L * self.alpha, 'fc2')
-            fc2 = tf.nn.tanh(fc2)
+            fc2 = act(fc2)
             fc3 = tf_.fc_layer(fc2, self.L * self.alpha, self.L * self.alpha, 'fc3')
             fc3 = tf.nn.tanh(fc3)
             out_re = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_re')
@@ -603,7 +616,7 @@ class tf_network:
                                             stride_size=1, biases=True, bias_scale=1., FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=1, biases=True, bias_scale=3., FFT=False)
-            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
+            conv1 = act(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
@@ -613,7 +626,9 @@ class tf_network:
             pool3 = tf.reduce_sum(conv2[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
                     tf.reduce_sum(conv2[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
 
-            pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
+            # pool3_real = tf.real(pool3)
+            # pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
+            pool3_real = tf.real(pool3) - self.exp_stabilizer
             pool3_imag = tf.imag(pool3)
             out = tf.exp(tf.complex(pool3_real,pool3_imag))
             out = tf.reshape(tf.real(out), [-1, 1])
@@ -647,7 +662,8 @@ class tf_network:
         return out
 
 
-    def build_FCN3_2d(self, x):
+    def build_FCN3v1_2d(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, :, 0:1]
             inputShape = x.get_shape().as_list()
@@ -657,22 +673,26 @@ class tf_network:
                                             stride_size=1, biases=True, bias_scale=1., FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=1, biases=True, bias_scale=3., FFT=False)
-            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
+            conv1 = act(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
                                                  bias_scale=1.)
-            conv2 = tf_.softplus2(conv2)
+            conv2 = act(conv2)
 
             conv3 = tf_.circular_conv_2d_complex(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2,
                                                  'conv3_complex', stride_size=1, biases=True,
                                                  bias_scale=1.)
+            conv3 = act(conv3)
 
-            pool4 = tf.reduce_sum(conv3[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
-                    tf.reduce_sum(conv3[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
-            pool4 = tf.exp(pool4)
+            # pool4 = tf.reduce_sum(conv3[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
+            #         tf.reduce_sum(conv3[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
+            pool4 = tf.reduce_sum(conv3, [1, 2, 3], keep_dims=False)
+            pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
+            pool4_imag = tf.imag(pool4)
+            out = tf.exp(tf.complex(pool4_real, pool4_imag))
 
-            out = tf.reshape(pool4, [-1, 1])
+            out = tf.reshape(out, [-1, 1])
             out = tf.real((out))
             return out
 
@@ -719,11 +739,11 @@ class tf_network:
 
     def build_network_2d(self, which_net, x, activation):
         if which_net == "NN":
-            return self.build_NN_2d(x)
+            return self.build_NN_2d(x, activation)
         if which_net == "NN_linear":
-            return self.build_NN_linear_2d(x)
+            return self.build_NN_linear_2d(x, activation)
         elif which_net == "NN3":
-            return self.build_NN3_2d(x)
+            return self.build_NN3_2d(x, activation)
         elif which_net == "RBM":
             return self.build_RBM_2d(x)
         elif which_net == "RBM_cosh":
@@ -734,8 +754,8 @@ class tf_network:
             return self.build_FCN2_2d(x, activation)
         elif which_net == "FCN2v1":
             return self.build_FCN2v1_2d(x, activation)
-        elif which_net == "FCN3":
-            return self.build_FCN3_2d(x)
+        elif which_net == "FCN3v1":
+            return self.build_FCN3v1_2d(x, activation)
         elif which_net == "Jastrow":
             return self.build_Jastrow_2d(x)
         else:
