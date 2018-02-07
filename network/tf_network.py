@@ -590,7 +590,12 @@ class tf_network:
             conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
             # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
             pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
-            pool4 = tf.exp(pool4)
+            pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
+            pool4_imag = tf.imag(pool4)
+            pool4 = tf.exp(tf.complex(pool4_real, pool4_imag))
+            # pool4 = tf.exp(pool4)
+            # out = tf.real((out))
+
 
             # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
             # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
@@ -603,6 +608,7 @@ class tf_network:
                                       [1, 2, 3], keep_dims=False)
             out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
             out = tf.real((out))
+
             return out
 
     def build_FCN2_2d(self, x, activation):

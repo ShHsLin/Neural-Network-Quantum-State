@@ -28,6 +28,8 @@ def select_activation(activation):
         return tf.nn.relu
     elif activation == 'c_elu':
         return c_elu
+    elif activation == 'tanh':
+        return tf.tanh
 
 
 def leaky_relu(x):
