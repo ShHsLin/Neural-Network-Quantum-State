@@ -147,7 +147,7 @@ if __name__ == "__main__":
         GradW, E, E_var = N.VMC(num_sample=num_sample, iteridx=iteridx,
                                 SR=SR, Gj=GradW, explicit_SR=explicit_SR)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
-        if np.linalg.norm(GradW) > 1000:
+        if np.linalg.norm(GradW) > 2000:
             GradW = GradW/np.linalg.norm(GradW)
 
         E_log.append(E)

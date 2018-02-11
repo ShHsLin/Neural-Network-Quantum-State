@@ -206,7 +206,7 @@ class NQS_1d():
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
         L = self.config.shape[1]
         numPara = self.net_num_para
-        OOsum = np.zeros((numPara, numPara))
+        # OOsum = np.zeros((numPara, numPara))
         Osum = np.zeros((numPara))
         Earray = np.zeros((num_sample))
         EOsum = np.zeros((numPara))
@@ -756,7 +756,7 @@ class NQS_2d():
 
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
         numPara = self.net_num_para
-        OOsum = np.zeros((numPara, numPara))
+        # OOsum = np.zeros((numPara, numPara))
         Osum = np.zeros((numPara))
         Earray = np.zeros((num_sample))
         EOsum = np.zeros((numPara))
@@ -797,6 +797,8 @@ class NQS_2d():
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
+        # np.savetxt('X.csv', configArray[:,:,:,0].reshape([-1,64]), '%d', delimiter=',')
+        # np.savetxt('Y.csv', self.eval_amp_array(configArray).reshape([-1,1]), '%.8e', delimiter=',')
 
         if not SR:
             Eavg = np.average(Earray)

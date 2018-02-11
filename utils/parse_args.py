@@ -58,8 +58,8 @@ def parse_args():
                         default='', type=str)
     parser.add_argument('--act', dest='act',
                         help='nonlinear activation function in the network'
-                        'Default: softplus2',
-                        default='softplus2', type=str)
+                        'Default: None',
+                        default=None, type=str)
 
 
 
