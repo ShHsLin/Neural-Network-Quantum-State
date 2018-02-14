@@ -252,7 +252,7 @@ class NQS_1d():
             Eavg = np.average(Earray)
             Evar = np.var(Earray)
             print(self.get_self_amp_batch()[:5])
-            print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))  # , "Earray[:10]",Earray[:10]
+            print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / (L**2) / num_sample)  # , "Earray[:10]",Earray[:10]
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
@@ -262,7 +262,7 @@ class NQS_1d():
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
+            return Gj, Eavg / L, Evar / (L**2) / num_sample
         else:
             pass
 
@@ -298,7 +298,7 @@ class NQS_1d():
         Eavg = np.average(Earray)
         Evar = np.var(Earray)
         print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / L / np.sqrt(num_sample))
+        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / (L**2) / num_sample)
 
         #####################################
         #  Fj = 2<O_iH>-2<H><O_i>
@@ -353,7 +353,7 @@ class NQS_1d():
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
-        return Gj, Eavg / L, Evar / L / np.sqrt(num_sample)
+        return Gj, Eavg / L, Evar / (L**2) / num_sample
 
     def getLocal_no_OO(self, config):
         '''
@@ -804,7 +804,7 @@ class NQS_2d():
             Eavg = np.average(Earray)
             Evar = np.var(Earray)
             print(self.get_self_amp_batch()[:5])
-            print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / self.LxLy / np.sqrt(num_sample))
+            print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / (self.LxLy**2) / num_sample)
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
@@ -814,7 +814,7 @@ class NQS_2d():
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / self.LxLy, Evar / self.LxLy / np.sqrt(num_sample)
+            return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample
         else:
             pass
 
@@ -850,7 +850,7 @@ class NQS_2d():
         Evar = np.var(Earray)
         # print(self.getSelfAmp())
         print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / self.LxLy / np.sqrt(num_sample))
+        print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / (self.LxLy**2) / num_sample)
 
         #####################################
         #  Fj = 2<O_iH>-2<H><O_i>
@@ -906,7 +906,7 @@ class NQS_2d():
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
-        return Gj, Eavg / self.LxLy, Evar / self.LxLy / np.sqrt(num_sample)
+        return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample
 
     def local_E_2dAFH_batch(self, config_arr, J=1):
         '''

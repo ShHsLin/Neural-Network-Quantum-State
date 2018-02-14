@@ -5,15 +5,19 @@ import numpy as np
 
 def select_optimizer(optimizer, learning_rate, momentum=0):
     if optimizer == 'Adam':
-        return tf.train.AdamOptimizer(learning_rate=learning_rate)
+        return tf.train.AdamOptimizer(learning_rate=learning_rate,
+                                      epsilon=1e-3) #previous 1e-8
     elif optimizer == 'Mom':
         return tf.train.MomentumOptimizer(learning_rate=learning_rate,
                                           momentum=momentum)
     elif optimizer == 'RMSprop':
         return tf.train.RMSPropOptimizer(learning_rate=learning_rate,
-                                         epsilon=0.1)
+                                         epsilon=1e-6) #previous 1e-1
     elif optimizer == 'GD':
         return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    elif optimizer == 'Adadelta':
+        return tf.train.AdadeltaOptimizer(learning_rate=learning_rate,
+                                          epsilon=1e-6)
     else:
         raise
 
@@ -28,8 +32,12 @@ def select_activation(activation):
         return tf.nn.relu
     elif activation == 'c_elu':
         return c_elu
+    elif activation == 'elu':
+        return elu
     elif activation == 'tanh':
         return tf.tanh
+    elif activation == 'selu':
+        return tf.nn.selu
 
 
 def leaky_relu(x):
@@ -190,8 +198,8 @@ def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
     much faster than FFT approach generally, since the dimension of the filter is small.
     '''
     with tf.variable_scope(name, reuse=None):
-        filt, conv_biases = get_conv_var2d(filter_size, in_channels,
-                                           out_channels, biases=biases, bias_scale=bias_scale)
+        filt, conv_biases = get_conv_var2d(filter_size, in_channels, out_channels,
+                                           biases=biases, bias_scale=bias_scale)
         if not FFT:
             # bottom shape [None, Lx, Ly, channels]
             # pad_size = filter_size - 1
@@ -328,8 +336,9 @@ def get_conv_var2d(filter_size, in_channels, out_channels, name="",
 
     # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.01)
     initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0,
-                                        np.sqrt(1. / (filter_size * filter_size * in_channels )))
+                                        np.sqrt(2. / (filter_size * filter_size * in_channels )))
                                         # np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
+                                        # Xavier init
     filters = get_var(initial_value, name + "weights", dtype=dtype)
 
     if not biases:
@@ -349,7 +358,10 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float32):
         pass
 
     # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.1)
-    initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
+    # Xavier init
+    # initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
+    # He (MSAR) init
+    initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size)))
     weights = get_var(initial_value, name + "weights", dtype=dtype)
 
     if biases:
