@@ -191,17 +191,19 @@ class tf_network:
 
         return out
 
-    def build_NN3_2d(self, x):
+    def build_NN3_2d(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, :, 0]
-            fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
-            fc1 = tf.nn.tanh(fc1)
-            fc2 = tf_.fc_layer(fc1, self.LxLy * self.alpha, self.LxLy * self.alpha, 'fc2')
-            fc2 = tf.nn.tanh(fc2)
-            fc3 = tf_.fc_layer(fc2, self.LxLy * self.alpha, self.LxLy * self.alpha, 'fc3')
-            fc3 = tf.nn.tanh(fc3)
-            out_re = tf_.fc_layer(fc3, self.LxLy * self.alpha, 1, 'out_re')
-            out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha, 1, 'out_im')
+            fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha//2, 'fc1')
+            fc1 = act(fc1)
+            fc2 = tf_.fc_layer(fc1, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc2')
+            fc2 = act(fc2)
+            fc3 = tf_.fc_layer(fc2, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc3')
+            fc3 = act(fc3)
+            out_re = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_re')
+            out_re = tf.clip_by_value(out_re, -60., 60.)
+            out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_im')
             out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
 
         return out
@@ -590,12 +592,13 @@ class tf_network:
             conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
             # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
             pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
-            pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
+            # pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
+            pool4_real = tf.real(pool4)
             pool4_imag = tf.imag(pool4)
-            pool4 = tf.exp(tf.complex(pool4_real, pool4_imag))
+            # pool4 = tf.exp(tf.complex(pool4_real, pool4_imag))
             # pool4 = tf.exp(pool4)
             # out = tf.real((out))
-
+            # return tf.reshape(tf.real(pool4), [-1,1])
 
             # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
             # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
@@ -606,7 +609,9 @@ class tf_network:
                                                 stride_size=2, biases=False, bias_scale=1., FFT=False)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
                                       [1, 2, 3], keep_dims=False)
-            out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
+            final_real = tf.clip_by_value(pool4_real + tf.real(conv_bias), -60., 60.)
+            final_imag = pool4_imag + tf.imag(conv_bias)
+            out = tf.reshape(tf.exp(tf.complex(final_real, final_imag)), [-1, 1])
             out = tf.real((out))
 
             return out
@@ -633,8 +638,8 @@ class tf_network:
                     tf.reduce_sum(conv2[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
 
             # pool3_real = tf.real(pool3)
-            # pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
-            pool3_real = tf.real(pool3) - self.exp_stabilizer
+            pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
+            # pool3_real = tf.real(pool3) - self.exp_stabilizer
             pool3_imag = tf.imag(pool3)
             out = tf.exp(tf.complex(pool3_real,pool3_imag))
             out = tf.reshape(tf.real(out), [-1, 1])
@@ -666,7 +671,6 @@ class tf_network:
 
             out = tf.reshape(out, [-1, 1])
         return out
-
 
     def build_FCN3v1_2d(self, x, activation):
         act = tf_.select_activation(activation)
@@ -702,6 +706,94 @@ class tf_network:
             out = tf.real((out))
             return out
 
+    def build_FCN3v2_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0:1]
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # conv_layer2d(x, filter_size, in_channels, out_channels, name)
+            conv1_re = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_re',
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
+            conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
+            conv1 = act(tf.complex(conv1_re, conv1_im))
+
+            conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
+                                                 'conv2_complex', stride_size=2, biases=True,
+                                                 bias_scale=1.)
+            conv2 = act(conv2)
+
+            conv3 = tf_.circular_conv_2d_complex(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2,
+                                                 'conv3_complex', stride_size=1, biases=True,
+                                                 bias_scale=1.)
+            conv3 = act(conv3)
+
+            pool4 = tf.reduce_sum(conv3, [1, 2, 3], keep_dims=False)
+            pool4_real = tf.real(pool4)
+            # pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
+            pool4_real = pool4_real - self.exp_stabilizer
+            pool4_imag = tf.imag(pool4)
+            out = tf.exp(tf.complex(pool4_real, pool4_imag))
+
+            out = tf.reshape(out, [-1, 1])
+            out = tf.real((out))
+            return out
+
+    def build_real_CNN_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0:1]
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # conv_layer2d(x, filter_size, in_channels, out_channels, name)
+            conv1 = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1',
+                                         stride_size=2, biases=True, bias_scale=1., FFT=False)
+            conv1 = act(conv1)
+            pool1 = tf.reduce_mean(conv1, [1, 2], keep_dims=False)
+            # pool1 = tf.Print(pool1,[pool1[:3,:], 'pool1'])
+
+            out_re = tf_.fc_layer(pool1, self.alpha, 1, 'out_re', biases=False)
+            out_re = tf.clip_by_value(out_re, -60., 60.)
+            # out_re = tf.Print(out_re, [out_re[:3,:], 'out_re'])
+
+            out_im = tf_.fc_layer(pool1, self.alpha, 1, 'out_im', biases=False)
+            # out_im = tf.Print(out_im, [out_im[:3,:], 'out_im'])
+            out = tf.multiply(tf.exp(out_re), tf.sin(out_im))
+            out = tf.reshape(out, [-1, 1])
+        return out
+
+    def build_real_CNN3_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=None):
+            x = x[:, :, :, 0:1]
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # conv_layer2d(x, filter_size, in_channels, out_channels, name)
+            conv1 = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1',
+                                         stride_size=1, biases=True, bias_scale=1., FFT=False)
+            conv1 = act(conv1)
+            conv2 = tf_.circular_conv_2d(conv1, inputShape[1]//2, self.alpha, self.alpha*2, 'conv2',
+                                         stride_size=2, biases=True, bias_scale=1., FFT=False)
+            conv2 = act(conv2)
+            conv3 = tf_.circular_conv_2d(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2, 'conv3',
+                                         stride_size=1, biases=True, bias_scale=1., FFT=False)
+            conv3 = act(conv3)
+
+            pool3 = tf.reduce_mean(conv3, [1, 2], keep_dims=False)
+            # pool1 = tf.Print(pool1,[pool1[:3,:], 'pool1'])
+
+            out_re = tf_.fc_layer(pool3, self.alpha*2, 1, 'out_re', biases=False)
+            out_re = tf.clip_by_value(out_re, -60., 60.)
+            # out_re = tf.Print(out_re, [out_re[:3,:], 'out_re'])
+
+            out_im = tf_.fc_layer(pool3, self.alpha*2, 1, 'out_im', biases=False)
+            # out_im = tf.Print(out_im, [out_im[:3,:], 'out_im'])
+            out = tf.multiply(tf.exp(out_re), tf.sin(out_im))
+            out = tf.reshape(out, [-1, 1])
+        return out
+
+
     def build_Jastrow_2d(self, x):
         with tf.variable_scope("network", reuse=None):
             x = x[:, :, :, :]
@@ -711,7 +803,6 @@ class tf_network:
             out = tf_.jastrow_2d_amp(x, inputShape[1], inputShape[2], inputShape[-1], 'jastrow')
             out = tf.real((out))
             return out
-
 
     def build_network_1d(self, which_net, x, activation):
         if which_net == "NN":
@@ -762,6 +853,12 @@ class tf_network:
             return self.build_FCN2v1_2d(x, activation)
         elif which_net == "FCN3v1":
             return self.build_FCN3v1_2d(x, activation)
+        elif which_net == "FCN3v2":
+            return self.build_FCN3v2_2d(x, activation)
+        elif which_net == "real_CNN":
+            return self.build_real_CNN_2d(x, activation)
+        elif which_net == "real_CNN3":
+            return self.build_real_CNN3_2d(x, activation)
         elif which_net == "Jastrow":
             return self.build_Jastrow_2d(x)
         else:

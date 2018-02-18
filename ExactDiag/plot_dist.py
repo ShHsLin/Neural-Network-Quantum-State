@@ -55,13 +55,17 @@ def plot_fig_4(filename, inset_scale=0.05, restricted=False):
 
     fig, axes = plt.subplots(1, 2, sharex=False)
     sns.distplot(amp, color="r", ax=axes[0])
-    axes[0].set_title("$(a)\ \  C_i$", y=1.02)
+    axes[0].set_title(r"$(a)$ Distribution of $C_i$", y=1.02)
+    axes[0].set_xlabel(r"$C_i$")
+    axes[0].set_ylabel(r"$P(C_i)$")
     sns.distplot(log_abs_amp, color="b", ax=axes[1])
-    axes[1].set_title("$(b)\ \  \log(|C_i|)$", y=1.02)
+    axes[1].set_title(r"$(b)$ Distribution of $\log|C_i|$", y=1.02)
+    axes[1].set_xlabel(r"$\log|C_i|$")
+    axes[1].set_ylabel(r"$P(\log|C_i|)$")
 
     axes0_pos = axes[0].get_position()
     # left, bottom, width, height #
-    inset_pos = [axes0_pos.x0 + axes0_pos.width - 0.2,
+    inset_pos = [axes0_pos.x0 + axes0_pos.width - 0.21,
                  axes0_pos.y0 + axes0_pos.height - 0.225,
                  0.2,
                  0.2]
@@ -73,9 +77,14 @@ def plot_fig_4(filename, inset_scale=0.05, restricted=False):
 
     # plt.setp(axes, yticks=[])
     # plt.tight_layout()
+    eps_name = filename[10:-4]
+    if restricted:
+       final_name = 'dist_' + 'sz0_' + eps_name + '.pdf'
+    else:
+       final_name = 'dist_' + eps_name + '.pdf'
 
-    # plt.savefig('dist_2d_L4x4_J2_5.pdf')
-    plt.show()
+    plt.savefig(final_name)
+    # plt.show()
 
 plot_fig_4('EigVec/ES_2d_L4x4_J2_0.csv', inset_scale=0.02)
 plot_fig_4('EigVec/ES_2d_L4x4_J2_5.csv', inset_scale=0.03)
