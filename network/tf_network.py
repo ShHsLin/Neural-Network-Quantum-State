@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from hoshen_kopelman import label
 from . import tf_wrapper as tf_
 
 
@@ -19,11 +20,16 @@ class tf_network:
         self.keep_prob = tf.placeholder(tf.float32)
         self.dx_exp_stabilizer = tf.placeholder(tf.float32)
         if dim == 1:
-            self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1]])
+            self.x = tf.placeholder(tf.int32, [None, inputShape[0], inputShape[1]])
             self.L = int(inputShape[0])
             self.build_network = self.build_network_1d
         elif dim == 2:
-            self.x = tf.placeholder(tf.float32, [None, inputShape[0], inputShape[1], inputShape[2]])
+            if which_net in ['pre_sRBM']:
+                self.x = tf.placeholder(tf.int32, [None, inputShape[0],
+                                                     inputShape[1], 4])
+            else:
+                self.x = tf.placeholder(tf.int32, [None, inputShape[0], inputShape[1], inputShape[2]])
+
             self.Lx = int(inputShape[0])
             self.Ly = int(inputShape[1])
             self.LxLy = self.Lx * self.Ly
@@ -33,6 +39,7 @@ class tf_network:
                 raise NotImplementedError
             else:
                 pass
+
 
             self.build_network = self.build_network_2d
 
@@ -74,19 +81,40 @@ class tf_network:
         self.update_exp_stabilizer = self.exp_stabilizer.assign(self.exp_stabilizer +
                                                                 self.dx_exp_stabilizer)
 
+        if which_net in ['pre_sRBM']:
+            self.forwardPass = self.pre_forwardPass
+            self.backProp = self.pre_backProp
+            self.vanilla_back_prop = self.pre_vanilla_back_prop
+        else:
+            self.forwardPass = self.plain_forwardPass
+            self.backProp = self.plain_backProp
+            self.vanilla_back_prop = self.plain_vanilla_back_prop
+
+
         # Initializing All the variables and operation, all operation and variables should 
         # be defined before here.!!!!
         init = tf.global_variables_initializer()
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def forwardPass(self, X0):
+    def enrich_features(self, X0):
+        '''
+        python based method to precoss the input array
+        to add more input features
+        '''
+        X0_shape = X0.shape
+        pos_label = label(X0[:,:,:,0]).reshape(X0_shape[:-1]+(1,))
+        neg_label = label(X0[:,:,:,1]).reshape(X0_shape[:-1]+(1,))
+        new_X = np.concatenate([X0, pos_label, neg_label], axis=-1)
+        return new_X
+
+    def plain_forwardPass(self, X0):
         return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
 
-    def backProp(self, X0):
+    def plain_backProp(self, X0):
         return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
 
-    def vanilla_back_prop(self, X0, E_loc_array):
+    def plain_vanilla_back_prop(self, X0, E_loc_array):
         E_vec = (self.E_loc - tf.reduce_mean(self.E_loc))
         log_psi = tf.log(self.pred)
         # Implementation below fail for unknown reason
@@ -105,6 +133,36 @@ class tf_network:
         '''
         return self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
                              feed_dict={self.x: X0, self.E_loc: E_loc_array.reshape([-1, 1])})
+
+    def pre_forwardPass(self, X0):
+        X0 = self.enrich_features(X0)
+        return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
+
+    def pre_backProp(self, X0):
+        X0 = self.enrich_features(X0)
+        return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
+
+    def pre_vanilla_back_prop(self, X0, E_loc_array):
+        X0 = self.enrich_features(X0)
+        E_vec = (self.E_loc - tf.reduce_mean(self.E_loc))
+        log_psi = tf.log(self.pred)
+        # Implementation below fail for unknown reason
+        # Not sure whether it is bug from tensorflow or not.
+        # 
+        # E = tf.reduce_sum(tf.multiply(E_vec, log_psi))
+        # E = (tf.multiply(E_vec, log_psi))
+        # return self.sess.run(tf.gradients(E, self.para_list),
+
+        # because grad_ys has to have the same shape as ys
+        # we need to reshape E_loc_array as [None, 1]
+        '''
+        1. returning list of numpy array
+        2.  should add an upper bound for batch gradient.
+            otherwise, it would often lead to memory issue
+        '''
+        return self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
+                             feed_dict={self.x: X0, self.E_loc: E_loc_array.reshape([-1, 1])})
+
 
     def getNumPara(self):
         for i in self.para_list:
@@ -616,6 +674,66 @@ class tf_network:
 
             return out
 
+    def build_pre_sRBM_2d(self, x):
+        '''
+        the input x is with features:
+        before one-hot encoding
+            0-1: spin configuration
+            2: dense positive cluster size, cutoff for > 5
+            3: dense negative cluster size, cutoff for > 5
+        after one-hot encoding
+            0-1: spin configuration
+            2-6: positive cluster size
+            7-11: negative cluster size
+        '''
+        with tf.variable_scope("network", reuse=None):
+            inputShape = x.get_shape().as_list()
+            # minus one, so we only encode from 1
+            dense_pos_cluster_size = x[:, :, :, 2] - 1
+            dense_neg_cluster_size = x[:, :, :, 3] - 1
+            pos_cluster_size_layer = tf.one_hot(dense_pos_cluster_size, depth=5, axis=-1)
+            neg_cluster_size_layer = tf.one_hot(dense_neg_cluster_size, depth=5, axis=-1)
+            x = tf.concat([tf.cast(x[:,:,:,:2], dtype=tf.float32), pos_cluster_size_layer, neg_cluster_size_layer],
+                          axis=-1)
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # conv_layer2d(x, filter_size, in_channels, out_channels, name)
+            conv1_re = tf_.circular_conv_2d(x, inputShape[1], 12, self.alpha, 'conv1_re',
+                                            stride_size=2, biases=True, bias_scale=1, FFT=False)
+                                            # stride_size=2, biases=True, bias_scale=3000.*2/64/self.alpha, FFT=False)
+            conv1_im = tf_.circular_conv_2d(x, inputShape[1], 12, self.alpha, 'conv1_im',
+                                            stride_size=2, biases=True, bias_scale=1, FFT=False)
+                                            # stride_size=2, biases=True, bias_scale=3140.*2/64/self.alpha, FFT=False)
+
+            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
+            # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
+            pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
+            # pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
+            pool4_real = tf.real(pool4)
+            pool4_imag = tf.imag(pool4)
+            # pool4 = tf.exp(tf.complex(pool4_real, pool4_imag))
+            # pool4 = tf.exp(pool4)
+            # out = tf.real((out))
+            # return tf.reshape(tf.real(pool4), [-1,1])
+
+            # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
+            # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
+
+            conv_bias_re = tf_.circular_conv_2d(x[:, :, :, 0:2], 2, 2, 1, 'conv_bias_re',
+                                                stride_size=2, biases=False, bias_scale=1., FFT=False)
+            conv_bias_im = tf_.circular_conv_2d(x[:, :, :, 0:2], 2, 2, 1, 'conv_bias_im',
+                                                stride_size=2, biases=False, bias_scale=1., FFT=False)
+            conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
+                                      [1, 2, 3], keep_dims=False)
+            final_real = tf.clip_by_value(pool4_real + tf.real(conv_bias), -60., 60.)
+            final_imag = pool4_imag + tf.imag(conv_bias)
+            out = tf.reshape(tf.exp(tf.complex(final_real, final_imag)), [-1, 1])
+            out = tf.real((out))
+
+            return out
+
+
+
+
     def build_FCN2_2d(self, x, activation):
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=None):
@@ -861,5 +979,7 @@ class tf_network:
             return self.build_real_CNN3_2d(x, activation)
         elif which_net == "Jastrow":
             return self.build_Jastrow_2d(x)
+        elif which_net == "pre_sRBM":
+            return self.build_pre_sRBM_2d(x)
         else:
             raise NotImplementedError
