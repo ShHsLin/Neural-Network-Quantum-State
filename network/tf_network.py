@@ -949,6 +949,34 @@ class tf_network:
             out = tf.reshape(out, [-1, 1])
         return out
 
+    def build_real_ResNet10_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        inputShape = x.get_shape().as_list()
+        Lx = int(inputShape[1])
+        Ly = int(inputShape[2])
+        with tf.variable_scope("network", reuse=None):
+            x = tf.cast(x, dtype=tf.float32)
+            x = tf_.circular_conv_2d(x, 3, inputShape[-1], self.alpha * 64, 'conv1',
+                                     stride_size=1, biases=True, bias_scale=1., FFT=False)
+            x = tf_.batch_norm(x, phase=self.bn_is_training, scope='bn1')
+            x = act(x)
+            for i in range(10):
+                x = tf_.residual_block(x, self.alpha * 64, "block_"+str(i),
+                                       stride_size=1, activation=act)
+
+            x = tf_.conv_layer2d(x, 1, self.alpha * 64, 1, "head_conv1")
+            x = tf_.batch_norm(x, phase=self.bn_is_training, scope='head_bn1')
+            x = act(x)
+
+            x = tf.reshape(x, [-1, Lx*Ly])
+            fc1 = tf_.fc_layer(x, Lx*Ly, self.alpha * 64, 'fc1')
+            fc1 = act(fc1)
+            fc2 = tf_.fc_layer(fc1, self.alpha * 64, 2, 'fc2')
+            out = tf.multiply(tf.exp(fc2[:,0]), tf.sin(fc2[:,1]))
+            out = tf.reshape(out, [-1, 1])
+
+        return out
+
     def build_real_ResNet20_2d(self, x, activation):
         act = tf_.select_activation(activation)
         inputShape = x.get_shape().as_list()
@@ -1046,6 +1074,8 @@ class tf_network:
             return self.build_Jastrow_2d(x)
         elif which_net == "pre_sRBM":
             return self.build_pre_sRBM_2d(x)
+        elif which_net == "real_ResNet10":
+            return self.build_real_ResNet10_2d(x, activation)
         elif which_net == "real_ResNet20":
             return self.build_real_ResNet20_2d(x, activation)
         else:
