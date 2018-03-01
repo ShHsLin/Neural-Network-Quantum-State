@@ -104,7 +104,7 @@ if __name__ == "__main__":
     start_t, start_c = time.time(), time.clock()
     N.update_stabilizer()
     if batch_size > 1:
-        for i in range(2000):
+        for i in range(1000):
             N.new_config_batch()
     else:
         for i in range(1000):

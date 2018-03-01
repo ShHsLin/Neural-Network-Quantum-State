@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from hoshen_kopelman import label
+from .hoshen_kopelman import  label
 from . import tf_wrapper as tf_
 
 
@@ -477,7 +477,7 @@ class tf_network:
     def build_RBM_1d(self, x):
         with tf.variable_scope("network", reuse=None):
             # inputShape = x.get_shape().as_list()
-            x = x[:, :, 0]
+            x = tf.cast(x[:, :, 0], dtype=tf.float32)
             fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
             fc1 = tf.complex(fc1_re, fc1_im)
@@ -593,6 +593,7 @@ class tf_network:
             b_size, Lx, Ly, _ = inputShape
             LxLy = Lx * Ly
             x = tf.reshape(x[:, :, :, 0], [-1, LxLy])
+            x = tf.cast(x, dtype=tf.float32)
             fc1_re = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_im')
             fc1 = tf.complex(fc1_re, fc1_im)
@@ -724,7 +725,9 @@ class tf_network:
                                                 stride_size=2, biases=False, bias_scale=1., FFT=False)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
                                       [1, 2, 3], keep_dims=False)
-            final_real = tf.clip_by_value(pool4_real + tf.real(conv_bias), -60., 60.)
+            final_real = pool4_real + tf.real(conv_bias)
+            # final_real = tf.clip_by_value(final_real, -60., 60.)
+            final_real = final_real - self.exp_stabilizer
             final_imag = pool4_imag + tf.imag(conv_bias)
             out = tf.reshape(tf.exp(tf.complex(final_real, final_imag)), [-1, 1])
             out = tf.real((out))
