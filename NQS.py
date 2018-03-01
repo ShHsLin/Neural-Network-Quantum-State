@@ -19,11 +19,11 @@ So easily to switch model
 class NQS_1d():
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
-                               dtype=int)
+                               dtype=np.int32)
         self.batch_size = batch_size
         self.inputShape = inputShape
         self.init_config(sz0_sector=True)
-        self.corrlength = 50
+        self.corrlength = inputShape[0]
         self.max_batch_size = 5000
         if self.batch_size > self.max_batch_size:
             print("batch_size > max_batch_size, memory error may occur")
@@ -173,7 +173,7 @@ class NQS_1d():
         corrlength = self.corrlength
         configDim = list(self.config.shape)
         configDim[0] = num_sample
-        configArray = np.zeros(configDim)
+        configArray = np.zeros(configDim, dtype=np.int32)
 
         if (self.batch_size == 1):
             for i in range(1, 1 + num_sample * corrlength):
@@ -216,7 +216,7 @@ class NQS_1d():
         corrlength = self.corrlength
         configDim = list(self.config.shape)
         configDim[0] = num_sample
-        configArray = np.zeros(configDim)
+        configArray = np.zeros(configDim, dtype=np.int32)
 
         if (self.batch_size == 1):
             for i in range(1, 1 + num_sample * corrlength):
@@ -431,7 +431,7 @@ class NQS_1d():
         oldAmp = self.eval_amp_array(config)[0]
 
         # PBC
-        config_shift_copy = np.zeros((1, L, inputShape1))
+        config_shift_copy = np.zeros((1, L, inputShape1), dtype=np.int32)
         config_shift_copy[:, :-1, :] = config[:, 1:, :]
         config_shift_copy[:, -1, :] = config[:, 0, :]
 
@@ -443,7 +443,7 @@ class NQS_1d():
         SzSz = np.einsum('ij,ij->i', config[0, :, :], config_shift_copy[0, :, :])
         localE += np.sum(SzSz - 0.5) * 2 * J / 4
 
-        config_flip = np.einsum('i,ijk->ijk', np.ones(L), config)
+        config_flip = np.einsum('i,ijk->ijk', np.ones(L, dtype=np.int32), config)
         for i in range(L):
             config_flip[i, i, :] = (1 - config_flip[i, i, :])
             config_flip[i, (i+1) % L, :] = (1 - config_flip[i, (i+1) % L, :])
@@ -467,7 +467,7 @@ class NQS_1d():
         '''
         num_config, L, inputShape1 = config_arr.shape
 
-        config_shift_copy = np.zeros((num_config, L, inputShape1))
+        config_shift_copy = np.zeros((num_config, L, inputShape1), dtype=np.int32)
         SzSz_j = [0.25]
         for j in range(1,L):
             config_shift_copy[:, :-j, :] = config_arr[:, j:, :]
@@ -491,7 +491,7 @@ class NQS_1d():
         oldAmp = self.eval_amp_array(config_arr)
 
         # PBC
-        config_shift_copy = np.zeros((num_config, L, inputShape1))
+        config_shift_copy = np.zeros((num_config, L, inputShape1), dtype=np.int32)
         config_shift_copy[:, :-1, :] = config_arr[:, 1:, :]
         config_shift_copy[:, -1, :] = config_arr[:, 0, :]
 
@@ -500,7 +500,7 @@ class NQS_1d():
         localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * J / 4
 
         # num_site(L) x num_config x num_site(L) x num_spin
-        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L), config_arr)
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L, dtype=np.int32), config_arr)
         for i in range(L):
             config_flip_arr[i, :, i, :] = (1 - config_flip_arr[i, :, i, :])
             config_flip_arr[i, :, (i+1) % L, :] = (1 - config_flip_arr[i, :, (i+1) % L, :])
@@ -527,7 +527,7 @@ class NQS_1d():
         ####################
         # PBC   J1 term   ##
         ####################
-        config_shift_copy = np.zeros((num_config, L, inputShape1))
+        config_shift_copy = np.zeros((num_config, L, inputShape1), dtype=np.int32)
         config_shift_copy[:, :-1, :] = config_arr[:, 1:, :]
         config_shift_copy[:, -1, :] = config_arr[:, 0, :]
 
@@ -536,7 +536,7 @@ class NQS_1d():
         localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * J1 / 4
 
         # num_site(L) x num_config x num_site(L) x num_spin
-        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L), config_arr)
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L, dtype=np.int32), config_arr)
         for i in range(L):
             config_flip_arr[i, :, i, :] = (1 - config_flip_arr[i, :, i, :])
             config_flip_arr[i, :, (i+1) % L, :] = (1 - config_flip_arr[i, :, (i+1) % L, :])
@@ -557,7 +557,7 @@ class NQS_1d():
         localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * J2 / 4
 
         # num_site(L) x num_config x num_site(L) x num_spin
-        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L), config_arr)
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L, dtype=np.int32), config_arr)
         for i in range(L):
             config_flip_arr[i, :, i, :] = (1 - config_flip_arr[i, :, i, :])
             config_flip_arr[i, :, (i+2) % L, :] = (1 - config_flip_arr[i, :, (i+2) % L, :])
@@ -584,7 +584,7 @@ class NQS_2d():
         Hubbard model: local_dim = 4
         '''
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1], inputShape[2]),
-                               dtype=int)
+                               dtype=np.int32)
         self.batch_size = batch_size
         self.inputShape = inputShape
         self.Lx = inputShape[0]
@@ -594,7 +594,7 @@ class NQS_2d():
             print("not a square lattice !!!")
 
         self.init_config(sz0_sector=True)
-        self.corrlength = 50
+        self.corrlength = self.LxLy
         self.max_batch_size = 5000
         if self.batch_size > self.max_batch_size:
             print("batch_size > max_batch_size, memory error may occur")
@@ -766,7 +766,7 @@ class NQS_2d():
         corrlength = self.corrlength
         configDim = list(self.config.shape)
         configDim[0] = num_sample
-        configArray = np.zeros(configDim)
+        configArray = np.zeros(configDim, dtype=np.int32)
 
         if (self.batch_size == 1):
             for i in range(1, 1 + num_sample * corrlength):
@@ -921,7 +921,7 @@ class NQS_2d():
 
         # S_ij dot S_(i+1)j
         # PBC
-        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
         config_shift_copy[:, :-1, :, :] = config_arr[:, 1:, :, :]
         config_shift_copy[:, -1, :, :] = config_arr[:, 0, :, :]
 
@@ -932,7 +932,7 @@ class NQS_2d():
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
-        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
@@ -947,7 +947,7 @@ class NQS_2d():
         ########################
         # PBC : S_ij dot S_i(j+1)
         ########################
-        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
         config_shift_copy[:, :, :-1, :] = config_arr[:, :, 1:, :]
         config_shift_copy[:, :, -1, :] = config_arr[:, :, 0, :]
 
@@ -958,7 +958,7 @@ class NQS_2d():
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
-        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
@@ -988,7 +988,7 @@ class NQS_2d():
         ########################
         # PBC : J1 S_ij dot S_(i+1)j
         ########################
-        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
         config_shift_copy[:, :-1, :, :] = config_arr[:, 1:, :, :]
         config_shift_copy[:, -1, :, :] = config_arr[:, 0, :, :]
 
@@ -999,7 +999,7 @@ class NQS_2d():
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
-        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
@@ -1014,7 +1014,7 @@ class NQS_2d():
         ########################
         # PBC : J1 S_ij dot S_i(j+1)
         ########################
-        # config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim))
+        # config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
         config_shift_copy[:, :, :-1, :] = config_arr[:, :, 1:, :]
         config_shift_copy[:, :, -1, :] = config_arr[:, :, 0, :]
 
@@ -1025,7 +1025,7 @@ class NQS_2d():
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
-        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
@@ -1053,7 +1053,7 @@ class NQS_2d():
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
-        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
@@ -1081,7 +1081,7 @@ class NQS_2d():
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
-        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly)), config_arr)
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
