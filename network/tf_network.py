@@ -61,13 +61,14 @@ class tf_network:
                 self.para_list_wo_bn.append(i)
 
         self.para_list = self.para_list_wo_bn
+        self.var_shape_list = [var.get_shape().as_list() for var in self.para_list]
+        self.num_para = self.getNumPara()
         # Define optimizer
         self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
                                               self.momentum)
 
         # (1.)
         # Define Log Gradient, loss = log(wave function)
-        import pdb;pdb.set_trace()
         self.log_grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
         # (2.)
         # Define Energy Gradient, loss = E(wave function)
@@ -140,8 +141,32 @@ class tf_network:
         2.  should add an upper bound for batch gradient.
             otherwise, it would often lead to memory issue
         '''
-        return self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
-                             feed_dict={self.x: X0, self.E_loc: E_loc_array.reshape([-1, 1])})
+        E_loc_array = E_loc_array.reshape([-1, 1])
+        num_data = E_loc_array.size
+        max_bp_size = 100
+        if num_data > max_bp_size:
+            grad_array = np.zeros((self.num_para, ), dtype=np.float32)
+            for idx in range(num_data // max_bp_size):
+                G_list = self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
+                                       feed_dict={self.x: X0[max_bp_size*idx : max_bp_size*(idx+1)],
+                                                  self.E_loc: E_loc_array[max_bp_size*idx : max_bp_size*(idx+1)]})
+                grad_array += np.concatenate([g.flatten() for g in G_list])
+
+            G_list = self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
+                                   feed_dict={self.x: X0[max_bp_size*(num_data//max_bp_size):],
+                                              self.E_loc: E_loc_array[max_bp_size*(num_data//max_bp_size):]})
+            grad_array += np.concatenate([g.flatten() for g in G_list])
+            G_list = []
+            grad_ind = 0
+            for var_shape in self.var_shape_list:
+                var_size = np.prod(var_shape)
+                G_list.append(grad_array[grad_ind:grad_ind + var_size].reshape(var_shape))
+                grad_ind += var_size
+
+            return G_list
+        else:
+            return self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
+                                 feed_dict={self.x: X0, self.E_loc: E_loc_array.reshape([-1, 1])})
 
     def pre_forwardPass(self, X0):
         X0 = self.enrich_features(X0)

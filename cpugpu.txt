@@ -1,0 +1,32 @@
+cpu 16 core
+Thermalization time:  		923.0045729999999 	67.73156547546387
+monte carlo time (gen config):  3681.102983 		270.5494978427887
+monte carlo time ( localE ):  	13391.445588 		912.1390419006348
+monte carlo time ( backProp ):  13424.258336 		924.0741696357727
+monte carlo time (total):  	13430.469935000001 	925.0010359287262
+
+
+gpu TITAN X + cpu 36 core
+Thermalization time:	 	52.6	8.0
+monte carlo time (gen config):  205	29
+monte carlo time ( localE ):  	593	85
+monte carlo time ( backProp ):  618	96
+monte carlo time (total):  	625	97
+
+
+
+gpu TITAN X + cpu 1 core
+Thermalization time:		35.7	36.9
+monte carlo time (gen config):  139	144
+monte carlo time ( localE ):  	481	500
+monte carlo time ( backProp ):  499	518
+monte carlo time (total):  	502	521
+
+
+
+ResNet20
+cpu 16 core:
+Thermalization time:            61649.277817 4382.942581892014
+
+
+

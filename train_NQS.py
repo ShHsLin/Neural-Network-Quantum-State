@@ -60,7 +60,7 @@ if __name__ == "__main__":
         explicit_SR = None
         print("Using plain gradient descent")
 
-    var_shape_list = [var.get_shape().as_list() for var in N.NNet.para_list]
+    var_shape_list = N.NNet.var_shape_list
     var_list = tf.global_variables()
     try:
         saver = tf.train.Saver(N.NNet.model_var_list)
