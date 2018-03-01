@@ -411,33 +411,60 @@ def get_var_count(self):
     return count
 
 
-def bottleneck_residual(self, x, in_channel, out_channel, name,
+def bottleneck_residual(x, in_channel, out_channel, name,
                         stride_size=2):
     with tf.variable_scope(name, reuse=None):
         # Identity shortcut
         if in_channel == out_channel:
             shortcut = x
-            x = self.conv_layer(x, 1, in_channel, out_channel/4, "conv1")
+            x = self.conv_layer2d(x, 1, in_channel, out_channel/4, "conv1")
             # conv projection shortcut
         else:
             shortcut = x
-            shortcut = self.conv_layer(shortcut, 1, in_channel,
-                                       out_channel, "shortcut",
-                                       stride_size=stride_size)
+            shortcut = self.conv_layer2d(shortcut, 1, in_channel,
+                                         out_channel, "shortcut",
+                                         stride_size=stride_size)
             shortcut = self.batch_norm(shortcut, phase=self.bn_is_training,
                                        scope='shortcut/bn')
-            x = self.conv_layer(x, 1, in_channel, out_channel/4, "conv1",
-                                stride_size=stride_size)
+            x = self.conv_layer2d(x, 1, in_channel, out_channel/4, "conv1",
+                                  stride_size=stride_size)
 
         x = self.batch_norm(x, phase=self.bn_is_training, scope='bn1')
         x = tf.nn.relu(x)
-        x = self.conv_layer(x, 3, out_channel/4, out_channel/4, "conv2")
+        x = self.conv_layer2d(x, 3, out_channel/4, out_channel/4, "conv2")
         x = self.batch_norm(x, phase=self.bn_is_training, scope='bn2')
         x = tf.nn.relu(x)
-        x = self.conv_layer(x, 1, out_channel/4, out_channel, "conv3")
+        x = self.conv_layer2d(x, 1, out_channel/4, out_channel, "conv3")
         x = self.batch_norm(x, phase=self.bn_is_training, scope='bn3')
         x += shortcut
         x = tf.nn.relu(x)
+
+    return x
+
+def residual_block(x, num_channel, name, stride_size=1, activation=tf.nn.relu, bn_is_training=True):
+    '''
+    This is an implementation of standard residual networks with BN after convolution.
+
+    Args:
+        inputs: x, a tensor of size [num_data, lx, ly, num_channels]
+        num_channel: number of channel for both input and output
+        name: name of this residual block
+        stride size:
+    '''
+    in_channel = num_channel
+    out_channel = num_channel
+    with tf.variable_scope(name, reuse=None):
+        # conv projection shortcut
+        shortcut = x
+        x = circular_conv_2d(x, 3, in_channel, out_channel, "conv1",
+                             stride_size=stride_size, biases=True)
+        x = batch_norm(x, phase=bn_is_training, scope='bn1')
+        x = activation(x)
+        x = circular_conv_2d(x, 3, in_channel, out_channel, "conv2",
+                             stride_size=stride_size, biases=True)
+        x = batch_norm(x, phase=bn_is_training, scope='bn2')
+        x += shortcut
+        x = activation(x)
 
     return x
 
