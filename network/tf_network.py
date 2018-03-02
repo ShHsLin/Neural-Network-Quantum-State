@@ -1,3 +1,4 @@
+from memory_profiler import profile
 import numpy as np
 import tensorflow as tf
 from .hoshen_kopelman import  label
@@ -49,6 +50,8 @@ class tf_network:
 
         # Variables Creation
         self.pred = self.build_network(which_net, self.x, self.activation)
+        self.log_psi = tf.log(self.pred)
+
         self.model_var_list = tf.global_variables()
         self.para_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='network')
         print("create variable")
@@ -69,11 +72,12 @@ class tf_network:
 
         # (1.)
         # Define Log Gradient, loss = log(wave function)
-        self.log_grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
+        # self.log_grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
+        self.log_grads = tf.gradients(self.log_psi, self.para_list)  # grad(cost, variable_list)
         # (2.)
         # Define Energy Gradient, loss = E(wave function)
-        self.E_loc = tf.placeholder(tf.float32, [None, 1])
-        # self.E_grads = tf.gradients(tf.log(self.pred), self.para_list)  # grad(cost, variable_list)
+        self.E_loc_m_avg = tf.placeholder(tf.float32, [None, 1])
+        self.E_grads = tf.gradients(self.log_psi, self.para_list, grad_ys=self.E_loc_m_avg)  # grad(cost, variable_list)
 
         # Pseudo Code for batch Gradient
         # examples = tf.split(self.x)
@@ -124,9 +128,10 @@ class tf_network:
     def plain_backProp(self, X0):
         return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
 
+    @profile
     def plain_vanilla_back_prop(self, X0, E_loc_array):
-        E_vec = (self.E_loc - tf.reduce_mean(self.E_loc))
-        log_psi = tf.log(self.pred)
+        # E_vec = (self.E_loc - tf.reduce_mean(self.E_loc))
+
         # Implementation below fail for unknown reason
         # Not sure whether it is bug from tensorflow or not.
         # 
@@ -142,19 +147,20 @@ class tf_network:
             otherwise, it would often lead to memory issue
         '''
         E_loc_array = E_loc_array.reshape([-1, 1])
+        E_loc_array = E_loc_array - np.mean(E_loc_array)
         num_data = E_loc_array.size
         max_bp_size = 100
         if num_data > max_bp_size:
             grad_array = np.zeros((self.num_para, ), dtype=np.float32)
             for idx in range(num_data // max_bp_size):
-                G_list = self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
+                G_list = self.sess.run(self.E_grads,
                                        feed_dict={self.x: X0[max_bp_size*idx : max_bp_size*(idx+1)],
-                                                  self.E_loc: E_loc_array[max_bp_size*idx : max_bp_size*(idx+1)]})
+                                                  self.E_loc_m_avg: E_loc_array[max_bp_size*idx : max_bp_size*(idx+1)]})
                 grad_array += np.concatenate([g.flatten() for g in G_list])
 
-            G_list = self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
+            G_list = self.sess.run(self.E_grads,
                                    feed_dict={self.x: X0[max_bp_size*(num_data//max_bp_size):],
-                                              self.E_loc: E_loc_array[max_bp_size*(num_data//max_bp_size):]})
+                                              self.E_loc_m_avg: E_loc_array[max_bp_size*(num_data//max_bp_size):]})
             grad_array += np.concatenate([g.flatten() for g in G_list])
             G_list = []
             grad_ind = 0
@@ -165,8 +171,8 @@ class tf_network:
 
             return G_list
         else:
-            return self.sess.run(tf.gradients(log_psi, self.para_list, grad_ys=E_vec),
-                                 feed_dict={self.x: X0, self.E_loc: E_loc_array.reshape([-1, 1])})
+            return self.sess.run(self.E_grads,
+                                 feed_dict={self.x: X0, self.E_loc: E_loc_array})
 
     def pre_forwardPass(self, X0):
         X0 = self.enrich_features(X0)
