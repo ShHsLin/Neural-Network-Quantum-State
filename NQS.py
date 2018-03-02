@@ -256,9 +256,9 @@ class NQS_1d():
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
-                Glist[idx] += W * self.reg
+                Glist[idx] = Glist[idx] * 2./num_sample + W * self.reg
 
-            Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
+            Gj = np.concatenate([g.flatten() for g in Glist])
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
@@ -808,9 +808,9 @@ class NQS_2d():
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
-                Glist[idx] += W * self.reg
+                Glist[idx] = Glist[idx] * 2./num_sample + W * self.reg
 
-            Gj = np.concatenate([g.flatten() for g in Glist]) * 2./num_sample
+            Gj = np.concatenate([g.flatten() for g in Glist])
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
