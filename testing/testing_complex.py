@@ -4,6 +4,9 @@ import numpy as np
 z = tf.placeholder(tf.complex64)
 sess = tf.InteractiveSession()
 print("z = 2+0.1j")
+print("log(z)")
+print(sess.run(tf.log(z), feed_dict={z:2+0.1j}))
+
 print("tf.gradients(z*z, z, grad_ys=[tf.complex(1.,0.)])")
 print(sess.run(tf.gradients(z*z, z, grad_ys=[tf.complex(1.,0.)]), feed_dict={z:2+0.1j}))
 print("tf.gradients(tf.conj(z)*z, z, grad_ys=[tf.complex(1.,0.)])")
