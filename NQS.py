@@ -253,6 +253,13 @@ class NQS_1d():
             Evar = np.var(Earray)
             print(self.get_self_amp_batch()[:5])
             print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / (L**2) / num_sample)  # , "Earray[:10]",Earray[:10]
+            if self.moving_E_avg != None:
+                self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+                print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
+                Earray = Earray - self.moving_E_avg
+            else:
+                Earray = Earray - Eavg
+
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
@@ -805,6 +812,13 @@ class NQS_2d():
             Evar = np.var(Earray)
             print(self.get_self_amp_batch()[:5])
             print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / (self.LxLy**2) / num_sample)
+            if self.moving_E_avg != None:
+                self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+                print("moving_E_avg/N !!!!: ", self.moving_E_avg / self.LxLy)
+                Earray = Earray - self.moving_E_avg
+            else:
+                Earray = Earray - Eavg
+
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
@@ -862,7 +876,7 @@ class NQS_2d():
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
             Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
-            print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
+            print("moving_E_avg/N !!!!: ", self.moving_E_avg / self.LxLy)
 
         if not explicit_SR:
             def implicit_S(v):
