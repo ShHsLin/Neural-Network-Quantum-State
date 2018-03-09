@@ -3,7 +3,14 @@ import matplotlib.pyplot as plt
 import sys
 
 filename = sys.argv[1]
-plt.plot(np.genfromtxt(filename))
+# Earray=np.genfromtxt(filename, dtype=str)
+# Earray=np.loadtxt(filename).view(complex)
+Earray=np.loadtxt(filename, dtype=complex, converters={0: lambda s: complex(s.decode().replace('+-', '-'))})
+
+plt.plot(np.real(Earray))
+plt.show()
+
+plt.plot(np.imag(Earray))
 plt.show()
 
 

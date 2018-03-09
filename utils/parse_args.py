@@ -60,6 +60,15 @@ def parse_args():
                         help='nonlinear activation function in the network'
                         'Default: softplus2',
                         default='softplus2', type=str)
+    parser.add_argument('--SP', dest='SP',
+                        help='True(1): single precision, False(0): double precision '
+                        'Default: True(1)',
+                        default='1', type=int)
+    parser.add_argument('--using_complex', dest='using_complex',
+                        help='False(0): using real-valued wavefunction.'
+                        'True(1): using complex-valued wavefunction. '
+                        'Default: False(0)',
+                        default='0', type=int)
 
 
 
