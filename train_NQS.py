@@ -20,7 +20,7 @@ if __name__ == "__main__":
     args = parse_args()
     (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
     (J2, SR, reg, path) = (args.J2, bool(args.SR), args.reg, args.path)
-    (act) = (args.act)
+    (act, SP, using_complex) = (args.act, bool(args.SP), bool(args.using_complex))
     if len(path)>0 and path[-1] != '/':
         path = path + '/'
 
@@ -38,7 +38,8 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
-    Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha, activation=act)
+    Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
+                     activation=act, using_complex=using_complex, single_precision=SP)
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2, reg=reg)
     elif dim == 2:
