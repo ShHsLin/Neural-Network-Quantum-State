@@ -17,9 +17,10 @@ So easily to switch model
 
 
 class NQS_1d():
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.):
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
+                 using_complex=False, single_precision=True):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
-                               dtype=np.int32)
+                               dtype=np.int8)
         self.batch_size = batch_size
         self.inputShape = inputShape
         self.init_config(sz0_sector=True)
@@ -32,6 +33,14 @@ class NQS_1d():
         self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
         self.reg = reg
+        self.using_complex = using_complex
+        self.SP = single_precision
+        if self.SP:
+            self.NP_FLOAT = np.float32
+            self.NP_COMPLEX = np.complex64
+        else:
+            self.NP_FLAOT = np.float64
+            self.NP_COMPLEX = np.complex128
 
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
@@ -40,7 +49,8 @@ class NQS_1d():
             self.get_local_E_batch = self.local_E_AFH_batch
         elif Hamiltonian == 'J1J2':
             self.J2 = J2
-            self.get_local_E_batch = self.local_E_J1J2_batch
+            # self.get_local_E_batch = self.local_E_J1J2_batch
+            self.get_local_E_batch = self.local_E_J1J2_batch_log
         else:
             raise NotImplementedError
 
@@ -83,12 +93,30 @@ class NQS_1d():
         if array_shape[0] <= max_size:
             return self.NNet.forwardPass(configArray).flatten()
         else:
-            amp_array = np.empty((array_shape[0], ), dtype=np.float64)
+            if self.using_complex:
+                amp_array = np.empty((array_shape[0], ), dtype=self.NP_COMPLEX)
+            else:
+                amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
+
             for idx in range(array_shape[0] // max_size):
                 amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
             amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
             return amp_array
+
+    def eval_log_amp_array(self, configArray):
+        # (batch_size, inputShape[0], inputShape[1])
+        array_shape = configArray.shape
+        max_size = self.max_batch_size
+        if array_shape[0] <= max_size:
+            return self.NNet.forwardPass_log_psi(configArray).flatten()
+        else:
+            log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
+            for idx in range(array_shape[0] // max_size):
+                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_psi(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+
+            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            return log_amp_array
 
     def new_config(self):
         L = self.config.shape[1]
@@ -210,7 +238,7 @@ class NQS_1d():
         Osum = np.zeros((numPara))
         Earray = np.zeros((num_sample))
         EOsum = np.zeros((numPara))
-        Oarray = np.zeros((numPara, num_sample))
+        Oarray = np.zeros((numPara, num_sample), dtype=self.NP_COMPLEX)
 
         start_c, start_t = time.clock(), time.time()
         corrlength = self.corrlength
@@ -282,8 +310,8 @@ class NQS_1d():
 
         # Osum = np.einsum('ij->i', Oarray)
         # EOsum = np.einsum('ij,j->i', Oarray, Earray)
-        Osum = Oarray.dot(np.ones(Oarray.shape[1]))
-        EOsum = Oarray.dot(Earray)
+        Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # <O*>
+        EOsum = Oarray.conjugate().dot(Earray)  # <O^* E>
 
         # for i in range(num_sample):
         #     localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
@@ -295,7 +323,7 @@ class NQS_1d():
         if not explicit_SR:
             pass
         else:
-            OOsum = Oarray.dot(Oarray.T)
+            OOsum = Oarray.conjugate().dot(Oarray.T)
 
 
         end_c, end_t = time.clock(), time.time()
@@ -311,18 +339,18 @@ class NQS_1d():
         #  Fj = 2<O_iH>-2<H><O_i>
         #####################################
         if self.moving_E_avg is None:
-            Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
+            Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
             Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-            Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
+            Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
 
         if not explicit_SR:
             def implicit_S(v):
                 avgO = Osum.flatten()/num_sample
-                finalv = - avgO.dot(v) * avgO
-                finalv += Oarray.dot((Oarray.T.dot(v)))/num_sample
+                finalv = - avgO.dot(v) * avgO.conjugate()
+                finalv += Oarray.conjugate().dot((Oarray.T.dot(v)))/num_sample
                 return finalv  # + v * 1e-4
 
             implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
@@ -333,7 +361,7 @@ class NQS_1d():
             #####################################
             # S_ij = <O_i O_j > - <O_i><O_j>   ##
             #####################################
-            Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2)
+            Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2))
             # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
             # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
             Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
@@ -575,6 +603,8 @@ class NQS_1d():
         localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J2 / oldAmp / 2
         return localE_arr
 
+    def local_E_J1J2_batch_log(self, config_arr):
+        return NotImplementedError
 
 ############################
 #  END OF DEFINITION NQS1d #
@@ -582,7 +612,8 @@ class NQS_1d():
 
 
 class NQS_2d():
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.):
+    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
+                 using_complex=False, single_precision=True):
         '''
         config = [batch_size, Lx, Ly, local_dim]
         config represent the product state basis of the model
@@ -591,7 +622,7 @@ class NQS_2d():
         Hubbard model: local_dim = 4
         '''
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1], inputShape[2]),
-                               dtype=np.int32)
+                               dtype=np.int8)
         self.batch_size = batch_size
         self.inputShape = inputShape
         self.Lx = inputShape[0]
@@ -610,6 +641,14 @@ class NQS_2d():
         self.net_num_para = self.NNet.getNumPara()
         self.moving_E_avg = None
         self.reg = reg
+        self.using_complex = using_complex
+        self.SP = single_precision
+        if self.SP:
+            self.NP_FLOAT = np.float32
+            self.NP_COMPLEX = np.complex64
+        else:
+            self.NP_FLAOT = np.float64
+            self.NP_COMPLEX = np.complex128
 
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
@@ -620,7 +659,7 @@ class NQS_2d():
         elif Hamiltonian == 'J1J2':
             self.J2 = J2
             self.get_local_E_batch = self.local_E_2dJ1J2_batch
-            self.get_local_E_batch = self.local_E_2dJ1J2_batch_log
+#             self.get_local_E_batch = self.local_E_2dJ1J2_batch_log
         else:
             raise NotImplementedError
 
@@ -664,13 +703,33 @@ class NQS_2d():
             # import pdb;pdb.set_trace()
             return self.NNet.forwardPass(configArray).flatten()
         else:
-            amp_array = np.empty((array_shape[0], ), dtype=np.float64)
+            if self.using_complex:
+                amp_array = np.empty((array_shape[0], ), dtype=self.NP_COMPLEX)
+            else:
+                amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
+
             for idx in range(array_shape[0] // max_size):
                 amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
             amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
             # import pdb;pdb.set_trace()
             return amp_array
+
+    def eval_log_amp_array(self, configArray):
+        # (batch_size, inputShape[0], inputShape[1], inputShape[2])
+        array_shape = configArray.shape
+        max_size = self.max_batch_size
+        if array_shape[0] <= max_size:
+            # import pdb;pdb.set_trace()
+            return self.NNet.forwardPass_log_psi(configArray).flatten()
+        else:
+            log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
+            for idx in range(array_shape[0] // max_size):
+                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_psi(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+
+            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            # import pdb;pdb.set_trace()
+            return log_amp_array
 
     def new_config(self):
         '''
@@ -768,7 +827,7 @@ class NQS_2d():
         Osum = np.zeros((numPara))
         Earray = np.zeros((num_sample))
         EOsum = np.zeros((numPara))
-        Oarray = np.zeros((numPara, num_sample))
+        Oarray = np.zeros((numPara, num_sample), dtype=np.complex64)
 
         start_c, start_t = time.clock(), time.time()
         corrlength = self.corrlength
@@ -842,8 +901,8 @@ class NQS_2d():
 
         # Osum = np.einsum('ij->i', Oarray)
         # EOsum = np.einsum('ij,j->i', Oarray, Earray)
-        Osum = Oarray.dot(np.ones(Oarray.shape[1]))
-        EOsum = Oarray.dot(Earray)
+        Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # This <O^*>
+        EOsum = Oarray.conjugate().dot(Earray)  # <O^* E>
 
         # for i in range(num_sample):
         #     localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
@@ -855,7 +914,7 @@ class NQS_2d():
         if not explicit_SR:
             pass
         else:
-            OOsum = Oarray.dot(Oarray.T)
+            OOsum = Oarray.conjugate().dot(Oarray.T)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
@@ -870,20 +929,27 @@ class NQS_2d():
         #####################################
         #  Fj = 2<O_iH>-2<H><O_i>
         #####################################
+
+        # The networks are all parametrized by real-valued variables.
+        # As a result, Fj should be real and is real by definition.
+        # we cast the type to real by np.real
+
         if self.moving_E_avg is None:
-            Fj = 2. * (EOsum / num_sample - Eavg * Osum / num_sample)
+            import pdb;pdb.set_trace()
+            Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
             Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
 
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-            Fj = 2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample)
+            Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / self.LxLy)
 
+        import pdb;pdb.set_trace()
         if not explicit_SR:
             def implicit_S(v):
                 avgO = Osum.flatten()/num_sample
-                finalv = - avgO.dot(v) * avgO
-                finalv += Oarray.dot((Oarray.T.dot(v)))/num_sample
+                finalv = - avgO.dot(v) * avgO.conjugate()
+                finalv += Oarray.conjugate().dot((Oarray.T.dot(v)))/num_sample
                 return finalv  # + v * 1e-4
 
             implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
@@ -894,7 +960,8 @@ class NQS_2d():
             #####################################
             # S_ij = <O_i O_j > - <O_i><O_j>   ##
             #####################################
-            Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2)
+            import pdb;pdb.set_trace()
+            Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten().conjugate(), Osum.flatten()) / (num_sample**2))
             # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
             # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
             Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
@@ -912,6 +979,7 @@ class NQS_2d():
             # Method 3 #
             ############
             Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            # Gj, info = scipy.sparse.linalg.cg(Sij, Fj, x0=Gj)
             print("conv Gj : ", info)
 
         # Gj = Fj.T
@@ -996,7 +1064,7 @@ class NQS_2d():
         SzSz = 0 if ud or du
         '''
         num_config, Lx, Ly, local_dim = config_arr.shape
-        localE_arr = np.zeros((num_config))
+        localE_arr = np.zeros((num_config), dtype=np.complex64)
         oldAmp = self.eval_amp_array(config_arr)
 
 
@@ -1120,7 +1188,7 @@ class NQS_2d():
         SzSz = 0 if ud or du
         '''
         num_config, Lx, Ly, local_dim = config_arr.shape
-        localE_arr = np.zeros((num_config))
+        localE_arr = np.zeros((num_config), dtype=np.complex64)
         # old_log_amp shape (num_config,1)
         old_log_amp = self.eval_log_amp_array(config_arr)
 
