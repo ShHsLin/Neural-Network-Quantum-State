@@ -304,7 +304,7 @@ class NQS_1d():
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / L, Evar / (L**2) / num_sample
+            return Gj, Eavg / L, Evar / (L**2) / num_sample, None
         else:
             pass
 
@@ -395,13 +395,15 @@ class NQS_1d():
             print("conv Gj : ", info)
 
         # Gj = Fj.T
+        GjFj = Gj.dot(Fj)
         print("norm(G): ", np.linalg.norm(Gj),
-              "norm(F):", np.linalg.norm(Fj))
+              "norm(F):", np.linalg.norm(Fj),
+              "norm(G.dot(F)):", GjFj)
 
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
-        return Gj, Eavg / L, Evar / (L**2) / num_sample
+        return Gj, Eavg / L, Evar / (L**2) / num_sample, GjFj
 
     def getLocal_no_OO(self, config):
         '''
@@ -907,7 +909,7 @@ class NQS_2d():
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample
+            return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample, None
         else:
             pass
 
@@ -1008,13 +1010,15 @@ class NQS_2d():
             print("conv Gj : ", info)
 
         # Gj = Fj.T
+        GjFj = Gj.dot(Fj)
         print("norm(G): ", np.linalg.norm(Gj),
-              "norm(F):", np.linalg.norm(Fj))
+              "norm(F):", np.linalg.norm(Fj),
+              "G.dot(F):", GjFj)
 
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
-        return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample
+        return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample, GjFj
 
     def local_E_2dAFH_batch(self, config_arr, J=1):
         '''

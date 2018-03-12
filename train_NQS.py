@@ -105,7 +105,7 @@ if __name__ == "__main__":
     # Thermalization
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
-    N.update_stabilizer()
+    # N.update_stabilizer()
     if batch_size > 1:
         for i in range(1000):
             N.new_config_batch()
@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
     for iteridx in range(1, num_iter+1):
         print(iteridx)
-        N.update_stabilizer()
+        # N.update_stabilizer()
 
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
@@ -133,11 +133,17 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
 
-        GradW, E, E_var = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                                SR=SR, Gj=GradW, explicit_SR=explicit_SR)
+        GradW, E, E_var, GjFj = N.VMC(num_sample=num_sample, iteridx=iteridx,
+                                      SR=SR, Gj=GradW, explicit_SR=explicit_SR)
         # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
-        if np.linalg.norm(GradW) > 2000:
-            GradW = GradW/np.linalg.norm(GradW)
+        if np.linalg.norm(GradW) > 1000:
+            GradW = GradW/np.linalg.norm(GradW) * 1000
+
+        # Trust region method:
+        if SR:
+            if lr > lr/np.sqrt(GjFj):
+                GradW = GradW / np.sqrt(GjFj)
+
 
         E_log.append(E)
         grad_list = []

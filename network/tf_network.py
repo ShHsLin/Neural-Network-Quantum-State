@@ -181,7 +181,10 @@ class tf_network:
         # Initializing All the variables and operation, all operation and variables should 
         # be defined before here.!!!!
         init = tf.global_variables_initializer()
-        self.sess = tf.Session()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth=True
+        config.allow_soft_placement=True
+        self.sess = tf.Session(config=config)
         self.sess.run(init)
 
     def enrich_features(self, X0):
