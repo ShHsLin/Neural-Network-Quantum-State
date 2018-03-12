@@ -301,12 +301,18 @@ class NQS_1d():
         else:
             pass
 
-        for i in range(num_sample):
-            GList = self.NNet.backProp(configArray[i:i+1])
-            Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
+        # for i in range(num_sample):
+        #     GList = self.NNet.backProp(configArray[i:i+1])
+        #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
 
+        # end_c, end_t = time.clock(), time.time()
+        # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+
+        Oarray = self.NNet.run_unaggregated_gradient(configArray)
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+        # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
+
 
         # Osum = np.einsum('ij->i', Oarray)
         # EOsum = np.einsum('ij,j->i', Oarray, Earray)
@@ -892,12 +898,19 @@ class NQS_2d():
         else:
             pass
 
-        for i in range(num_sample):
-            GList = self.NNet.backProp(configArray[i:i+1])
-            Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
+        # for i in range(num_sample):
+        #     GList = self.NNet.backProp(configArray[i:i+1])
+        #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
 
+        # end_c, end_t = time.clock(), time.time()
+        # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+
+        Oarray = self.NNet.run_unaggregated_gradient(configArray)
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+        # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
+
+
 
         # Osum = np.einsum('ij->i', Oarray)
         # EOsum = np.einsum('ij,j->i', Oarray, Earray)
@@ -935,7 +948,7 @@ class NQS_2d():
         # we cast the type to real by np.real
 
         if self.moving_E_avg is None:
-            import pdb;pdb.set_trace()
+            # import pdb;pdb.set_trace()
             Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
             Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
 
@@ -944,7 +957,6 @@ class NQS_2d():
             Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / self.LxLy)
 
-        import pdb;pdb.set_trace()
         if not explicit_SR:
             def implicit_S(v):
                 avgO = Osum.flatten()/num_sample
@@ -960,7 +972,6 @@ class NQS_2d():
             #####################################
             # S_ij = <O_i O_j > - <O_i><O_j>   ##
             #####################################
-            import pdb;pdb.set_trace()
             Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten().conjugate(), Osum.flatten()) / (num_sample**2))
             # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
             # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
