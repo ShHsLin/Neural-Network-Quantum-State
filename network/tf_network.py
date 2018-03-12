@@ -43,6 +43,7 @@ class tf_network:
         ##########################
         self.alpha = alpha
         self.activation = activation
+        self.which_net = which_net
         self.using_complex = using_complex
         self.keep_prob = tf.placeholder(self.TF_FLOAT)
         self.dx_exp_stabilizer = tf.placeholder(self.TF_FLOAT)
@@ -154,6 +155,9 @@ class tf_network:
         # cost = tf.log(output)
         # per_example_gradients = tf.gradients(cost, weight_copies)
 
+        # Unaggregated Gradient with while_loop
+        self.unaggregated_gradient = self.build_unaggregated_gradient()
+
         # Do some operation on grads
         # Get the new gradient from outside by placeholder
         self.newgrads = [tf.placeholder(self.TF_FLOAT, g.get_shape()) for g in self.log_grads]
@@ -199,6 +203,38 @@ class tf_network:
 
     def plain_backProp(self, X0):
         return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
+
+    def build_unaggregated_gradient(self):
+        '''
+        We build the while loop operation to parallelize the per example
+        gradient calculation. This also avoid the CPU-GPU transfer per example.
+        Input:
+            self.x, placeholder. Inside the while loop, being splitted and with network built
+            and gradient computed separately.
+
+        alternative implementation:
+        https://stackoverflow.com/questions/38994037/tensorflow-while-loop-for-training
+        '''
+        if self.using_complex:
+            unaggregated_grad = tf.TensorArray(dtype=self.TF_COMPLEX, size=tf.shape(self.x)[0])
+        else:
+            unaggregated_grad = tf.TensorArray(dtype=self.TF_FLOAT, size=tf.shape(self.x)[0])
+
+        init_state = (0, unaggregated_grad)
+        # i = tf.constant(0)
+        condition = lambda i, _: i < tf.shape(self.x)[0]
+        def body(i, ta):
+            single_x = self.x[i:i+1]
+            single_log_psi = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
+            ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in tf.gradients(single_log_psi, self.para_list, grad_ys=tf.complex(1.,0.))], axis=0 ))
+            return (i+1, ta)
+
+        n, final_unaggregated_grad = tf.while_loop(condition, body, init_state, back_prop=False)
+        final_unaggregated_grad = tf.transpose(final_unaggregated_grad.stack())
+        return final_unaggregated_grad
+
+    def run_unaggregated_gradient(self, X0):
+        return self.sess.run(self.unaggregated_gradient, feed_dict={self.x: X0})
 
     def plain_vanilla_back_prop(self, X0, E_loc_array):
         # Implementation below fail for unknown reason
@@ -278,7 +314,7 @@ class tf_network:
         self.sess.run(self.update_exp_stabilizer, feed_dict={self.dx_exp_stabilizer: increments})
 
     def build_NN_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
             fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
             fc1 = tf.cos(fc1)
@@ -292,7 +328,7 @@ class tf_network:
             return tf.real(out), None
 
     def build_ZNet_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
             fc1_amp = tf_.fc_layer(x, self.L, self.L * self.alpha / 2, 'fc1_amp')
             fc1_amp = tf.nn.tanh(fc1_amp)
@@ -317,7 +353,7 @@ class tf_network:
 
     def build_NN_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0]
             fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
             fc1 = act(fc1)
@@ -334,7 +370,7 @@ class tf_network:
 
     def build_NN_linear_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0]
             fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'fc1')
             fc1 = act(fc1)
@@ -348,7 +384,7 @@ class tf_network:
 
     def build_NN3_1d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
             fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
             fc1 = act(fc1)
@@ -368,7 +404,7 @@ class tf_network:
 
     def build_NN3_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0]
             fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha//2, 'fc1')
             fc1 = act(fc1)
@@ -384,7 +420,7 @@ class tf_network:
         return out, tf.complex(out_re, out_im)
 
 #     def build_CNN_1d(self, x):
-#         with tf.variable_scope("network", reuse=None):
+#         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
 #             x = x[:, :, 0:1]
 #             inputShape = x.get_shape().as_list()
 #             # x_shape = [num_data, Lx, num_spin(channels)]
@@ -413,7 +449,7 @@ class tf_network:
 #         return out
 
     def build_CNN_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
@@ -468,7 +504,7 @@ class tf_network:
             return out, None
 
     def build_FCN1_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
@@ -494,7 +530,7 @@ class tf_network:
             return out, None
 
     def build_FCN2_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
@@ -527,7 +563,7 @@ class tf_network:
 
     def build_FCN3_1d(self, x):
         act = tf_.softplus2
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
@@ -572,7 +608,7 @@ class tf_network:
             return out, log_psi
 
     def build_ResNet(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
             fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
             fc1 = tf.nn.softplus(fc1)
@@ -593,7 +629,7 @@ class tf_network:
         return out, tf.complex(out_re, out_im)
 
     def build_RBM_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             # inputShape = x.get_shape().as_list()
             x = tf.cast(x[:, :, 0], dtype=self.TF_FLOAT)
             fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
@@ -611,7 +647,7 @@ class tf_network:
         return out, log_prob
 
     def build_RBM_cosh_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             # inputShape = x.get_shape().as_list()
             x = x[:, :, 0]
             fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
@@ -636,7 +672,7 @@ class tf_network:
 
 
     def build_sRBM_1d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
@@ -664,7 +700,7 @@ class tf_network:
             return out, None
 
     def build_NN_complex(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
             fc1_complex = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1_complex',
                                        dtype=tf.complex64)
@@ -679,7 +715,7 @@ class tf_network:
         return out, fc2_complex
 
     def build_NN3_complex(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
             fc1_complex = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1_complex',
                                        dtype=tf.complex64)
@@ -706,7 +742,7 @@ class tf_network:
         return out, fc4_complex
 
     def build_RBM_2d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             inputShape = x.get_shape().as_list()
             b_size, Lx, Ly, _ = inputShape
             LxLy = Lx * Ly
@@ -727,7 +763,7 @@ class tf_network:
         return out, log_prob
 
     def build_RBM_cosh_2d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             inputShape = x.get_shape().as_list()
             b_size, Lx, Ly, _ = inputShape
             LxLy = Lx * Ly
@@ -754,7 +790,7 @@ class tf_network:
         return out, log_prob
 
     def build_sRBM_2d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             x = tf.cast(x, dtype=self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
@@ -808,7 +844,7 @@ class tf_network:
             2-6: positive cluster size
             7-11: negative cluster size
         '''
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             inputShape = x.get_shape().as_list()
             # minus one, so we only encode from 1
             dense_pos_cluster_size = x[:, :, :, 2] - 1
@@ -861,7 +897,7 @@ class tf_network:
 
     def build_FCN2_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             x = tf.cast(x, self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
@@ -896,7 +932,7 @@ class tf_network:
 
     def build_FCN2v1_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
@@ -924,7 +960,7 @@ class tf_network:
 
     def build_FCN3v1_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
@@ -960,7 +996,7 @@ class tf_network:
 
     def build_FCN3v2_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
@@ -996,7 +1032,7 @@ class tf_network:
 
     def build_real_CNN_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
@@ -1020,7 +1056,7 @@ class tf_network:
 
     def build_real_CNN3_2d(self, x, activation):
         act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
@@ -1053,7 +1089,7 @@ class tf_network:
         inputShape = x.get_shape().as_list()
         Lx = int(inputShape[1])
         Ly = int(inputShape[2])
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = tf.cast(x, dtype=self.TF_FLOAT)
             x = tf_.circular_conv_2d(x, 3, inputShape[-1], self.alpha * 64, 'conv1',
                                      stride_size=1, biases=True, bias_scale=1., FFT=False)
@@ -1074,14 +1110,17 @@ class tf_network:
             out = tf.multiply(tf.exp(fc2[:,0]), tf.sin(fc2[:,1]))
             out = tf.reshape(out, [-1, 1])
 
-        return out, tf.complex(fc2[:,0], math.pi/2. - fc2[:,1])
+        if self.using_complex:
+            return None,None
+        else:
+            return out, None
 
     def build_real_ResNet20_2d(self, x, activation):
         act = tf_.select_activation(activation)
         inputShape = x.get_shape().as_list()
         Lx = int(inputShape[1])
         Ly = int(inputShape[2])
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = tf.cast(x, dtype=self.TF_FLOAT)
             x = tf_.circular_conv_2d(x, 3, inputShape[-1], self.alpha * 64, 'conv1',
                                      stride_size=1, biases=True, bias_scale=1., FFT=False)
@@ -1105,7 +1144,7 @@ class tf_network:
         return out, tf.complex(fc2[:,0], math.pi/2. - fc2[:,1])
 
     def build_Jastrow_2d(self, x):
-        with tf.variable_scope("network", reuse=None):
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, :]
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]

@@ -108,7 +108,7 @@ def avg_pool2d(x, name, kernel_size, stride_size=2, padding='SAME'):
 def batch_norm(bottom, phase, scope='bn'):
     return tf.contrib.layers.batch_norm(bottom, center=True, scale=True,
                                         is_training=phase, scope=scope,
-                                        decay=0.995)
+                                        decay=0.995, reuse=tf.AUTO_REUSE)
 
 def batch_norm_new(bottom, phase, scope_name='bn'):
     _BATCH_NORM_DECAY = 0.997
@@ -121,7 +121,7 @@ def batch_norm_new(bottom, phase, scope_name='bn'):
 
 def conv_layer1d(bottom, filter_size, in_channels,
                  out_channels, name, stride_size=1, biases=False):
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var1d(filter_size, in_channels,
                                            out_channels, biases=biases)
         conv = tf.nn.conv1d(bottom, filt, stride_size, padding='SAME')
@@ -140,7 +140,7 @@ def circular_conv_1d(bottom, filter_size, in_channels, out_channels,
     approach is relatively slow comparing to ordinary conv operation, it is still
     much faster than FFT approach generally, since the dimension of the filter is small.
     '''
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var1d(filter_size, in_channels,
                                            out_channels, biases=biases, bias_scale=bias_scale)
         if not FFT:
@@ -165,7 +165,7 @@ def circular_conv_1d(bottom, filter_size, in_channels, out_channels,
 def circular_conv_1d_complex(bottom, filter_size, in_channels, out_channels,
                              name, stride_size=1, biases=False, bias_scale=1.,
                              FFT=False):
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt_re, conv_biases_re = get_conv_var1d(filter_size, in_channels, out_channels,
                                                  name="real_", biases=biases, bias_scale=bias_scale)
         filt_im, conv_biases_im = get_conv_var1d(filter_size, in_channels, out_channels,
@@ -205,7 +205,7 @@ def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
     approach is relatively slow comparing to ordinary conv operation, it is still
     much faster than FFT approach generally, since the dimension of the filter is small.
     '''
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var2d(filter_size, in_channels, out_channels,
                                            biases=biases, bias_scale=bias_scale)
         if not FFT:
@@ -233,7 +233,7 @@ def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
 def circular_conv_2d_complex(bottom, filter_size, in_channels, out_channels,
                              name, stride_size=1, biases=False, bias_scale=1.,
                              FFT=False):
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt_re, conv_biases_re = get_conv_var2d(filter_size, in_channels, out_channels,
                                                  name="real_", biases=biases, bias_scale=bias_scale)
         filt_im, conv_biases_im = get_conv_var2d(filter_size, in_channels, out_channels,
@@ -270,7 +270,7 @@ def circular_conv_2d_complex(bottom, filter_size, in_channels, out_channels,
 
 def conv_layer2d(bottom, filter_size, in_channels,
                  out_channels, name, stride_size=1, biases=False):
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var2d(filter_size, in_channels,
                                            out_channels, biases=biases)
         conv = tf.nn.conv2d(bottom, filt, [1, stride_size, stride_size, 1], padding='SAME')
@@ -283,7 +283,7 @@ def conv_layer2d(bottom, filter_size, in_channels,
 
 def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
     if dtype not in [tf.complex64, tf.complex128]:
-        with tf.variable_scope(name, reuse=None):
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             weights, biases = get_fc_var(in_size, out_size, biases=biases, dtype=dtype)
             x = tf.reshape(bottom, [-1, in_size])
             if biases:
@@ -293,7 +293,7 @@ def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
 
     else:
         part_dtype = {tf.complex64: tf.float32, tf.complex128: tf.float64}
-        with tf.variable_scope(name, reuse=None):
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             real_weights, real_biases = get_fc_var(in_size, out_size, name="real_",
                                                    biases=biases, dtype=part_dtype[dtype])
             imag_weights, imag_biases = get_fc_var(in_size, out_size, name="imag_",
@@ -421,7 +421,7 @@ def get_var_count(self):
 
 def bottleneck_residual(x, in_channel, out_channel, name,
                         stride_size=2):
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         # Identity shortcut
         if in_channel == out_channel:
             shortcut = x
@@ -461,7 +461,7 @@ def residual_block(x, num_channel, name, stride_size=1, activation=tf.nn.relu, b
     '''
     in_channel = num_channel
     out_channel = num_channel
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         # conv projection shortcut
         shortcut = x
         x = circular_conv_2d(x, 3, in_channel, out_channel, "conv1",
@@ -493,7 +493,7 @@ def get_jastrow_var(n_body, dimension, name="", dtype=tf.float32, scale=1.):
     return weights_symm
 
 def jastrow_2d_amp(config_array, Lx, Ly, local_d, name, sym=False):
-    with tf.variable_scope(name, reuse=None):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         total_dim = Lx * Ly * local_d
         # get symmetry weights matrix, (total_dim x total_dim )
         weights_symm_re = get_jastrow_var(2, total_dim, name="real_", dtype=tf.float32)
