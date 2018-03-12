@@ -41,9 +41,11 @@ if __name__ == "__main__":
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
                      activation=act, using_complex=using_complex, single_precision=SP)
     if dim == 1:
-        N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2, reg=reg)
+        N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
+                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP)
     elif dim == 2:
-        N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size, J2=J2, reg=reg)
+        N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
+                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP)
     else:
         print("DIM error")
         raise
@@ -123,20 +125,6 @@ if __name__ == "__main__":
     for iteridx in range(1, num_iter+1):
         print(iteridx)
         N.update_stabilizer()
-
-        '''
-        print("Thermalizing ~~ ")
-        start_t, start_c = time.time(), time.clock()
-        if batch_size > 1:
-            for i in range(500):
-                N.new_config_batch()
-        else:
-            for i in range(500):
-                N.new_config()
-
-        end_t, end_c = time.time(), time.clock()
-        print("Thermalization time: ", end_c-start_c, end_t-start_t)
-        '''
 
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
         # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))

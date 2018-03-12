@@ -208,9 +208,12 @@ class tf_network:
         '''
         We build the while loop operation to parallelize the per example
         gradient calculation. This also avoid the CPU-GPU transfer per example.
+        The while_loop is parallelized with the default value parallel_iter=10.
         Input:
             self.x, placeholder. Inside the while loop, being splitted and with network built
             and gradient computed separately.
+        Return:
+            log_derivative per example in matrix with shape (num_para, num_data)
 
         alternative implementation:
         https://stackoverflow.com/questions/38994037/tensorflow-while-loop-for-training
@@ -225,8 +228,16 @@ class tf_network:
         condition = lambda i, _: i < tf.shape(self.x)[0]
         def body(i, ta):
             single_x = self.x[i:i+1]
-            single_log_psi = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
-            ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in tf.gradients(single_log_psi, self.para_list, grad_ys=tf.complex(1.,0.))], axis=0 ))
+            if self.using_complex:
+                single_log_psi = tf.log(self.build_network(self.which_net, single_x, self.activation)[0])
+                single_log_grads_real = tf.gradients(tf.real(single_log_psi), self.para_list)
+                single_log_grads_imag = tf.gradients(tf.imag(single_log_psi), self.para_list)
+                single_log_grads = [tf.complex(single_log_grads_real[i], single_log_grads_imag[i])
+                                    for i in range(len(self.log_grads_real))]
+                ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in single_log_grads], axis=0 ))
+            else:
+                single_log_psi = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
+                ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in tf.gradients(single_log_psi, self.para_list, grad_ys=tf.complex(1.,0.))], axis=0 ))
             return (i+1, ta)
 
         n, final_unaggregated_grad = tf.while_loop(condition, body, init_state, back_prop=False)
