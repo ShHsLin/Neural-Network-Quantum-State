@@ -77,6 +77,9 @@ class NQS_1d():
     def get_self_amp_batch(self):
         return self.NNet.forwardPass(self.config).flatten()
 
+    def get_self_log_amp_batch(self):
+        return self.NNet.forwardPass_log_psi(self.config).flatten()
+
     def update_stabilizer(self):
         current_amp = self.get_self_amp_batch()
         max_abs_amp = np.max(np.abs(current_amp))
@@ -158,7 +161,8 @@ class NQS_1d():
     def new_config_batch(self):
         L = self.config.shape[1]
         batch_size = self.batch_size
-        old_amp = self.get_self_amp_batch()
+        old_log_amp = self.get_self_log_amp_batch()
+        # old_amp = self.get_self_amp_batch()
 
         # Restricted to Sz = 0 sectors ##
         randsite1 = np.random.randint(L, size=(batch_size,))
@@ -170,8 +174,11 @@ class NQS_1d():
         flip_config[np.arange(batch_size), randsite1, :] = (1 - flip_config[np.arange(batch_size), randsite1, :])
         flip_config[np.arange(batch_size), randsite2, :] = (1 - flip_config[np.arange(batch_size), randsite2, :])
 
-        ratio = np.divide(np.abs(self.eval_amp_array(flip_config))+1e-45, np.abs(old_amp)+1e-45 )
-        ratio_square = np.power(ratio,  2)
+        ratio = np.zeros((batch_size,))
+        ratio[mask] = np.exp(2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask]))
+        ratio_square = ratio
+        # ratio = np.divide(np.abs(self.eval_amp_array(flip_config))+1e-45, np.abs(old_amp)+1e-45 )
+        # ratio_square = np.power(ratio,  2)
         mask2 = np.random.random_sample((batch_size,)) < ratio_square
 
         final_mask = np.logical_and(mask, mask2)
@@ -301,16 +308,16 @@ class NQS_1d():
         else:
             pass
 
+        Oarray = self.NNet.run_unaggregated_gradient(configArray)
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+
         # for i in range(num_sample):
         #     GList = self.NNet.backProp(configArray[i:i+1])
         #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
 
         # end_c, end_t = time.clock(), time.time()
         # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-
-        Oarray = self.NNet.run_unaggregated_gradient(configArray)
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
         # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
 
 
@@ -692,6 +699,9 @@ class NQS_2d():
     def get_self_amp_batch(self):
         return self.NNet.forwardPass(self.config).flatten()
 
+    def get_self_log_amp_batch(self):
+        return self.NNet.forwardPass_log_psi(self.config).flatten()
+
     def update_stabilizer(self):
         current_amp = self.get_self_amp_batch()
         max_abs_amp = np.max(np.abs(current_amp))
@@ -790,7 +800,8 @@ class NQS_2d():
         4.) 10% propasal include global spin inversion
         '''
         batch_size = self.batch_size
-        old_amp = self.get_self_amp_batch()
+        old_log_amp = self.get_self_log_amp_batch()
+        # old_amp = self.get_self_amp_batch()
 
         # Restricted to Sz = 0 sectors ##
         randsite1_x = np.random.randint(self.Lx, size=(batch_size,))
@@ -817,8 +828,10 @@ class NQS_2d():
         flip_config[to_flip_idx] = 1 - flip_config[to_flip_idx]
 
         ratio = np.zeros((batch_size,))
-        ratio[mask] = np.divide(np.abs(self.eval_amp_array(flip_config[mask]))+1e-45, np.abs(old_amp[mask])+1e-45 )
-        ratio_square = np.power(ratio,  2)
+        ratio[mask] = np.exp(2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask]))
+        ratio_square = ratio
+        # ratio[mask] = np.divide(np.abs(self.eval_amp_array(flip_config[mask]))+1e-45, np.abs(old_amp[mask])+1e-45 )
+        # ratio_square = np.power(ratio,  2)
         mask2 = np.random.random_sample((batch_size,)) < ratio_square
         final_mask = np.logical_and(mask, mask2)
         # update self.config
@@ -898,16 +911,17 @@ class NQS_2d():
         else:
             pass
 
+
+        Oarray = self.NNet.run_unaggregated_gradient(configArray)
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+
         # for i in range(num_sample):
         #     GList = self.NNet.backProp(configArray[i:i+1])
         #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
 
         # end_c, end_t = time.clock(), time.time()
         # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-
-        Oarray = self.NNet.run_unaggregated_gradient(configArray)
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
         # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
 
 
