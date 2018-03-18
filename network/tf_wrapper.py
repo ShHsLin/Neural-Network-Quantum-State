@@ -54,7 +54,7 @@ def softplus2(x):
 def complex_relu(x):
     re = tf.real(x)
     # im = tf.imag(x)
-    return tf.where(tf.greater(re, tf.zeros_like(re)), x, tf.complex(tf.nn.elu(re),
+    return tf.where(tf.greater(re, tf.zeros_like(re)), x, tf.complex(tf.nn.relu(re),
                                                                      tf.zeros_like(re)))
     # mask = tf.cast(tf.greater(re, tf.zeros_like(re)), tf.float32)
     # re = re * mask
