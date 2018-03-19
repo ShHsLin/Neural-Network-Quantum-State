@@ -35,7 +35,7 @@ def select_activation(activation):
     elif activation == 'c_elu':
         return c_elu
     elif activation == 'elu':
-        return elu
+        return tf.nn.elu
     elif activation == 'tanh':
         return tf.tanh
     elif activation == 'selu':

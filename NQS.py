@@ -673,8 +673,8 @@ class NQS_2d():
             self.get_local_E_batch = self.local_E_2dAFH_batch
         elif Hamiltonian == 'J1J2':
             self.J2 = J2
-            self.get_local_E_batch = self.local_E_2dJ1J2_batch
-#             self.get_local_E_batch = self.local_E_2dJ1J2_batch_log
+#             self.get_local_E_batch = self.local_E_2dJ1J2_batch
+            self.get_local_E_batch = self.local_E_2dJ1J2_batch_log
         else:
             raise NotImplementedError
 
@@ -845,10 +845,14 @@ class NQS_2d():
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
         numPara = self.net_num_para
         # OOsum = np.zeros((numPara, numPara))
-        Osum = np.zeros((numPara))
-        Earray = np.zeros((num_sample))
-        EOsum = np.zeros((numPara))
-        Oarray = np.zeros((numPara, num_sample), dtype=np.complex64)
+        if self.using_complex:
+            NP_DTYPE = self.NP_COMPLEX
+        else:
+            NP_DTYPE = self.NP_FLOAT
+        Osum = np.zeros((numPara), dtype=NP_DTYPE)
+        Earray = np.zeros((num_sample), dtype=NP_DTYPE)
+        EOsum = np.zeros((numPara), dtype=NP_DTYPE)
+        Oarray = np.zeros((numPara, num_sample), dtype=NP_DTYPE)
 
         start_c, start_t = time.clock(), time.time()
         corrlength = self.corrlength
@@ -978,7 +982,7 @@ class NQS_2d():
                 avgO = Osum.flatten()/num_sample
                 finalv = - avgO.dot(v) * avgO.conjugate()
                 finalv += Oarray.conjugate().dot((Oarray.T.dot(v)))/num_sample
-                return finalv  # + v * 1e-4
+                return np.real(finalv + v * 1e-4)
 
             implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
 
