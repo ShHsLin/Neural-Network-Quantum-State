@@ -27,7 +27,7 @@ print("tf.gradients(tf.real(z*z), [x,y], grad_ys=[tf.complex(1.,0.)])")
 print(sess.run(tf.gradients(tf.real(z*z), [x,y]),
                feed_dict={x:2,y:0.1}))
 print("tf.gradients(tf.imag(z*z), [x,y], grad_ys=[tf.complex(1.,0.)])")
-print(sess.run(tf.gradients(tf.imag(z*z), [x,]),
+print(sess.run(tf.gradients(tf.imag(z*z), [x,y]),
                feed_dict={x:2,y:0.1}))
 
 print("x,y --> z = x+iy --> log(z)")

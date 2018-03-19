@@ -235,8 +235,8 @@ class tf_network:
                 single_log_psi = tf.log(self.build_network(self.which_net, single_x, self.activation)[0])
                 single_log_grads_real = tf.gradients(tf.real(single_log_psi), self.para_list)
                 single_log_grads_imag = tf.gradients(tf.imag(single_log_psi), self.para_list)
-                single_log_grads = [tf.complex(single_log_grads_real[i], single_log_grads_imag[i])
-                                    for i in range(len(self.log_grads_real))]
+                single_log_grads = [tf.complex(single_log_grads_real[j], single_log_grads_imag[j])
+                                    for j in range(len(single_log_grads_real))]
                 ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in single_log_grads], axis=0 ))
             else:
                 single_log_psi = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
@@ -803,7 +803,8 @@ class tf_network:
 
         return out, log_prob
 
-    def build_sRBM_2d(self, x):
+    def build_sRBM_2d(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
             x = tf.cast(x, dtype=self.TF_FLOAT)
@@ -817,7 +818,7 @@ class tf_network:
                                             stride_size=2, biases=True, bias_scale=1, FFT=False)
                                             # stride_size=2, biases=True, bias_scale=3140.*2/64/self.alpha, FFT=False)
 
-            conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
+            conv1 = act(tf.complex(conv1_re, conv1_im))
             # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
             pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
             # pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
@@ -1209,7 +1210,7 @@ class tf_network:
         elif which_net == "RBM_cosh":
             return self.build_RBM_cosh_2d(x)
         elif which_net == "sRBM":
-            return self.build_sRBM_2d(x)
+            return self.build_sRBM_2d(x, activation)
         elif which_net == "FCN2":
             return self.build_FCN2_2d(x, activation)
         elif which_net == "FCN2v1":

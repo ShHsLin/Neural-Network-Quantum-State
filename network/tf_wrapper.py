@@ -26,6 +26,8 @@ def select_activation(activation):
         return softplus2
     elif activation == 'softplus':
         return softplus
+    elif activation == 'complex_relu':
+        return complex_relu
     elif activation == 'c_relu':
         return c_relu
     elif activation == 'relu':
