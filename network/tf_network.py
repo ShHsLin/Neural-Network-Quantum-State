@@ -100,10 +100,10 @@ class tf_network:
             # But to prevent error, always cast to TF_COMPLEX.
 
         self.model_var_list = tf.global_variables()
-        self.para_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='network')
+        self.para_list_w_bn = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='network')
         print("create variable")
         self.para_list_wo_bn=[]
-        for i in self.para_list:
+        for i in self.para_list_w_bn:
             print(i.name)
             if 'bn' in i.name:
                 pass
@@ -149,16 +149,19 @@ class tf_network:
 
 
         # Pseudo Code for batch Gradient
+        # Method 1: Copying network
+        #
         # examples = tf.split(self.x)
         # weight_copies = [tf.identity(self.para_list) for x in examples]
         # output = tf.stack(f(x, w) for x, w in zip(examples, weight_copies))
         # cost = tf.log(output)
         # per_example_gradients = tf.gradients(cost, weight_copies)
 
-        # Unaggregated Gradient with while_loop
+        # Method 2: Unaggregated Gradient with while_loop
         self.unaggregated_gradient = self.build_unaggregated_gradient()
 
-        # Do some operation on grads
+        # Do some operation on grads.
+        # We apply CG/MINRES to obtain natural gradient.
         # Get the new gradient from outside by placeholder
         self.newgrads = [tf.placeholder(self.TF_FLOAT, g.get_shape()) for g in self.log_grads]
         self.train_op = self.optimizer.apply_gradients(zip(self.newgrads,
@@ -427,11 +430,15 @@ class tf_network:
             fc3 = tf_.fc_layer(fc2, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc3')
             fc3 = act(fc3)
             out_re = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_re')
-            out_re = tf.clip_by_value(out_re, -60., 60.)
+            # out_re = tf.clip_by_value(out_re, -60., 60.)
             out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_im')
-            out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+            log_psi = tf.complex(out_re, out_im)
+            out = tf.exp(log_psi)
 
-        return out, tf.complex(out_re, out_im)
+        if self.using_complex:
+            return out, log_psi
+        else:
+            return tf.real(out), None
 
 #     def build_CNN_1d(self, x):
 #         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
@@ -932,13 +939,13 @@ class tf_network:
             pool3 = tf.reduce_sum(conv2[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
                     tf.reduce_sum(conv2[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
 
-            # pool3_real = tf.real(pool3)
-            pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
+            pool3_real = tf.real(pool3)
+            # pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
             # pool3_real = tf.real(pool3) - self.exp_stabilizer
             pool3_imag = tf.imag(pool3)
             log_prob = tf.complex(pool3_real,pool3_imag)
             out = tf.exp(log_prob)
-            out = tf.reshape(tf.real(out), [-1, 1])
+            out = tf.reshape(out, [-1, 1])
 
         if self.using_complex:
             return out, log_prob
@@ -949,6 +956,7 @@ class tf_network:
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
+            x = tf.cast(x, self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
@@ -964,14 +972,17 @@ class tf_network:
             conv2 = act(conv2)
 
             pool3 = tf.reduce_sum(conv2, [1, 2, 3], keep_dims=False)
-            pool3_real = tf.clip_by_value(tf.real(pool3), -60., 60.)
+            pool3_real = tf.real(pool3)
+            # pool3_real = tf.clip_by_value(tf.real(pool3), -60., 60.)
             pool3_imag = tf.imag(pool3)
             log_prob = tf.complex(pool3_real,pool3_imag)
             out = tf.exp(log_prob)
-            out = tf.real((out))
-
             out = tf.reshape(out, [-1, 1])
-        return out, log_prob
+
+        if self.using_complex:
+            return out, log_prob
+        else:
+            return tf.real(out), None
 
     def build_FCN3v1_2d(self, x, activation):
         act = tf_.select_activation(activation)
