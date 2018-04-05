@@ -6,7 +6,7 @@ from . import tf_wrapper as tf_
 
 
 class tf_network:
-    def __init__(self, which_net, inputShape, optimizer, dim,
+    def __init__(self, which_net, inputShape, optimizer, dim, sess=None
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True):
         '''
@@ -187,7 +187,11 @@ class tf_network:
         config = tf.ConfigProto()
         config.gpu_options.allow_growth=True
         config.allow_soft_placement=True
-        self.sess = tf.Session(config=config)
+        if sess is None:
+            self.sess = tf.Session(config=config)
+        else:
+            self.sess = sess
+
         self.sess.run(init)
 
     def enrich_features(self, X0):
@@ -333,6 +337,7 @@ class tf_network:
     def build_NN_1d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
             fc1 = tf.cos(fc1)
             out_re = tf_.fc_layer(fc1, self.L * self.alpha, 1, 'out_re')
@@ -695,6 +700,7 @@ class tf_network:
     def build_sRBM_1d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0:1]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, num_spin(channels)]
             # conv_layer1d(x, filter_size, in_channels, out_channels, name)
