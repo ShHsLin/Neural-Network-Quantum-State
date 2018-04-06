@@ -50,6 +50,9 @@ if __name__ == "__main__":
         print("DIM error")
         raise
 
+    # Run Initilizer
+    N.NNet.run_global_variables_initializer()
+
     print("Total num para: ", N.net_num_para)
     if SR:
         print("Using Stochastic Reconfiguration")
@@ -68,6 +71,7 @@ if __name__ == "__main__":
     try:
         saver = tf.train.Saver(N.NNet.model_var_list)
 
+        # ckpt_path = path + 'wavefunction/Pretrain/%s/L%d/' % (which_net, L)
         ckpt_path = path + 'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim, which_net, act, L, alpha)
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)

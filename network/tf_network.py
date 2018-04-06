@@ -6,7 +6,7 @@ from . import tf_wrapper as tf_
 
 
 class tf_network:
-    def __init__(self, which_net, inputShape, optimizer, dim, sess=None
+    def __init__(self, which_net, inputShape, optimizer, dim, sess=None,
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True):
         '''
@@ -100,7 +100,11 @@ class tf_network:
             # But to prevent error, always cast to TF_COMPLEX.
 
         self.model_var_list = tf.global_variables()
-        self.para_list_w_bn = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='network')
+        if tf.get_default_graph().get_name_scope() == '':
+            current_scope = 'network'
+        else:
+            current_scope = tf.get_default_graph().get_name_scope() + '/network'
+        self.para_list_w_bn = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=current_scope)
         print("create variable")
         self.para_list_wo_bn=[]
         for i in self.para_list_w_bn:
@@ -183,7 +187,6 @@ class tf_network:
 
         # Initializing All the variables and operation, all operation and variables should 
         # be defined before here.!!!!
-        init = tf.global_variables_initializer()
         config = tf.ConfigProto()
         config.gpu_options.allow_growth=True
         config.allow_soft_placement=True
@@ -192,6 +195,8 @@ class tf_network:
         else:
             self.sess = sess
 
+    def run_global_variables_initializer(self):
+        init = tf.global_variables_initializer()
         self.sess.run(init)
 
     def enrich_features(self, X0):
