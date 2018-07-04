@@ -10,6 +10,13 @@ class tf_network:
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True):
         '''
+        Arguments as follows:
+        which_net:
+            the name of the network structure choosen.
+        inputShape:
+            x.shape
+        dim:
+            dimension of the physical system
         using_complex:
             using complex-valued/real-valued wavefunction or not.
             This would affect the type of other variables, including
@@ -47,6 +54,9 @@ class tf_network:
         self.using_complex = using_complex
         self.keep_prob = tf.placeholder(self.TF_FLOAT)
         self.dx_exp_stabilizer = tf.placeholder(self.TF_FLOAT)
+        # Define
+        # E_loc_m_avg  <-- E_loc minus avg(E_loc)
+        # which is useful for plain gradient descent algorithm
         if using_complex:
             self.E_loc_m_avg = tf.placeholder(self.TF_COMPLEX, [None, 1])
             # complex-valued wavefunction will result in complex local Energy
@@ -80,9 +90,6 @@ class tf_network:
         else:
             raise NotImplementedError
 
-        #########################
-        # Variables Creation
-        #########################
         self.pred, self.log_psi = self.build_network(which_net, self.x, self.activation)
         if self.log_psi is None:
             # self.log_psi = tf.log(self.pred)
@@ -99,11 +106,15 @@ class tf_network:
             #
             # But to prevent error, always cast to TF_COMPLEX.
 
+        #########################
+        # Variables Creation
+        #########################
         self.model_var_list = tf.global_variables()
         if tf.get_default_graph().get_name_scope() == '':
             current_scope = 'network'
         else:
             current_scope = tf.get_default_graph().get_name_scope() + '/network'
+
         self.para_list_w_bn = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=current_scope)
         print("create variable")
         self.para_list_wo_bn=[]
@@ -116,13 +127,37 @@ class tf_network:
 
         self.para_list = self.para_list_wo_bn
         # para_list are list of variables for gradient calculation
-        # could not include batchnorm variables.
+        # should not include batchnorm variables.
+        #
+        # Below, we further separate the variables into real and imaginary
+        # part of the variables.
+        # The separation is necessary for construction of wirtinger derivative.
 
         self.var_shape_list = [var.get_shape().as_list() for var in self.para_list]
         self.num_para = self.getNumPara()
         # Define optimizer
         self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
                                               self.momentum)
+
+        self.re_para_idx = [i for i in range(len(self.para_list)) if 're' in self.para_list[i].name]
+        self.im_para_idx = [i for i in range(len(self.para_list)) if 'im' in self.para_list[i].name]
+        print("self.re_para_idx : ", self.re_para_idx)
+        print("self.im_para_idx : ", self.im_para_idx)
+        assert {*self.re_para_idx} | {*self.im_para_idx} == {*range(len(self.para_list))}
+        assert len( {*self.re_para_idx} & {*self.im_para_idx} ) == 0
+
+        self.im_para_array = np.zeros(self.num_para, dtype=np.int)
+        im_para_array_idx=0
+        for idx, var_shape in enumerate(self.var_shape_list):
+            tmp_idx = im_para_array_idx + np.prod(var_shape)
+            if idx in self.re_para_idx:
+                im_para_array_idx = tmp_idx
+            else:
+                self.im_para_array[im_para_array_idx:tmp_idx] = 1
+                im_para_array_idx = tmp_idx
+
+        if not using_complex:
+            self.im_para_array = np.zeros(self.num_para, dtype=np.int)
 
         # Below we define the gradient.
         # tf.gradient(cost, variable_list)
@@ -144,9 +179,28 @@ class tf_network:
                 # To prevent this, we manually compute the gradient.
                 # Cast gradient back to real only before apply_gradient.
                 self.log_grads_real = tf.gradients(tf.real(self.log_psi), self.para_list)
-                self.log_grads_imag = tf.gradients(tf.imag(self.log_psi), self.para_list)
-                self.log_grads = [tf.complex(self.log_grads_real[i], self.log_grads_imag[i])
-                                  for i in range(len(self.log_grads_real))]
+                '''
+                we add a minus in front of tf.imag to take the complex conjugate
+                of the wavefunction
+                such that we take the O^* instead of O
+                '''
+                self.log_grads_imag = tf.gradients(-tf.imag(self.log_psi), self.para_list)
+                # self.log_grads = [tf.complex(self.log_grads_real[i], self.log_grads_imag[i])
+                #                   for i in range(len(self.log_grads_real))]
+                self.log_grads = [None]*len(self.log_grads_real)
+
+                for idx in range(len(self.re_para_idx)):
+                    re_idx = self.re_para_idx[idx]
+                    im_idx = self.im_para_idx[idx]
+                    dre_re = self.log_grads_real[re_idx]
+                    dre_im = self.log_grads_imag[re_idx]
+                    dim_re = self.log_grads_real[im_idx]
+                    dim_im = self.log_grads_imag[im_idx]
+                    self.log_grads[re_idx] = (dre_re - dim_im) / 2.
+                    # self.log_grads[re_idx] = (tf.real(self.log_grads[re_idx]) + im_in_im) / 2.
+                    self.log_grads[im_idx] = (dim_re + dre_im) / 2.
+                    # self.log_grads[im_idx] = (tf.real(self.log_grads[im_idx]) - im_in_re) / 2.
+
                 # (2.1)
                 self.E_grads = tf.gradients(self.log_psi, self.para_list, grad_ys=self.E_loc_m_avg)
                 # log_psi is always complex, so we need to specify grad_ys
@@ -234,7 +288,8 @@ class tf_network:
         https://stackoverflow.com/questions/38994037/tensorflow-while-loop-for-training
         '''
         if self.using_complex:
-            unaggregated_grad = tf.TensorArray(dtype=self.TF_COMPLEX, size=tf.shape(self.x)[0])
+            # unaggregated_grad = tf.TensorArray(dtype=self.TF_COMPLEX, size=tf.shape(self.x)[0])
+            unaggregated_grad = tf.TensorArray(dtype=self.TF_FLOAT, size=tf.shape(self.x)[0])
         else:
             unaggregated_grad = tf.TensorArray(dtype=self.TF_FLOAT, size=tf.shape(self.x)[0])
 
@@ -244,14 +299,37 @@ class tf_network:
         def body(i, ta):
             single_x = self.x[i:i+1]
             if self.using_complex:
-                single_log_psi = tf.log(self.build_network(self.which_net, single_x, self.activation)[0])
+                single_pred, single_log_psi = self.build_network(self.which_net, single_x,
+                                                                 self.activation)
+                if single_log_psi is None:
+                    single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
+
                 single_log_grads_real = tf.gradients(tf.real(single_log_psi), self.para_list)
-                single_log_grads_imag = tf.gradients(tf.imag(single_log_psi), self.para_list)
-                single_log_grads = [tf.complex(single_log_grads_real[j], single_log_grads_imag[j])
-                                    for j in range(len(single_log_grads_real))]
+                single_log_grads_imag = tf.gradients(-tf.imag(single_log_psi), self.para_list)
+                # single_log_grads = [tf.complex(single_log_grads_real[j], single_log_grads_imag[j])
+                #                     for j in range(len(single_log_grads_real))]
+                single_log_grads = [None]*len(single_log_grads_real)
+                for idx in range(len(self.re_para_idx)):
+                    re_idx = self.re_para_idx[idx]
+                    im_idx = self.im_para_idx[idx]
+                    single_dre_re = single_log_grads_real[re_idx]
+                    single_dre_im = single_log_grads_imag[re_idx]
+                    single_dim_re = single_log_grads_real[im_idx]
+                    single_dim_im = single_log_grads_imag[im_idx]
+                    single_log_grads[re_idx] = (single_dre_re - single_dim_im) / 2.
+                    # single_log_grads[re_idx] = tf.real(tf.real(single_log_grads[re_idx]) + single_im_in_im) / 2.
+                    single_log_grads[im_idx] = (single_dim_re + single_dre_im) / 2.
+                    # single_log_grads[im_idx] = tf.real(tf.real(single_log_grads[im_idx]) - single_im_in_re) / 2.
+
+
                 ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in single_log_grads], axis=0 ))
             else:
-                single_log_psi = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
+                single_pred, single_log_psi = self.build_network(self.which_net, single_x,
+                                                                 self.activation)
+                if single_log_psi is None:
+                    single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
+
+                # single_log_psi = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
                 ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in tf.gradients(single_log_psi, self.para_list, grad_ys=tf.complex(1.,0.))], axis=0 ))
             return (i+1, ta)
 
@@ -675,12 +753,12 @@ class tf_network:
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
             out = tf.real(tf.exp(log_prob))
 
-        return out, log_prob
+        return out, None
 
     def build_RBM_cosh_1d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             # inputShape = x.get_shape().as_list()
-            x = x[:, :, 0]
+            x = tf.cast(x[:, :, 0], dtype=self.TF_FLOAT) -0.5
             fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
             fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
             fc1 = tf.complex(fc1_re, fc1_im)
@@ -699,7 +777,7 @@ class tf_network:
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
             out = tf.real(tf.exp(log_prob))
 
-        return out, log_prob
+        return out, None
 
 
     def build_sRBM_1d(self, x):
@@ -790,9 +868,12 @@ class tf_network:
             v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im')
             log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
-            out = tf.real(tf.exp(log_prob))
+            out = tf.exp(log_prob)
 
-        return out, log_prob
+        if self.using_complex:
+            return out, log_prob
+        else:
+            return tf.real(out), None
 
     def build_RBM_cosh_2d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
@@ -858,6 +939,7 @@ class tf_network:
                                       [1, 2, 3], keep_dims=False)
             final_real = tf.clip_by_value(pool4_real + tf.real(conv_bias), -60., 60.)
             final_imag = pool4_imag + tf.imag(conv_bias)
+            final_real = final_real - self.exp_stabilizer
             out = tf.reshape(tf.exp(tf.complex(final_real, final_imag)), [-1, 1])
 
         if self.using_complex:

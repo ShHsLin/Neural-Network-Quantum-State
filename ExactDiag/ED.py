@@ -5,14 +5,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def gen_pair(row, V):
+def gen_pair(row, V, PBC=True):
     '''
     assume row is an in order array generate a cyclic pairs
     in the row array given with interaction strength V.
     For example: row = [1, 2, 3, 5]
     will gives [(1, 2, V), (2, 3, V), (3, 5, V), (5, 1, V)]
     '''
-    return [(row[i], row[(i + 1) % len(row)], V) for i in range(len(row))]
+    if PBC == True:
+        return [(row[i], row[(i + 1) % len(row)], V) for i in range(len(row))]
+    else:
+        return [(row[i], row[(i + 1) % len(row)], V) for i in range(len(row)-1)]
 
 def gen_pair_2d_nnn(plaquette, V):
     '''

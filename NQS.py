@@ -42,6 +42,13 @@ class NQS_1d():
             self.NP_FLAOT = np.float64
             self.NP_COMPLEX = np.complex128
 
+        np_arange = np.arange(self.net_num_para)
+        self.re_idx_array = np_arange[np.array(1-self.NNet.im_para_array,
+                                               dtype=bool)]
+        self.im_idx_array = np_arange[np.array(self.NNet.im_para_array,
+                                               dtype=bool)]
+
+
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             self.get_local_E_batch = self.local_E_Ising_batch
@@ -49,8 +56,8 @@ class NQS_1d():
             self.get_local_E_batch = self.local_E_AFH_batch
         elif Hamiltonian == 'J1J2':
             self.J2 = J2
-            # self.get_local_E_batch = self.local_E_J1J2_batch
-            self.get_local_E_batch = self.local_E_J1J2_batch_log
+            self.get_local_E_batch = self.local_E_J1J2_batch
+            # self.get_local_E_batch = self.local_E_J1J2_batch_log
         else:
             raise NotImplementedError
 
@@ -183,7 +190,6 @@ class NQS_1d():
 
         final_mask = np.logical_and(mask, mask2)
         # update self.config
-        # import pdb;pdb.set_trace()
         self.config[final_mask] = flip_config[final_mask]
         return
 
@@ -324,7 +330,7 @@ class NQS_1d():
         # Osum = np.einsum('ij->i', Oarray)
         # EOsum = np.einsum('ij,j->i', Oarray, Earray)
         Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # <O*>
-        EOsum = Oarray.conjugate().dot(Earray)  # <O^* E>
+        EOsum = Oarray.conjugate().dot(Earray)  # <O^*E>
 
         # for i in range(num_sample):
         #     localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
@@ -336,8 +342,13 @@ class NQS_1d():
         if not explicit_SR:
             pass
         else:
-            OOsum = Oarray.conjugate().dot(Oarray.T)
-
+            # This expression might be wrong and should be modified
+            # as the expression below,
+            # OOsum = Oarray.conjugate().dot(Oarray.T)
+            #
+            mask = 1 - 2*self.NNet.im_para_array
+            Oarray_ = np.einsum('i,ij->ij', mask, Oarray)
+            OOsum = Oarray.dot(Oarray_.T)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
@@ -354,6 +365,10 @@ class NQS_1d():
         if self.moving_E_avg is None:
             Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
             Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
+            if self.using_complex:
+                Fj = Fj[self.re_idx_array] + 1j*Fj[self.im_idx_array]
+            else:
+                pass
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
             Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
@@ -374,7 +389,12 @@ class NQS_1d():
             #####################################
             # S_ij = <O_i O_j > - <O_i><O_j>   ##
             #####################################
-            Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2))
+            # Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2))
+            Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten() / num_sample,
+                                                 np.einsum('i,i->i', Osum.flatten()/num_sample,
+                                                           (1-2*self.NNet.im_para_array)))
+            if self.using_complex:
+                Sij = Sij[self.re_idx_array][:, self.re_idx_array] - Sij[self.im_idx_array][:, self.im_idx_array] + 1j * Sij[self.im_idx_array][:, self.re_idx_array] + 1j * Sij[self.re_idx_array][:, self.im_idx_array];
             # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
             # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
             Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
@@ -391,17 +411,23 @@ class NQS_1d():
             ############
             # Method 3 #
             ############
-            Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
             print("conv Gj : ", info)
 
         # Gj = Fj.T
-        GjFj = Gj.dot(Fj)
+        GjFj = np.linalg.norm(Gj.dot(Fj))
         print("norm(G): ", np.linalg.norm(Gj),
               "norm(F):", np.linalg.norm(Fj),
               "norm(G.dot(F)):", GjFj)
 
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
+
+        if self.using_complex:
+            tmp = np.zeros(Sij.shape[0]*2)
+            tmp[self.re_idx_array] = np.real(Gj)
+            tmp[self.im_idx_array] = np.imag(Gj)
 
         return Gj, Eavg / L, Evar / (L**2) / num_sample, GjFj
 
@@ -665,6 +691,10 @@ class NQS_2d():
             self.NP_FLAOT = np.float64
             self.NP_COMPLEX = np.complex128
 
+        np_arange = np.arange(self.NNet.im_para_array.size)
+        self.re_idx_array = np_arange[np.array((1-self.NNet.im_para_array), dtype=bool)]
+        self.im_idx_array = np_arange[np.array(self.NNet.im_para_array, dtype=bool)]
+
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             raise NotImplementedError
@@ -718,7 +748,6 @@ class NQS_2d():
         array_shape = configArray.shape
         max_size = self.max_batch_size
         if array_shape[0] <= max_size:
-            # import pdb;pdb.set_trace()
             return self.NNet.forwardPass(configArray).flatten()
         else:
             if self.using_complex:
@@ -730,7 +759,6 @@ class NQS_2d():
                 amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
             amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
-            # import pdb;pdb.set_trace()
             return amp_array
 
     def eval_log_amp_array(self, configArray):
@@ -738,7 +766,6 @@ class NQS_2d():
         array_shape = configArray.shape
         max_size = self.max_batch_size
         if array_shape[0] <= max_size:
-            # import pdb;pdb.set_trace()
             return self.NNet.forwardPass_log_psi(configArray).flatten()
         else:
             log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
@@ -746,7 +773,6 @@ class NQS_2d():
                 log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_psi(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
             log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
-            # import pdb;pdb.set_trace()
             return log_amp_array
 
     def new_config(self):
@@ -947,7 +973,11 @@ class NQS_2d():
         if not explicit_SR:
             pass
         else:
-            OOsum = Oarray.conjugate().dot(Oarray.T)
+            # This is wrong should be deleted
+            # OOsum = Oarray.conjugate().dot(Oarray.T)
+            mask = 1- 2*self.NNet.im_para_array
+            Oarray_ = np.einsum('i,ij->ij', mask, Oarray)
+            OOsum = Oarray.dot(Oarray_.T)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
@@ -968,9 +998,11 @@ class NQS_2d():
         # we cast the type to real by np.real
 
         if self.moving_E_avg is None:
-            # import pdb;pdb.set_trace()
             Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
             Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
+            if self.using_complex:
+                Fj = Fj[self.re_idx_array] + 1j*Fj[self.im_idx_array]
+                ####   ####   ####
 
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
@@ -992,10 +1024,17 @@ class NQS_2d():
             #####################################
             # S_ij = <O_i O_j > - <O_i><O_j>   ##
             #####################################
-            Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten().conjugate(), Osum.flatten()) / (num_sample**2))
+            # Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten().conjugate(), Osum.flatten()) / (num_sample**2))
+            Sij = OOsum/num_sample - np.einsum('i,j->ij', Osum.flatten() / num_sample,
+                                               np.einsum('i,i->i', (1-2*self.NNet.im_para_array), Osum.flatten() /num_sample))
+
+            if self.using_complex:
+                Sij = Sij[self.re_idx_array][:, self.re_idx_array] - Sij[self.im_idx_array][:, self.im_idx_array] + 1j * Sij[self.im_idx_array][:, self.re_idx_array] + 1j * Sij[self.re_idx_array][:, self.im_idx_array];
+
             # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
             # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
             Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
+            # Sij = Sij + np.diag((1-self.NNet.im_para_array) * 1e-4)
             ############
             # Method 1 #
             ############
@@ -1009,18 +1048,26 @@ class NQS_2d():
             ############
             # Method 3 #
             ############
-            Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-            # Gj, info = scipy.sparse.linalg.cg(Sij, Fj, x0=Gj)
+            # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+            # Gj, info = scipy.sparse.linalg.lgmres(Sij, Fj)
+            Gj, info = scipy.sparse.linalg.cg(Sij, Fj) # , x0=Gj)
             print("conv Gj : ", info)
 
+
         # Gj = Fj.T
-        GjFj = Gj.dot(Fj)
+        GjFj = np.linalg.norm(Gj.dot(Fj))
         print("norm(G): ", np.linalg.norm(Gj),
               "norm(F):", np.linalg.norm(Fj),
               "G.dot(F):", GjFj)
 
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
+
+        if self.using_complex:
+            tmp = np.zeros(Sij.shape[0]*2)
+            tmp[self.re_idx_array] = np.real(Gj)
+            tmp[self.im_idx_array] = np.imag(Gj)
+            Gj = tmp
 
         return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample, GjFj
 
