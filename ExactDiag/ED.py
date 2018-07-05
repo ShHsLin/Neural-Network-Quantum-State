@@ -27,8 +27,7 @@ def gen_pair_2d_nnn(plaquette, V):
     '''
     return [(plaquette[0], plaquette[2], V), (plaquette[1], plaquette[3], V)]
 
-
-def build_H(pairs, L):
+def build_H_one_body(sites, L, H=None, sx=True, sy=True, sz=True):
     Sx = np.array([[0., 1.],
                    [1., 0.]])
     Sy = np.array([[0., -1j],
@@ -37,28 +36,71 @@ def build_H(pairs, L):
                    [0., -1.]])
 
     # S = [Sx, Sy, Sz]
-    H = scipy.sparse.csr_matrix((2 ** L, 2 ** L))
+    if H is None:
+        H = scipy.sparse.csr_matrix((2 ** L, 2 ** L))
+    else:
+        pass
+
+    for i, V in sites:
+        print("building", i)
+        if sx:
+            hx = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sx)
+            hx = scipy.sparse.kron(hx, scipy.sparse.eye(2 ** (L - i)))
+            H = H + V * hx
+
+        if sy:
+            hy = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sy)
+            hy = scipy.sparse.kron(hy, scipy.sparse.eye(2 ** (L - i)))
+            H = H + V * hy
+
+        if sz:
+            hz = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sz)
+            hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (L - i)))
+            H = H + V * hz
+
+    H = scipy.sparse.csr_matrix(H)
+    return H
+
+def build_H_two_body(pairs, L, H=None, sxsx=True,
+                     sysy=True, szsz=True):
+    Sx = np.array([[0., 1.],
+                   [1., 0.]])
+    Sy = np.array([[0., -1j],
+                   [1j, 0.]])
+    Sz = np.array([[1., 0.],
+                   [0., -1.]])
+
+    # S = [Sx, Sy, Sz]
+    if H is None:
+        H = scipy.sparse.csr_matrix((2 ** L, 2 ** L))
+    else:
+        pass
+
     for i, j, V in pairs:
         if i > j:
             i, j = j, i
 
         print("building", i, j)
-        hx = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sx)
-        hx = scipy.sparse.kron(hx, scipy.sparse.eye(2 ** (j - i - 1)))
-        hx = scipy.sparse.kron(hx, Sx)
-        hx = scipy.sparse.kron(hx, scipy.sparse.eye(2 ** (L - j)))
+        if sxsx:
+            hx = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sx)
+            hx = scipy.sparse.kron(hx, scipy.sparse.eye(2 ** (j - i - 1)))
+            hx = scipy.sparse.kron(hx, Sx)
+            hx = scipy.sparse.kron(hx, scipy.sparse.eye(2 ** (L - j)))
+            H = H + V * hx
 
-        hy = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sy)
-        hy = scipy.sparse.kron(hy, scipy.sparse.eye(2 ** (j - i - 1)))
-        hy = scipy.sparse.kron(hy, Sy)
-        hy = scipy.sparse.kron(hy, scipy.sparse.eye(2 ** (L - j)))
+        if sysy:
+            hy = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sy)
+            hy = scipy.sparse.kron(hy, scipy.sparse.eye(2 ** (j - i - 1)))
+            hy = scipy.sparse.kron(hy, Sy)
+            hy = scipy.sparse.kron(hy, scipy.sparse.eye(2 ** (L - j)))
+            H = H + V * hy
 
-        hz = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sz)
-        hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (j - i - 1)))
-        hz = scipy.sparse.kron(hz, Sz)
-        hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (L - j)))
-
-        H = H + V * (hx + hy + hz)
+        if szsz:
+            hz = scipy.sparse.kron(scipy.sparse.eye(2 ** (i - 1)), Sz)
+            hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (j - i - 1)))
+            hz = scipy.sparse.kron(hz, Sz)
+            hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (L - j)))
+            H = H + V * hz
 
     H = scipy.sparse.csr_matrix(H)
     return H
@@ -110,12 +152,34 @@ def solve_1d_J1J2(L, J1=1, J2=0.):
     pairs += [(L - 1, 1, J2), (L, 2, J2)]
 
     print('all pairs', pairs)
-    H = build_H(pairs, L)
+    H = build_H_two_body(pairs, L)
 
     evals_small, evecs_small = eigsh(H, 6, which='SA')
     print(evals_small / L / 4.)
     return evals_small, evecs_small
 
+def solve_1d_Ising(L, J, g=0, h=0, PBC=False):
+    # Solving -J szsz + g sx + h sz
+    lattice = np.arange(L, dtype=int) + 1
+    print(lattice)
+    sx_sites = [(i, g) for i in range(1, L+1)]
+    sz_sites = [(i, -h) for i in range(1, L+1)]
+    szsz_pairs = []
+    if PBC:
+        for i in range(1, L + 1):
+            szsz_pairs = szsz_pairs + [(i, (i % L) + 1, -J)]
+    else:
+        for i in range(1, L):
+            szsz_pairs = szsz_pairs + [(i, (i % L) + 1, -J)]
+
+    print('all pairs', szsz_pairs)
+    H = build_H_two_body(szsz_pairs, L, sxsx=False, sysy=False)
+    H = build_H_one_body(sx_sites, L, H=H, sy=False, sz=False)
+    H = build_H_one_body(sz_sites, L, H=H, sx=False, sy=False)
+
+    evals_small, evecs_small = eigsh(H, 6, which='SA')
+    print(evals_small / L)
+    return evals_small, evecs_small
 
 def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
     lattice = np.zeros((Lx, Ly), dtype=int)
@@ -146,7 +210,7 @@ def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
 
     print('all pairs', pairs)
     global H
-    H = build_H(pairs, Lx*Ly)
+    H = build_H_two_body(pairs, Lx*Ly)
 
     evals_small, evecs_small = eigsh(H, 6, which='SA')
     print('Energy : ', evals_small / Lx / Ly / 4.)
@@ -213,6 +277,14 @@ if __name__ == "__main__":
         eig_filename = 'EigVec/ES_%s_L%dx%d_J2_%d.csv' % (model[:2], Lx, Ly, J2*10)
         store_eig_vec(evals_small, evecs_small, eig_filename)
         print("check n={0:d} site translation phase : {1:.2f}".format(Lx, check_phase(evecs_small[:,0], 2, Lx)))
+    elif model == '1dIsing':
+        L, J, g, h = sys.argv[2:]
+        # Solving -J szsz + g sx + h sz
+        L, J, g, h = int(L), float(J), float(g), float(h)
+        N = L
+        print("python 1dIsing L=%d, J=%f, g=%f, h=%f" % (L, J, g, h))
+        evals_small, evecs_small = solve_1d_Ising(L, J, g, h)
+
     else:
         print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
         raise NotImplementedError

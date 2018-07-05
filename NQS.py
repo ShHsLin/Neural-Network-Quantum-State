@@ -52,11 +52,14 @@ class NQS_1d():
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             self.get_local_E_batch = self.local_E_Ising_batch
+            self.new_config_batch = self.new_config_batch_single
         elif Hamiltonian == 'AFH':
             self.get_local_E_batch = self.local_E_AFH_batch
+            self.new_config_batch = self.new_config_batch_sz
         elif Hamiltonian == 'J1J2':
             self.J2 = J2
             self.get_local_E_batch = self.local_E_J1J2_batch
+            self.new_config_batch = self.new_config_batch_sz
             # self.get_local_E_batch = self.local_E_J1J2_batch_log
         else:
             raise NotImplementedError
@@ -165,7 +168,7 @@ class NQS_1d():
 
         return
 
-    def new_config_batch(self):
+    def new_config_batch_sz(self):
         L = self.config.shape[1]
         batch_size = self.batch_size
         old_log_amp = self.get_self_log_amp_batch()
@@ -191,7 +194,34 @@ class NQS_1d():
         final_mask = np.logical_and(mask, mask2)
         # update self.config
         self.config[final_mask] = flip_config[final_mask]
-        return
+
+        acceptance_ratio = np.sum(final_mask)/batch_size
+        return acceptance_ratio
+
+    def new_config_batch_single(self):
+        L = self.config.shape[1]
+        batch_size = self.batch_size
+        old_log_amp = self.get_self_log_amp_batch()
+        # old_amp = self.get_self_amp_batch()
+
+        randsite1 = np.random.randint(L, size=(batch_size,))
+
+        flip_config = self.config.copy()
+        flip_config[np.arange(batch_size), randsite1, :] = (1 - flip_config[np.arange(batch_size), randsite1, :])
+
+        ratio = np.zeros((batch_size,))
+        ratio = np.exp(2.*np.real(self.eval_log_amp_array(flip_config) - old_log_amp))
+        ratio_square = ratio
+        # ratio = np.divide(np.abs(self.eval_amp_array(flip_config))+1e-45, np.abs(old_amp)+1e-45 )
+        # ratio_square = np.power(ratio,  2)
+        mask2 = np.random.random_sample((batch_size,)) < ratio_square
+
+        final_mask = mask2
+        # update self.config
+        self.config[final_mask] = flip_config[final_mask]
+
+        acceptance_ratio = np.sum(final_mask)/batch_size
+        return acceptance_ratio
 
     def H_exp(self, num_sample=1000, h=1, J=0):
         energyList = []
@@ -220,14 +250,14 @@ class NQS_1d():
             for i in range(1, 1 + num_sample * corrlength):
                 self.new_config()
                 if i % corrlength == 0:
-                    configArray[i / corrlength - 1, :, :] = self.config[0, :, :]
+                    configArray[i // corrlength - 1, :, :] = self.config[0, :, :]
 
         else:
-            for i in range(1, 1 + num_sample * corrlength / self.batch_size):
+            for i in range(1, 1 + (num_sample * corrlength) // self.batch_size):
                 self.new_config_batch()
                 bs = self.batch_size
                 if i % corrlength == 0:
-                    i_c = i/corrlength
+                    i_c = i // corrlength
                     configArray[(i_c-1)*bs: i_c*bs, :, :] = self.config[:, :, :]
                 else:
                     pass
@@ -238,11 +268,12 @@ class NQS_1d():
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(configArray[i:i+1])
 
-        SzSz = self.spin_spin_correlation(configArray)
+        SzSz = self.sz_sz_expectation(configArray)
+        Sz = self.sz_expectation(configArray)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( spin-spin-correlation ): ", end_c - start_c, end_t - start_t)
-        return SzSz
+        return {"SzSz" : SzSz, "Sz": Sz}
 
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
         L = self.config.shape[1]
@@ -266,14 +297,18 @@ class NQS_1d():
                     configArray[i / corrlength - 1, :, :] = self.config[0, :, :]
 
         else:
+            sum_accept_ratio = 0
             for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
-                self.new_config_batch()
+                ac = self.new_config_batch()
+                sum_accept_ratio += ac
+                bs = self.batch_size
                 if i % corrlength == 0:
-                    bs = self.batch_size
                     i_c = int(i/corrlength)
-                    configArray[(i_c-1)*bs: i_c*bs, :, :] = self.config[:, :, :]
+                    configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
                 else:
                     pass
+
+            print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
@@ -394,7 +429,10 @@ class NQS_1d():
                                                  np.einsum('i,i->i', Osum.flatten()/num_sample,
                                                            (1-2*self.NNet.im_para_array)))
             if self.using_complex:
-                Sij = Sij[self.re_idx_array][:, self.re_idx_array] - Sij[self.im_idx_array][:, self.im_idx_array] + 1j * Sij[self.im_idx_array][:, self.re_idx_array] + 1j * Sij[self.re_idx_array][:, self.im_idx_array];
+                Sij = (Sij[self.re_idx_array][:, self.re_idx_array] -
+                       Sij[self.im_idx_array][:, self.im_idx_array] +
+                       1j * Sij[self.im_idx_array][:, self.re_idx_array] +
+                       1j * Sij[self.re_idx_array][:, self.im_idx_array])
             # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
             # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
             Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
@@ -428,6 +466,7 @@ class NQS_1d():
             tmp = np.zeros(Sij.shape[0]*2)
             tmp[self.re_idx_array] = np.real(Gj)
             tmp[self.im_idx_array] = np.imag(Gj)
+            Gj = tmp
 
         return Gj, Eavg / L, Evar / (L**2) / num_sample, GjFj
 
@@ -536,10 +575,10 @@ class NQS_1d():
 
         return localE
 
-    def spin_spin_correlation(self, config_arr):
+    def sz_sz_expectation(self, config_arr):
         '''
-        Compute the spin-spin correlation <S_i S_j>
-        without average over i
+        Compute the spin-spin correlation <S^z_i S^z_j>
+        with average over i
         '''
         num_config, L, inputShape1 = config_arr.shape
 
@@ -554,6 +593,20 @@ class NQS_1d():
             SzSz_j.append((SzSz-0.5)/2.)
 
         return(np.array(SzSz_j))
+
+    def sz_expectation(self, config_arr):
+        '''
+        Compute the spin expectation <S^z_i>
+        Assume [:,:,0] represent up
+        '''
+        num_config, L, inputShape1 = config_arr.shape
+
+        Sz_j = np.einsum('ij->j', config_arr[:,:,0]) / num_config
+        # Sz_j average over num_config
+        # In this convention Sz_j is in [0,1]
+        Sz_j = (Sz_j-0.5)
+
+        return Sz_j
 
     def local_E_AFH_batch(self, config_arr, J=1):
         '''
@@ -642,6 +695,66 @@ class NQS_1d():
         flip_Amp_arr = flip_Amp_arr.reshape((L, num_config))
         # localE += -(SzSz-1).dot(flip_Amp) * J / oldAmp / 2
         localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J2 / oldAmp / 2
+        return localE_arr
+
+    def local_E_Ising_batch(self, config_arr, PBC=False):
+        '''
+        https://arxiv.org/pdf/1503.04508.pdf
+        H = -J sx_i sx_j - g sz_i - h sx_i
+
+        for convenient we use the following convention
+        H = -J sz_i sz_j + g sx_i - h sz_i
+        '''
+        J = 1. # self.J
+        g = 0.5 # self.g
+        h = 0. # self.h
+        '''
+        Base on the fact that, in one-hot representation
+        sigma^z siamg^z Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+
+        we assume 0 represent up and 1 represent down
+        '''
+        num_config, L, inputShape1 = config_arr.shape
+        localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
+        oldAmp = self.eval_amp_array(config_arr)
+
+        ###########################
+        #  J sigma^z_i sigma^z_j  #
+        ###########################
+        config_shift_copy = np.zeros((num_config, L, inputShape1), dtype=np.int32)
+        config_shift_copy[:, :-1, :] = config_arr[:, 1:, :]
+        config_shift_copy[:, -1, :] = config_arr[:, 0, :]
+
+        # num_config x L
+        SzSz = np.einsum('ijk,ijk->ij', config_arr, config_shift_copy)
+        if PBC:
+            localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * (-J)
+        else:
+            localE_arr += np.einsum('ij->i', SzSz[:,:-1] - 0.5) * 2 * (-J)
+
+        #################
+        #  h sigma^z_i  #
+        #################
+        # num_config x L
+        Sz = config_arr[:, :, 0]
+        localE_arr += np.einsum('ij->i', Sz * h)
+
+        #################
+        #  g sigma^x_i  #
+        #################
+
+        # num_site(L) x num_config x num_site(L) x num_spin
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L, dtype=np.float32), config_arr)
+        for i in range(L):
+            config_flip_arr[i, :, i, :] = (1 - config_flip_arr[i, :, i, :])
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(L*num_config, L, inputShape1))
+        flip_Amp_arr = flip_Amp_arr.reshape((L, num_config))
+        # localE += g (flip_Amp) / oldAmp
+        localE_arr += np.einsum('ij -> j',  flip_Amp_arr) / oldAmp * g
+
         return localE_arr
 
     def local_E_J1J2_batch_log(self, config_arr):

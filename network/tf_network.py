@@ -807,11 +807,13 @@ class tf_network:
                                       [1, 2], keep_dims=False)
             out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
             out = tf.real((out))
-            return out, None
+
+        return out, None
 
     def build_NN_complex(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             fc1_complex = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1_complex',
                                        dtype=tf.complex64)
             fc1_complex = tf_.softplus(fc1_complex)
@@ -820,13 +822,16 @@ class tf_network:
                                        dtype=tf.complex64, biases=True)
 
             out = tf.exp(fc2_complex)
-            out = tf.real(out)
 
-        return out, fc2_complex
+        if self.using_complex:
+            return out, fc2_complex
+        else:
+            return tf.real(out), None
 
     def build_NN3_complex(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             fc1_complex = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1_complex',
                                        dtype=tf.complex64)
             fc1_complex = tf_.softplus(fc1_complex)
@@ -847,9 +852,11 @@ class tf_network:
             fc4_complex = tf_.fc_layer(fc3_complex, self.L * self.alpha, 1, 'fc4_complex',
                                        dtype=tf.complex64, biases=True)
             out = tf.exp(fc4_complex)
-            out = tf.real(out)
 
-        return out, fc4_complex
+        if self.using_complex:
+            return out, fc4_complex
+        else:
+            return tf.real(out), None
 
     def build_RBM_2d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
