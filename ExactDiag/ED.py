@@ -137,7 +137,7 @@ def sz_expectation(site_i, vector, L):
     Sz = scipy.sparse.csr_matrix(hz)
     return vector.conjugate().dot(Sz.dot(vector))
 
-def solve_1d_J1J2(L, J1=1, J2=0.):
+def gen_H_1d_J1J2(L, J1=1, J2=0.):
     lattice = np.arange(L, dtype=int) + 1
     print(lattice)
     pairs = []
@@ -153,13 +153,10 @@ def solve_1d_J1J2(L, J1=1, J2=0.):
 
     print('all pairs', pairs)
     H = build_H_two_body(pairs, L)
+    return H
 
-    evals_small, evecs_small = eigsh(H, 6, which='SA')
-    print(evals_small / L / 4.)
-    return evals_small, evecs_small
-
-def solve_1d_Ising(L, J, g=0, h=0, PBC=False):
-    # Solving -J szsz + g sx + h sz
+def gen_H_1d_Ising(L, J, g=0, h=0, PBC=False):
+    # Solving -J szsz + g sx - h sz
     lattice = np.arange(L, dtype=int) + 1
     print(lattice)
     sx_sites = [(i, g) for i in range(1, L+1)]
@@ -176,12 +173,42 @@ def solve_1d_Ising(L, J, g=0, h=0, PBC=False):
     H = build_H_two_body(szsz_pairs, L, sxsx=False, sysy=False)
     H = build_H_one_body(sx_sites, L, H=H, sy=False, sz=False)
     H = build_H_one_body(sz_sites, L, H=H, sx=False, sy=False)
+    return H
 
-    evals_small, evecs_small = eigsh(H, 6, which='SA')
-    print(evals_small / L)
-    return evals_small, evecs_small
+def gen_local_H_1d_Ising(L, J, g=0, h=0, PBC=False):
+    # Solving -1/2(J szsz + J szsz) + g sx - h sz
+    H_list = []
+    lattice = np.arange(L, dtype=int) + 1
+    print(lattice)
+    sx_sites = [[(i, g)] for i in range(1, L+1)]
+    sz_sites = [[(i, -h)] for i in range(1, L+1)]
+    szsz_pairs = [None] * L
+    if PBC:
+        raise NotImplementedError
+    else:
+        szsz_pairs[0] = [(1,2,-J/2)]
+        szsz_pairs[L-1] = [(L-1, L, -J/2)]
+        for i in range(1, L-1):
+            szsz_pairs[i] = [(i, i+1, -J/2), (i+1, i+2, -J/2)]
 
-def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
+    print('all pairs', szsz_pairs)
+    for i in range(L):
+        H = build_H_two_body(szsz_pairs[i], L,H=None, sxsx=False, sysy=False)
+        H = build_H_one_body(sx_sites[i], L, H=H, sy=False, sz=False)
+        H = build_H_one_body(sz_sites[i], L, H=H, sx=False, sy=False)
+        H_list.append(np.array(H.todense()))
+
+    return H_list
+
+def measure_local_H(psi, H_list):
+    L = len(H_list)
+    H_local = np.zeros(L, dtype=np.complex)
+    for i in range(L):
+        H_local[i] = psi.conj().T.dot(H_list[i]).dot(psi)
+
+    return H_local
+
+def gen_H_2d_J1J2(Lx, Ly, J1=1, J2=0.):
     lattice = np.zeros((Lx, Ly), dtype=int)
     for i in range(Lx):
         for j in range(Ly):
@@ -207,14 +234,10 @@ def solve_2d_J1J2(Lx, Ly, J1=1, J2=0.):
             plaquette.append(lattice[i, (j+1)%Ly])
             pairs = pairs + gen_pair_2d_nnn(plaquette, J2)
 
-
     print('all pairs', pairs)
     global H
     H = build_H_two_body(pairs, Lx*Ly)
-
-    evals_small, evecs_small = eigsh(H, 6, which='SA')
-    print('Energy : ', evals_small / Lx / Ly / 4.)
-    return evals_small, evecs_small
+    return H
 
 def check_phase(vector, dim=1, site=None):
     '''
@@ -265,7 +288,10 @@ if __name__ == "__main__":
         L, J1, J2 = int(L), float(J1), float(J2)
         N = L
         print("python 1dJ1J2 L=%d J1=%f J2=%f" % (L, J1, J2) )
-        evals_small, evecs_small = solve_1d_J1J2(L, J1, J2)
+        H = gen_1d_J1J2(L, J1, J2)
+        evals_small, evecs_small = eigsh(H, 6, which='SA')
+        print(evals_small / L / 4.)
+
         eig_filename = 'EigVec/ES_%s_L%d_J2_%d.csv' % (model[:2], L, J2*10)
         store_eig_vec(evals_small, evecs_small, eig_filename)
         print("check one site translation phase : {:.2f}".format(check_phase(evecs_small[:,0])))
@@ -273,7 +299,9 @@ if __name__ == "__main__":
         Lx, Ly, J1, J2 = sys.argv[2:]
         Lx, Ly, J1, J2 = int(Lx), int(Ly), float(J1), float(J2)
         N = Lx * Ly
-        evals_small, evecs_small = solve_2d_J1J2(Lx, Ly, J1, J2)
+        H = gen_H_2d_J1J2(Lx, Ly, J1, J2)
+        evals_small, evecs_small = eigsh(H, 6, which='SA')
+        print('Energy : ', evals_small / Lx / Ly / 4.)
         eig_filename = 'EigVec/ES_%s_L%dx%d_J2_%d.csv' % (model[:2], Lx, Ly, J2*10)
         store_eig_vec(evals_small, evecs_small, eig_filename)
         print("check n={0:d} site translation phase : {1:.2f}".format(Lx, check_phase(evecs_small[:,0], 2, Lx)))
@@ -283,7 +311,53 @@ if __name__ == "__main__":
         L, J, g, h = int(L), float(J), float(g), float(h)
         N = L
         print("python 1dIsing L=%d, J=%f, g=%f, h=%f" % (L, J, g, h))
-        evals_small, evecs_small = solve_1d_Ising(L, J, g, h)
+        H = gen_H_1d_Ising(L, J, g, h)
+        evals_small, evecs_small = eigsh(H, 6, which='SA')
+        print(evals_small / L)
+    elif model == '1dIsing_TE':
+        L, J, g, h = sys.argv[2:]
+        # Solving -J szsz + g sx + h sz
+        L, J, g, h = int(L), float(J), float(g), float(h)
+        N = L
+        print("python 1dIsing L=%d, J=%f, g=%f, h=%f" % (L, J, g, h))
+        H = gen_H_1d_Ising(L, J, g, h)
+        H_list = gen_local_H_1d_Ising(L, J, g, h)
+        H = np.array(H.todense())
+
+        splus = build_H_one_body([(L//2+1,1)], L, H=None, sx=True, sy=False, sz=False)
+        splus = build_H_one_body([(L//2+1,-1j)], L, H=splus, sx=False, sy=True, sz=False)
+
+        dt = 0.05
+        exp_iHdt = scipy.linalg.expm(1.j * dt * H)
+        total_time = 10
+
+        local_E_array=np.zeros((20, L))
+
+        import matplotlib.pyplot as plt
+        for realization in range(10):
+            psi = np.exp(np.random.rand(2**L))
+            theta = np.random.rand(2**L)*2*np.pi
+            psi = psi * np.exp(1j*theta)
+            psi = psi/np.linalg.norm(psi)
+
+            psi = splus.dot(psi)
+            psi = psi/np.linalg.norm(psi)
+
+            for i in range(int(total_time / 0.05)):
+                if i % 10 ==0:
+                    print("<E(%.2f)> : " % (i*0.05), psi.conj().T.dot(H).dot(psi))
+                    local_E = np.real(measure_local_H(psi, H_list))
+                    local_E_array[i//10,:] += local_E
+                    print("<local_E(%.2f)> : " % (i*0.05), local_E)
+                psi = exp_iHdt.dot(psi)
+
+        for i in range(len(local_E_array)):
+            # plt.figure()
+            plt.plot(local_E_array[i]/10.)
+            # plt.savefig('step_%d.eps' % i)
+
+        plt.legend()
+        plt.show()
 
     else:
         print("error in input arguments:\ncurrently support for 1dJ1J2, 2dAFH")
