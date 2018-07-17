@@ -4,6 +4,7 @@
 *.pdf
 *.eps
 *.pyc
+*.npy
 *.csv
 *.out
 wavefunction/

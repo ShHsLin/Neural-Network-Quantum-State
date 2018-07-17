@@ -10,6 +10,20 @@ from network.tf_network import tf_network
 import NQS
 
 
+
+def dw_to_glist(GradW, var_shape_list):
+    grad_list = []
+    grad_ind = 0
+    for var_shape in var_shape_list:
+        var_size = np.prod(var_shape)
+        grad_list.append(GradW[grad_ind:grad_ind + var_size].reshape(var_shape))
+        grad_ind += var_size
+
+    return grad_list
+
+
+
+
 if __name__ == "__main__":
     ###############################
     #  Read the input argument ####
@@ -21,6 +35,7 @@ if __name__ == "__main__":
     (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
     (J2, SR, reg, path) = (args.J2, bool(args.SR), args.reg, args.path)
     (act, SP, using_complex) = (args.act, bool(args.SP), bool(args.using_complex))
+    (real_time, integration) = (bool(args.real_time), args.integration)
     if len(path)>0 and path[-1] != '/':
         path = path + '/'
 
@@ -42,13 +57,15 @@ if __name__ == "__main__":
                      activation=act, using_complex=using_complex, single_precision=SP)
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
-                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP)
+                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
+                       real_time=real_time)
     elif dim == 2:
         N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
-                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP)
+                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
+                       real_time=real_time)
     else:
         print("DIM error")
-        raise
+        raise NotImplementedError
 
     # Run Initilizer
     N.NNet.run_global_variables_initializer()
@@ -141,13 +158,14 @@ if __name__ == "__main__":
         GradW, E, E_var, GjFj = N.VMC(num_sample=num_sample, iteridx=iteridx,
                                       SR=SR, Gj=GradW, explicit_SR=explicit_SR)
 
-        if SR:
-            # Trust region method:
-            if lr > lr/np.sqrt(GjFj):
-                GradW = GradW / np.sqrt(GjFj)
-        else:
-            if np.linalg.norm(GradW) > 100:
-                GradW = GradW/np.linalg.norm(GradW) * 100
+        if not real_time:
+            if SR:
+                # Trust region method:
+                if lr > lr/np.sqrt(GjFj):
+                    GradW = GradW / np.sqrt(GjFj)
+            else:
+                if np.linalg.norm(GradW) > 100:
+                    GradW = GradW/np.linalg.norm(GradW) * 100
 
             # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
 
@@ -155,17 +173,77 @@ if __name__ == "__main__":
             # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.97**iteridx),1e-3])
             # if np.linalg.norm(GradW) > 1000:
             #    GradW = GradW/np.linalg.norm(GradW) * 1000
+        else:  # real-time
+            if integration == 'mid_point':
+                mid_pt_iter = 0
+                conv = False
+                while(mid_pt_iter<20 and not conv):
+                    grad_list = dw_to_glist(GradW, var_shape_list)
+                    N.NNet.sess.run(N.NNet.learning_rate.assign(lr/2.))
+                    N.NNet.applyGrad(grad_list)
+                    GradW_mid, E, E_var, GjFj = N.VMC(num_sample=num_sample,
+                                                      iteridx=iteridx,
+                                                      SR=SR, Gj=GradW,
+                                                      explicit_SR=explicit_SR)
+                    if np.linalg.norm(GradW-GradW_mid)/np.linalg.norm(GradW) < 1e-6:
+                        conv = True
+                    else:
+                        print("iter=", mid_pt_iter, " not conv yet : err = ",
+                              np.linalg.norm(GradW-GradW_mid)/np.linalg.norm(GradW))
 
+                    grad_list = dw_to_glist(-GradW, var_shape_list)
+                    N.NNet.applyGrad(grad_list)
+                    N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
+                    GradW = GradW_mid
+                    mid_pt_iter += 1
 
+            elif integration == 'rk4':
+                # x0
+                k1 = GradW
+                grad_list = dw_to_glist(GradW, var_shape_list)
+                # Step size = h/2
+                N.NNet.sess.run(N.NNet.learning_rate.assign(lr/2.))
+                N.NNet.applyGrad(grad_list)
+                # x0 + k1 * h/2
+                GradW_2, E, E_var, GjFj = N.VMC(num_sample=num_sample,
+                                                iteridx=iteridx,
+                                                SR=SR, Gj=GradW,
+                                                explicit_SR=explicit_SR)
+                k2 = GradW_2
+                grad_list = dw_to_glist(-GradW + GradW_2, var_shape_list)
+                N.NNet.applyGrad(grad_list)
+                # x0 + k2 * h/2
+                GradW_3, E, E_var, GjFj = N.VMC(num_sample=num_sample,
+                                                iteridx=iteridx,
+                                                SR=SR, Gj=GradW,
+                                                explicit_SR=explicit_SR)
+                k3 = GradW_3
+                grad_list = dw_to_glist(-GradW_2, var_shape_list)
+                N.NNet.applyGrad(grad_list)
+                # x0
+                # Step size = h
+                N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
+                grad_list = dw_to_glist(GradW_3, var_shape_list)
+                N.NNet.applyGrad(grad_list)
+                # x0 + k3 * h
+                GradW_4, E, E_var, GjFj = N.VMC(num_sample=num_sample,
+                                                iteridx=iteridx,
+                                                SR=SR, Gj=GradW,
+                                                explicit_SR=explicit_SR)
+                k4 = GradW_4
+                grad_list = dw_to_glist(-GradW_3, var_shape_list)
+                N.NNet.applyGrad(grad_list)
+                # x0
+                GradW = (k1 + 2*k2 + 2*k3 + k4)/6.
 
+            elif integration == 'explicit_euler':
+                pass
+            else:
+                raise NotImplementedError
 
+        # GradW = GradW/np.sqrt(iteridx)
         E_log.append(E)
-        grad_list = []
-        grad_ind = 0
-        for var_shape in var_shape_list:
-            var_size = np.prod(var_shape)
-            grad_list.append(GradW[grad_ind:grad_ind + var_size].reshape(var_shape))
-            grad_ind += var_size
+        grad_list = dw_to_glist(GradW, var_shape_list)
 
         #  L2 Regularization ###
         # for idx, W in enumerate(N.NNet.sess.run(N.NNet.para_list)):

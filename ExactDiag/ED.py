@@ -196,7 +196,8 @@ def gen_local_H_1d_Ising(L, J, g=0, h=0, PBC=False):
         H = build_H_two_body(szsz_pairs[i], L,H=None, sxsx=False, sysy=False)
         H = build_H_one_body(sx_sites[i], L, H=H, sy=False, sz=False)
         H = build_H_one_body(sz_sites[i], L, H=H, sx=False, sy=False)
-        H_list.append(np.array(H.todense()))
+        # H_list.append(np.array(H.todense()))
+        H_list.append(H)
 
     return H_list
 
@@ -204,7 +205,7 @@ def measure_local_H(psi, H_list):
     L = len(H_list)
     H_local = np.zeros(L, dtype=np.complex)
     for i in range(L):
-        H_local[i] = psi.conj().T.dot(H_list[i]).dot(psi)
+        H_local[i] = psi.conj().dot(H_list[i].dot(psi))
 
     return H_local
 
@@ -321,39 +322,50 @@ if __name__ == "__main__":
         N = L
         print("python 1dIsing L=%d, J=%f, g=%f, h=%f" % (L, J, g, h))
         H = gen_H_1d_Ising(L, J, g, h)
+        evals_small, evecs_small = eigsh(H, 6, which='SA')
+        print(evals_small / L)
         H_list = gen_local_H_1d_Ising(L, J, g, h)
-        H = np.array(H.todense())
 
-        splus = build_H_one_body([(L//2+1,1)], L, H=None, sx=True, sy=False, sz=False)
-        splus = build_H_one_body([(L//2+1,-1j)], L, H=splus, sx=False, sy=True, sz=False)
+        # splus = build_H_one_body([(L//2+1,1)], L, H=None, sx=True, sy=False, sz=False)
+        # splus = build_H_one_body([(L//2+1,-1j)], L, H=splus, sx=False, sy=True, sz=False)
+
+        splus = scipy.sparse.kron(scipy.sparse.eye(2 ** (L//2+1 - 1)),
+                                  scipy.sparse.csr_matrix(np.array([[0,0],[0,1]])))
+        splus = scipy.sparse.kron(splus, scipy.sparse.eye(2 ** (L - L//2-1)))
+
 
         dt = 0.05
+        H = np.array(H.todense())
         exp_iHdt = scipy.linalg.expm(1.j * dt * H)
-        total_time = 10
+        total_time = 100
+        num_real = 1
 
-        local_E_array=np.zeros((20, L))
+        local_E_array=np.zeros((int(total_time/dt/10)+1, L))
 
         import matplotlib.pyplot as plt
-        for realization in range(10):
+        for realization in range(num_real):
             psi = np.exp(np.random.rand(2**L))
             theta = np.random.rand(2**L)*2*np.pi
             psi = psi * np.exp(1j*theta)
             psi = psi/np.linalg.norm(psi)
 
+            psi = evecs_small[:,0]
             psi = splus.dot(psi)
             psi = psi/np.linalg.norm(psi)
 
-            for i in range(int(total_time / 0.05)):
+            for i in range(int(total_time / dt)+1):
                 if i % 10 ==0:
-                    print("<E(%.2f)> : " % (i*0.05), psi.conj().T.dot(H).dot(psi))
+                    print("<E(%.2f)> : " % (i*0.05), psi.conj().T.dot(H.dot(psi)))
                     local_E = np.real(measure_local_H(psi, H_list))
                     local_E_array[i//10,:] += local_E
                     print("<local_E(%.2f)> : " % (i*0.05), local_E)
                 psi = exp_iHdt.dot(psi)
 
+        local_E_array = local_E_array/num_real
+        np.save('local_E_array_L%d_.npy' % (L), local_E_array)
         for i in range(len(local_E_array)):
             # plt.figure()
-            plt.plot(local_E_array[i]/10.)
+            plt.plot(local_E_array[i])
             # plt.savefig('step_%d.eps' % i)
 
         plt.legend()

@@ -69,6 +69,15 @@ def parse_args():
                         'True(1): using complex-valued wavefunction. '
                         'Default: False(0)',
                         default='0', type=int)
+    parser.add_argument('--real_time', dest='real_time',
+                        help='False(0): using imaginary time evolution'
+                        'True(1): using real time evolution '
+                        'Default: False(0)',
+                        default='0', type=int)
+    parser.add_argument('--integration', dest='integration',
+                        help='numerical integration method'
+                        'Deafult: \'rk4\'',
+                        default='rk4', type=str)
 
 
 
