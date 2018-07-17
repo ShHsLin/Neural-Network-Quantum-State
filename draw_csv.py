@@ -7,6 +7,7 @@ filename = sys.argv[1]
 # Earray=np.loadtxt(filename).view(complex)
 Earray=np.loadtxt(filename, dtype=complex, converters={0: lambda s: complex(s.decode().replace('+-', '-'))})
 
+print(np.sum(Earray))
 plt.plot(np.real(Earray))
 plt.show()
 
