@@ -40,6 +40,8 @@ def select_activation(activation):
         return tf.tanh
     elif activation == 'selu':
         return tf.nn.selu
+    else:
+        raise NotImplementedError
 
 
 def leaky_relu(x):
@@ -284,6 +286,9 @@ def conv_layer2d(bottom, filter_size, in_channels,
 
 
 def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
+    '''
+    The if...else... below could merge.
+    '''
     if dtype not in [tf.complex64, tf.complex128]:
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             weights, biases = get_fc_var(in_size, out_size, biases=biases, dtype=dtype)
@@ -296,91 +301,155 @@ def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
     else:
         part_dtype = {tf.complex64: tf.float32, tf.complex128: tf.float64}
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-            real_weights, real_biases = get_fc_var(in_size, out_size, name="real_",
-                                                   biases=biases, dtype=part_dtype[dtype])
-            imag_weights, imag_biases = get_fc_var(in_size, out_size, name="imag_",
-                                                   biases=biases, dtype=part_dtype[dtype])
+            complex_weights, complex_biases = get_fc_var(in_size, out_size,
+                                                         biases=biases, dtype=dtype)
             x = tf.reshape(bottom, [-1, in_size])
-            fc = tf.matmul(x, tf.complex(real_weights, imag_weights))
-            # real_fc = tf.matmul(tf.real(x), real_weights) - tf.matmul(tf.imag(x), imag_weights)
-            # imag_fc = tf.matmul(tf.real(x), imag_weights) + tf.matmul(tf.imag(x), real_weights)
+            fc = tf.matmul(x, complex_weights)
             if biases:
-                fc = tf.nn.bias_add(fc, tf.complex(real_biases, imag_biases))
-                # fc = tf.nn.bias_add(tf.complex(real_fc, imag_fc),
-                #                     tf.complex(real_biases, imag_biases))
+                fc = tf.nn.bias_add(fc, complex_biases)
             else:
                 pass
-                # fc = tf.complex(real_fc, imag_fc)
 
     return fc
 
 
 def get_conv_var1d(filter_size, in_channels, out_channels, name="",
                    biases=False, dtype=tf.float32, bias_scale=1.):
-    if dtype == tf.complex64:
-        raise NotImplementedError
+    if dtype in [tf.complex64, tf.complex128]:
         # tensorflow optimizer does not support complex type
-    else:
-        pass
+        # So we init with two sets of real variables
+        if dtype == tf.complex64:
+            part_dtype = tf.float32
+        else:
+            part_dtype = tf.float64
 
-    # initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0, 0.1)
-    initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0,
-                                        np.sqrt(2. / (filter_size * (in_channels + out_channels))))
-    filters = get_var(initial_value, name + "weights", dtype=dtype)
+        u = tf.random_uniform([filter_size, in_channels, out_channels],
+                              minval=0, maxval=1.)
+        sigma = np.sqrt(2./(filter_size * in_channels))
+        w_mag = sigma * tf.sqrt(-2. * tf.log(1.-u))
+        theta = tf.random_uniform([filter_size, in_channels, out_channels],
+                                  minval=0, maxval=2.*np.pi)
+        init_w_re = w_mag * tf.cos(theta)
+        init_w_im = w_mag * tf.sin(theta)
+        real_weights = get_var(init_w_re, name + "real_weights", dtype=part_dtype)
+        imag_weights = get_var(init_w_im, name + "imag_weights", dtype=part_dtype)
+        weights = tf.complex(real_weights, imag_weights)
+        if biases:
+            re_initial_value = tf.zeros(out_channels, dtype=part_dtype)
+            real_biases = get_var(re_initial_value, name + "real_biases", dtype=part_dtype)
+            im_initial_value = tf.random_uniform([out_channels], minval=0, maxval=2.*np.pi)
+            imag_biases = get_var(im_initial_value, name + "imag_biases", dtype=part_dtype)
+            biases = tf.complex(real_biases, imag_biases)
+            return weights, biases
+        else:
+            return weights, None
 
-    if not biases:
-        return filters, None
+
     else:
-        initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
-        biases = get_var(initial_value, name + "biases", dtype=dtype)
-        return filters, biases
+        # initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0, 0.1)
+        initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0,
+                                            np.sqrt(2. / (filter_size * (in_channels + out_channels))))
+        filters = get_var(initial_value, name + "weights", dtype=dtype)
+
+        if not biases:
+            return filters, None
+        else:
+            initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
+            biases = get_var(initial_value, name + "biases", dtype=dtype)
+            return filters, biases
 
 
 def get_conv_var2d(filter_size, in_channels, out_channels, name="",
                    biases=False, dtype=tf.float32, bias_scale=1.):
-    if dtype == tf.complex64:
-        raise NotImplementedError
+    if dtype in [tf.complex64, tf.complex128]:
         # tensorflow optimizer does not support complex type
-    else:
-        pass
+        # So we init with two sets of real variables
+        if dtype == tf.complex64:
+            part_dtype = tf.float32
+        else:
+            part_dtype = tf.float64
 
-    # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.01)
-    initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0,
-                                        np.sqrt(2. / (filter_size * filter_size * in_channels )))
-                                        # np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
-                                        # Xavier init
-    filters = get_var(initial_value, name + "weights", dtype=dtype)
+        u = tf.random_uniform([filter_size, filter_size, in_channels, out_channels],
+                              minval=0, maxval=1.)
+        sigma = np.sqrt(2./(filter_size * filter_size * in_channels))
+        w_mag = sigma * tf.sqrt(-2. * tf.log(1.-u))
+        theta = tf.random_uniform([filter_size, filter_size, in_channels, out_channels],
+                                  minval=0, maxval=2.*np.pi)
+        init_w_re = w_mag * tf.cos(theta)
+        init_w_im = w_mag * tf.sin(theta)
+        real_weights = get_var(init_w_re, name + "real_weights", dtype=part_dtype)
+        imag_weights = get_var(init_w_im, name + "imag_weights", dtype=part_dtype)
+        weights = tf.complex(real_weights, imag_weights)
+        if biases:
+            re_initial_value = tf.zeros(out_channels, dtype=part_dtype)
+            real_biases = get_var(re_initial_value, name + "real_biases", dtype=part_dtype)
+            im_initial_value = tf.random_uniform([out_channels], minval=0, maxval=2.*np.pi)
+            imag_biases = get_var(im_initial_value, name + "imag_biases", dtype=part_dtype)
+            biases = tf.complex(real_biases, imag_biases)
+            return weights, biases
+        else:
+            return weights, None
 
-    if not biases:
-        return filters, None
     else:
-        initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
-        biases = get_var(initial_value, name + "biases", dtype=dtype)
-        return filters, biases
+        # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.01)
+        initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels],
+                                            0.,
+                                            np.sqrt(2. / (filter_size * filter_size * in_channels )))
+                                            # np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
+                                            # Xavier init
+        filters = get_var(initial_value, name + "weights", dtype=dtype)
+
+        if not biases:
+            return filters, None
+        else:
+            initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
+            biases = get_var(initial_value, name + "biases", dtype=dtype)
+            return filters, biases
 
 
 def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float32):
-    # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.001)
     if dtype in [tf.complex64, tf.complex128]:
-        raise NotImplementedError
         # tensorflow optimizer does not support complex type
-    else:
-        pass
+        # So we init with two sets of real variables
+        if dtype == tf.complex64:
+            part_dtype = tf.float32
+        else:
+            part_dtype = tf.float64
 
-    # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.1)
-    # Xavier init
-    # initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
-    # He (MSAR) init
-    initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size)))
-    weights = get_var(initial_value, name + "weights", dtype=dtype)
+        u = tf.random_uniform([in_size, out_size], minval=0, maxval=1.)
+        sigma = np.sqrt(2./in_size)
+        w_mag = sigma * tf.sqrt(-2. * tf.log(1.-u))
+        theta = tf.random_uniform([in_size, out_size], minval=0, maxval=2.*np.pi)
+        init_w_re = w_mag * tf.cos(theta)
+        init_w_im = w_mag * tf.sin(theta)
+        real_weights = get_var(init_w_re, name + "real_weights", dtype=part_dtype)
+        imag_weights = get_var(init_w_im, name + "imag_weights", dtype=part_dtype)
+        weights = tf.complex(real_weights, imag_weights)
+        if biases:
+            re_initial_value = tf.zeros(out_size, dtype=part_dtype)
+            real_biases = get_var(re_initial_value, name + "real_biases", dtype=part_dtype)
+            im_initial_value = tf.random_uniform([out_size], minval=0, maxval=2.*np.pi)
+            imag_biases = get_var(im_initial_value, name + "imag_biases", dtype=part_dtype)
+            biases = tf.complex(real_biases, imag_biases)
+            return weights, biases
+        else:
+            return weights, None
 
-    if biases:
-        # initial_value = tf.truncated_normal([out_size], .0, .001, dtype=dtype)
-        initial_value = tf.zeros(out_size, dtype=dtype)
-        biases = get_var(initial_value, name + "biases", dtype=dtype)
-        return weights, biases
     else:
-        return weights, None
+        # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.1)
+        # Xavier init
+        # initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
+        # He (MSAR) init
+        initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size)))
+        weights = get_var(initial_value, name + "weights", dtype=dtype)
+
+        if biases:
+            # initial_value = tf.truncated_normal([out_size], .0, .001, dtype=dtype)
+            initial_value = tf.zeros(out_size, dtype=dtype)
+            biases = get_var(initial_value, name + "biases", dtype=dtype)
+            return weights, biases
+        else:
+            return weights, None
 
 
 def get_var(initial_value, var_name, dtype):
