@@ -18,7 +18,8 @@ So easily to switch model
 
 class NQS_1d():
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
-                 using_complex=False, single_precision=True):
+                 using_complex=False, single_precision=True, real_time=False,
+                 pinv_rcond=1e-6):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
                                dtype=np.int8)
         self.batch_size = batch_size
@@ -42,6 +43,8 @@ class NQS_1d():
             self.NP_FLAOT = np.float64
             self.NP_COMPLEX = np.complex128
 
+        self.real_time = real_time
+        self.pinv_rcond = pinv_rcond
         np_arange = np.arange(self.net_num_para)
         self.re_idx_array = np_arange[np.array(1-self.NNet.im_para_array,
                                                dtype=bool)]
@@ -444,14 +447,17 @@ class NQS_1d():
             ############
             # Method 2 #
             ############
-            # invSij = np.linalg.pinv(Sij, 1e-3)
-            # Gj = invSij.dot(Fj.T)
+            if self.real_time:
+                # Evar_ = (Evar / (L**2) / num_sample)
+                invSij = np.linalg.pinv(Sij, self.pinv_rcond)
+                Gj = invSij.dot(Fj.T)
             ############
             # Method 3 #
             ############
-            # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-            Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
-            print("conv Gj : ", info)
+            else:
+                # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+                Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
+                print("conv Gj : ", info)
 
         # Gj = Fj.T
         GjFj = np.linalg.norm(Gj.dot(Fj))
@@ -462,11 +468,16 @@ class NQS_1d():
         end_c, end_t = time.clock(), time.time()
         print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
-        if self.using_complex:
-            tmp = np.zeros(Sij.shape[0]*2)
-            tmp[self.re_idx_array] = np.real(Gj)
-            tmp[self.im_idx_array] = np.imag(Gj)
-            Gj = tmp
+        # if self.using_complex:
+        #     tmp = np.zeros(Sij.shape[0]*2)
+        #     tmp[self.re_idx_array] = np.real(Gj)
+        #     tmp[self.im_idx_array] = np.imag(Gj)
+        #     Gj = tmp
+
+        if self.real_time:
+            tmp = Gj[self.re_idx_array]
+            Gj[self.re_idx_array] = -Gj[self.im_idx_array]
+            Gj[self.im_idx_array] = tmp
 
         return Gj, Eavg / L, Evar / (L**2) / num_sample, GjFj
 
@@ -767,7 +778,8 @@ class NQS_1d():
 
 class NQS_2d():
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
-                 using_complex=False, single_precision=True):
+                 using_complex=False, single_precision=True, real_time=False,
+                 pinv_rcond=1e-6):
         '''
         config = [batch_size, Lx, Ly, local_dim]
         config represent the product state basis of the model
@@ -804,6 +816,8 @@ class NQS_2d():
             self.NP_FLAOT = np.float64
             self.NP_COMPLEX = np.complex128
 
+        self.real_time = real_time
+        self.pinv_rcond = pinv_rcond
         np_arange = np.arange(self.NNet.im_para_array.size)
         self.re_idx_array = np_arange[np.array((1-self.NNet.im_para_array), dtype=bool)]
         self.im_idx_array = np_arange[np.array(self.NNet.im_para_array, dtype=bool)]
@@ -812,6 +826,13 @@ class NQS_2d():
         if Hamiltonian == 'Ising':
             raise NotImplementedError
             self.get_local_E_batch = self.local_E_Ising_batch
+        elif Hamiltonian == 'Sz':
+            raise NotImplementedError
+            '''
+            should add one-site update scheme, so not restricted to
+            sz=0 sector.
+            also applicable to Ising model.
+            '''
         elif Hamiltonian == 'AFH':
             self.get_local_E_batch = self.local_E_2dAFH_batch
         elif Hamiltonian == 'J1J2':
@@ -1046,7 +1067,7 @@ class NQS_2d():
             Glist = self.NNet.vanilla_back_prop(configArray, Earray)
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
-                Glist[idx] = Glist[idx] * 2./num_sample + W * self.reg
+                Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
             end_c, end_t = time.clock(), time.time()
@@ -1103,7 +1124,8 @@ class NQS_2d():
         print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / (self.LxLy**2) / num_sample)
 
         #####################################
-        #  Fj = 2<O_iH>-2<H><O_i>
+        #  Fj = 2Re[ <O_iH> - <H><O_i> ]
+        #  Fj = <O_iH> - <H><O_i>
         #####################################
 
         # The networks are all parametrized by real-valued variables.
@@ -1111,7 +1133,8 @@ class NQS_2d():
         # we cast the type to real by np.real
 
         if self.moving_E_avg is None:
-            Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
+            # Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
+            Fj = np.real((EOsum / num_sample - Eavg * Osum / num_sample))
             Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
             if self.using_complex:
                 Fj = Fj[self.re_idx_array] + 1j*Fj[self.im_idx_array]
@@ -1119,7 +1142,8 @@ class NQS_2d():
 
         else:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-            Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
+            # Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
+            Fj = np.real((EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / self.LxLy)
 
         if not explicit_SR:
@@ -1156,7 +1180,7 @@ class NQS_2d():
             ############
             # Method 2 #
             ############
-            # invSij = np.linalg.pinv(Sij, 1e-3)
+            # invSij = np.linalg.pinv(Sij, self.pinv_rcond)
             # Gj = invSij.dot(Fj.T)
             ############
             # Method 3 #

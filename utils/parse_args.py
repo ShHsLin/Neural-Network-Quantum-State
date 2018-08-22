@@ -78,11 +78,11 @@ def parse_args():
                         help='numerical integration method'
                         'Deafult: \'rk4\'',
                         default='rk4', type=str)
-
-
-
-
-
+    parser.add_argument('--pinv_rcond', dest='pinv_rcond',
+                        help='Cutoff for small singular values,'
+                        'in the routine of np.linalg.pinv'
+                        'Deafult: 1e-6',
+                        default=1e-6, type=float)
 
     if len(sys.argv) == 1:
         pass

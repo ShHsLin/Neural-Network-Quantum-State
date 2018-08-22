@@ -35,7 +35,7 @@ if __name__ == "__main__":
     (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
     (J2, SR, reg, path) = (args.J2, bool(args.SR), args.reg, args.path)
     (act, SP, using_complex) = (args.act, bool(args.SP), bool(args.using_complex))
-    (real_time, integration) = (bool(args.real_time), args.integration)
+    (real_time, integration, pinv_rcond) = (bool(args.real_time), args.integration, args.pinv_rcond)
     if len(path)>0 and path[-1] != '/':
         path = path + '/'
 
@@ -58,11 +58,11 @@ if __name__ == "__main__":
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
                        J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time)
+                       real_time=real_time, pinv_rcond=pinv_rcond)
     elif dim == 2:
         N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
                        J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time)
+                       real_time=real_time, pinv_rcond=pinv_rcond)
     else:
         print("DIM error")
         raise NotImplementedError
