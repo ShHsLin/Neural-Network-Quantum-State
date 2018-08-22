@@ -15,17 +15,15 @@ if __name__ == "__main__":
     lr = args.lr
     batch_size = args.batch_size
     J2 = args.J2
-
-    alpha_map = {"NN": 2, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
-                 "NN_RBM": 2}
-    if args.alpha != 0:
-        alpha = args.alpha
-    else:
-        alpha = alpha_map[which_net]
+    alpha = args.alpha
+    using_complex = args.using_complex
 
     opt = args.opt  # "Mom"
     system_size = (L, 2)
-    Net = tf_network(which_net, system_size, optimizer=opt, dim=1, alpha=alpha)
+    Net = tf_network(which_net, system_size, optimizer=opt, dim=1, alpha=alpha,
+                     using_complex=using_complex)
+
+    Net.run_global_variables_initializer()
 
     basis = []
     for line in open('ExactDiag/Sz0_basisMatrix'+str(L)+'.csv', 'r'):
@@ -67,13 +65,27 @@ if __name__ == "__main__":
     Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'.csv').reshape((2**L, 1))
     # Y = np.sign(Y)
     print(X.shape, Y.shape)
+    # Y = Y * np.sqrt(Y.size)
+    import pdb;pdb.set_trace()
 
     with Net.sess as sess:
 
         true_out = tf.placeholder(tf.float32, [None, 1])
         v1 = true_out
         v2 = Net.pred
-        cost = -tf.reduce_sum(tf.multiply(v1, v2))/tf.norm(v1)/tf.norm(v2)
+        # Batch fidelity
+        # cost = -tf.reduce_sum(tf.multiply(v1, v2))/tf.norm(v1)/tf.norm(v2)
+
+        # KL-divergence + classficiation error
+        cost1 = - tf.log(tf.divide(v2**2+1e-60, v1**2 + 1e-60))
+        cost2 = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.sign(v1), logits=v2)
+        cost = tf.reduce_sum(cost1 + cost2)
+
+
+        # cost = tf.reduce_sum( tf.multiply(tf.log(tf.divide(v2, v1)), tf.log(tf.divide(v1, v2))) )
+        # cost = -tf.real(tf.norm( tf.log(tf.complex(v2,0.))-tf.log(tf.complex(v1,0.)) ))
+        # cost = -tf.reduce_sum(tf.divide(v2,v1+1e-8)) + 1. * tf.norm(v2)
+
         # cost = -tf.reduce_sum(tf.multiply(true_out, tf.log(Net.pred)))
         # cost = tf.nn.l2_loss((Net.pred - true_out))
 
@@ -104,9 +116,9 @@ if __name__ == "__main__":
         print("-------- Start training -------\n")
         print(("Total num para: ", Net.getNumPara()))
 
-        p = (np.abs(Y)).flatten()
-        p = p + 100./batch_size
-        p = p/sum(p)
+        p = (np.abs(Y**2)).flatten()
+        # p = p + 100./batch_size
+        # p = p/sum(p)
 
         total_cos_accu = []
         batch_cos_accu = []
