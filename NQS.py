@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 import time
 
-
 """
 Should add spin-spin correlation in 2d
 should add vmc_observable in 2d
@@ -15,13 +14,255 @@ So that easily to change from 1d problem to 2d problem?
 So easily to switch model
 """
 
+class NQS_base():
+    def __init__(self):
+        return
 
-class NQS_1d():
+    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
+        numPara = self.net_num_para
+        num_site = self.num_site
+        # OOsum = np.zeros((numPara, numPara))
+        if self.using_complex:
+            NP_DTYPE = self.NP_COMPLEX
+        else:
+            NP_DTYPE = self.NP_FLOAT
+        Osum = np.zeros((numPara), dtype=NP_DTYPE)
+        Earray = np.zeros((num_sample), dtype=NP_DTYPE)
+        EOsum = np.zeros((numPara), dtype=NP_DTYPE)
+        Oarray = np.zeros((numPara, num_sample), dtype=NP_DTYPE)
+
+        start_c, start_t = time.clock(), time.time()
+        corrlength = self.corrlength
+        configDim = list(self.config.shape)
+        configDim[0] = num_sample
+        configArray = np.zeros(configDim, dtype=np.int32)
+
+        if (self.batch_size == 1):
+            for i in range(1, 1 + num_sample * corrlength):
+                self.new_config()
+                if i % corrlength == 0:
+                    configArray[i / corrlength - 1] = self.config[0]
+
+        else:
+            sum_accept_ratio = 0
+            for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
+                ac = self.new_config_batch()
+                sum_accept_ratio += ac
+                bs = self.batch_size
+                if i % corrlength == 0:
+                    i_c = int(i/corrlength)
+                    configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
+                else:
+                    pass
+
+            print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
+
+        # for i in range(num_sample):
+        #     Earray[i] = self.get_local_E(configArray[i:i+1])
+        Earray = self.get_local_E_batch(configArray)
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
+
+        if not SR:
+            Eavg = np.average(Earray)
+            Evar = np.var(Earray)
+            print(self.get_self_amp_batch()[:5])
+            print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
+            if self.moving_E_avg != None:
+                self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+                print("moving_E_avg/N !!!!: ", self.moving_E_avg / num_site)
+                Earray = Earray - self.moving_E_avg
+            else:
+                Earray = Earray - Eavg
+
+            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            # Reg
+            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+                Glist[idx] = Glist[idx] /num_sample + W * self.reg
+
+            Gj = np.concatenate([g.flatten() for g in Glist])
+            end_c, end_t = time.clock(), time.time()
+            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+            print("norm(G): ", np.linalg.norm(Gj))
+            #
+            # TO FIND BUG IN COMPLEX DERIVATIVE
+            # COMPARING TO PLAIN GRADIENT
+            # RESULT SHOW THAT WE DO NOT NEED TO SPLIT GRADIENT
+            #
+            # import pdb;pdb.set_trace()
+            # Oarray = self.NNet.run_unaggregated_gradient(configArray)
+            # Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # <O*>
+            # EOsum = Oarray.conjugate().dot(Earray)  # <O^*E>
+            # Eavg = np.average(Earray)
+            # Evar = np.var(Earray)
+            # Fj = np.real( (EOsum / num_sample - Eavg * Osum / num_sample))
+            # import matplotlib.pyplot as plt
+            # print('gj dot fj', Gj.dot(Fj)/np.linalg.norm(Gj)/np.linalg.norm(Fj))
+            # plt.plot(Gj/np.linalg.norm(Gj), label='Gj')
+            # plt.plot(Fj/np.linalg.norm(Fj), label='Fj')
+            # plt.legend()
+            # plt.show()
+            # import pdb;pdb.set_trace()
+            return Gj, Eavg / L, Evar / (L**2) / num_sample, None
+        else:
+            pass
+
+        Oarray = self.NNet.run_unaggregated_gradient(configArray)
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+
+        # for i in range(num_sample):
+        #     GList = self.NNet.backProp(configArray[i:i+1])
+        #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
+
+        # end_c, end_t = time.clock(), time.time()
+        # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+        # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
+
+        # Osum = np.einsum('ij->i', Oarray)
+        # EOsum = np.einsum('ij,j->i', Oarray, Earray)
+        Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # This <O^*>
+        EOsum = Oarray.conjugate().dot(Earray)  # <O^*E>
+
+        if not explicit_SR:
+            pass
+        else:
+            # One of the expressions below should be wrong and
+            # should be modified.
+            # (1.)
+            OOsum = Oarray.conjugate().dot(Oarray.T)
+            # (2.)
+            # mask = 1 - 2*self.NNet.im_para_array
+            # Oarray_ = np.einsum('i,ij->ij', mask, Oarray)
+            # OOsum = Oarray.dot(Oarray_.T)
+
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
+        start_c, start_t = time.clock(), time.time()
+
+        Eavg = np.average(Earray)
+        Evar = np.var(Earray)
+        print(self.get_self_amp_batch()[:5])
+        print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
+
+        #####################################
+        #  Fj = 2Re[ <O_iH> - <H><O_i> ]
+        #  Fj = <O_iH> - <H><O_i>
+        #####################################
+
+        # The networks are all parametrized by real-valued variables.
+        # As a result, Fj should be real and is real by definition.
+        # we cast the type to real by np.real
+
+        if self.moving_E_avg is None:
+            # Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
+            Fj = np.real((EOsum / num_sample - Eavg * Osum / num_sample))
+            Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
+            # if self.using_complex:
+            #     Fj = Fj[self.re_idx_array] + 1j*Fj[self.im_idx_array]
+            # else:
+            #     pass
+        else:
+            self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+            # Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
+            Fj = np.real((EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
+            print("moving_E_avg/N !!!!: ", self.moving_E_avg / num_site)
+
+        if not explicit_SR:
+            def implicit_S(v):
+                avgO = Osum.flatten()/num_sample
+                # finalv = - avgO.dot(v) * avgO.conjugate()
+                finalv = - avgO.conjugate() * avgO.dot(v)
+                finalv += Oarray.conjugate().dot((Oarray.T.dot(v)))/num_sample
+                return np.real(finalv)  # + v * 1e-4
+
+            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
+
+            Gj, info = scipy.sparse.linalg.minres(implicit_Sij, Fj, x0=Gj)
+            print("conv Gj : ", info)
+        else:
+            #####################################
+            # S_ij = <O_i O_j > - <O_i><O_j>   ##
+            #####################################
+            # There are two formulation here and one should be correct.
+            # (1.)
+            # why no conjugate here ?
+            Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2))
+
+            # (2.)
+            # Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten() / num_sample,
+            #                                      np.einsum('i,i->i', Osum.flatten()/num_sample,
+            #                                                (1-2*self.NNet.im_para_array)))
+            # if self.using_complex:
+            #     Sij = (Sij[self.re_idx_array][:, self.re_idx_array] -
+            #            Sij[self.im_idx_array][:, self.im_idx_array] +
+            #            1j * Sij[self.im_idx_array][:, self.re_idx_array] +
+            #            1j * Sij[self.re_idx_array][:, self.im_idx_array])
+
+
+            # Adding regularization/dumping/rotation 
+            # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
+            # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
+            if not self.real_time:
+                Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
+            else:
+                pass
+            ############
+            # Method 1 #
+            ############
+            # invSij = np.linalg.inv(Sij)
+            # Gj = invSij.dot(Fj.T)
+            ############
+            # Method 2 #
+            ############
+            if self.real_time:
+                # Evar_ = (Evar / (L**2) / num_sample)
+                invSij = np.linalg.pinv(Sij, self.pinv_rcond)
+                Gj = invSij.dot(Fj.T)
+            ############
+            # Method 3 #
+            ############
+            else:
+                # possible method, minres, lgmres, cg
+                # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+                Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
+                print("conv Gj : ", info)
+
+        # Gj = Fj.T
+        GjFj = np.linalg.norm(Gj.dot(Fj))
+        print("norm(G): ", np.linalg.norm(Gj),
+              "norm(F):", np.linalg.norm(Fj),
+              "G.dot(F):", GjFj)
+
+        end_c, end_t = time.clock(), time.time()
+        print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
+
+        # (2.)
+        # if self.using_complex:
+        #     tmp = np.zeros(Sij.shape[0]*2)
+        #     tmp[self.re_idx_array] = np.real(Gj)
+        #     tmp[self.im_idx_array] = np.imag(Gj)
+        #     Gj = tmp
+
+        if self.real_time:
+            tmp = Gj[self.re_idx_array]
+            Gj[self.re_idx_array] = -Gj[self.im_idx_array]
+            Gj[self.im_idx_array] = tmp
+
+        return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, GjFj
+
+
+class NQS_1d(NQS_base):
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
                  using_complex=False, single_precision=True, real_time=False,
                  pinv_rcond=1e-6):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
                                dtype=np.int8)
+        self.num_site = inputShape[0]
         self.batch_size = batch_size
         self.inputShape = inputShape
         self.init_config(sz0_sector=True)
@@ -55,6 +296,9 @@ class NQS_1d():
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             self.get_local_E_batch = self.local_E_Ising_batch
+            self.new_config_batch = self.new_config_batch_single
+        elif Hamiltonian == 'Sz':
+            self.get_local_E_batch = self.local_E_Sz_batch
             self.new_config_batch = self.new_config_batch_single
         elif Hamiltonian == 'AFH':
             self.get_local_E_batch = self.local_E_AFH_batch
@@ -273,213 +517,11 @@ class NQS_1d():
 
         SzSz = self.sz_sz_expectation(configArray)
         Sz = self.sz_expectation(configArray)
+        local_E = self.Ising_local_expectation(configArray)
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( spin-spin-correlation ): ", end_c - start_c, end_t - start_t)
-        return {"SzSz" : SzSz, "Sz": Sz}
-
-    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
-        L = self.config.shape[1]
-        numPara = self.net_num_para
-        # OOsum = np.zeros((numPara, numPara))
-        Osum = np.zeros((numPara))
-        Earray = np.zeros((num_sample))
-        EOsum = np.zeros((numPara))
-        Oarray = np.zeros((numPara, num_sample), dtype=self.NP_COMPLEX)
-
-        start_c, start_t = time.clock(), time.time()
-        corrlength = self.corrlength
-        configDim = list(self.config.shape)
-        configDim[0] = num_sample
-        configArray = np.zeros(configDim, dtype=np.int32)
-
-        if (self.batch_size == 1):
-            for i in range(1, 1 + num_sample * corrlength):
-                self.new_config()
-                if i % corrlength == 0:
-                    configArray[i / corrlength - 1, :, :] = self.config[0, :, :]
-
-        else:
-            sum_accept_ratio = 0
-            for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
-                ac = self.new_config_batch()
-                sum_accept_ratio += ac
-                bs = self.batch_size
-                if i % corrlength == 0:
-                    i_c = int(i/corrlength)
-                    configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
-                else:
-                    pass
-
-            print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
-
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
-
-        # for i in range(num_sample):
-        #     Earray[i] = self.get_local_E(configArray[i:i+1])
-
-        Earray = self.get_local_E_batch(configArray)
-        ####################################
-        ## TO perform adiabatic H0 --> H1 ##
-        ####################################
-        # Earray = self.local_E_J1J2_batch(configArray, J1=1., J2=0.5 + iteridx*0.0005)
-
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
-        if not SR:
-            Eavg = np.average(Earray)
-            Evar = np.var(Earray)
-            print(self.get_self_amp_batch()[:5])
-            print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / (L**2) / num_sample)  # , "Earray[:10]",Earray[:10]
-            if self.moving_E_avg != None:
-                self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-                print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
-                Earray = Earray - self.moving_E_avg
-            else:
-                Earray = Earray - Eavg
-
-            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
-            # Reg
-            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
-                Glist[idx] = Glist[idx] * 2./num_sample + W * self.reg
-
-            Gj = np.concatenate([g.flatten() for g in Glist])
-            end_c, end_t = time.clock(), time.time()
-            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-            print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / L, Evar / (L**2) / num_sample, None
-        else:
-            pass
-
-        Oarray = self.NNet.run_unaggregated_gradient(configArray)
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-
-        # for i in range(num_sample):
-        #     GList = self.NNet.backProp(configArray[i:i+1])
-        #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
-
-        # end_c, end_t = time.clock(), time.time()
-        # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-        # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
-
-
-        # Osum = np.einsum('ij->i', Oarray)
-        # EOsum = np.einsum('ij,j->i', Oarray, Earray)
-        Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # <O*>
-        EOsum = Oarray.conjugate().dot(Earray)  # <O^*E>
-
-        # for i in range(num_sample):
-        #     localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
-        #     Osum += localO
-        #     Earray[i] = localE
-        #     EOsum += localEO
-        #     Oarray[:, i] = localO
-
-        if not explicit_SR:
-            pass
-        else:
-            # This expression might be wrong and should be modified
-            # as the expression below,
-            # OOsum = Oarray.conjugate().dot(Oarray.T)
-            #
-            mask = 1 - 2*self.NNet.im_para_array
-            Oarray_ = np.einsum('i,ij->ij', mask, Oarray)
-            OOsum = Oarray.dot(Oarray_.T)
-
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
-        start_c, start_t = time.clock(), time.time()
-
-        Eavg = np.average(Earray)
-        Evar = np.var(Earray)
-        print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / L, "  Var: ", Evar / (L**2) / num_sample)
-
-        #####################################
-        #  Fj = 2<O_iH>-2<H><O_i>
-        #####################################
-        if self.moving_E_avg is None:
-            Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
-            Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
-            if self.using_complex:
-                Fj = Fj[self.re_idx_array] + 1j*Fj[self.im_idx_array]
-            else:
-                pass
-        else:
-            self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-            Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
-            print("moving_E_avg/N !!!!: ", self.moving_E_avg / L)
-
-        if not explicit_SR:
-            def implicit_S(v):
-                avgO = Osum.flatten()/num_sample
-                finalv = - avgO.dot(v) * avgO.conjugate()
-                finalv += Oarray.conjugate().dot((Oarray.T.dot(v)))/num_sample
-                return finalv  # + v * 1e-4
-
-            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
-
-            Gj, info = scipy.sparse.linalg.minres(implicit_Sij, Fj, x0=Gj)
-            print("conv Gj : ", info)
-        else:
-            #####################################
-            # S_ij = <O_i O_j > - <O_i><O_j>   ##
-            #####################################
-            # Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten(), Osum.flatten()) / (num_sample**2))
-            Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten() / num_sample,
-                                                 np.einsum('i,i->i', Osum.flatten()/num_sample,
-                                                           (1-2*self.NNet.im_para_array)))
-            if self.using_complex:
-                Sij = (Sij[self.re_idx_array][:, self.re_idx_array] -
-                       Sij[self.im_idx_array][:, self.im_idx_array] +
-                       1j * Sij[self.im_idx_array][:, self.re_idx_array] +
-                       1j * Sij[self.re_idx_array][:, self.im_idx_array])
-            # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
-            # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
-            Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
-            ############
-            # Method 1 #
-            ############
-            # invSij = np.linalg.inv(Sij)
-            # Gj = invSij.dot(Fj.T)
-            ############
-            # Method 2 #
-            ############
-            if self.real_time:
-                # Evar_ = (Evar / (L**2) / num_sample)
-                invSij = np.linalg.pinv(Sij, self.pinv_rcond)
-                Gj = invSij.dot(Fj.T)
-            ############
-            # Method 3 #
-            ############
-            else:
-                # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-                Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
-                print("conv Gj : ", info)
-
-        # Gj = Fj.T
-        GjFj = np.linalg.norm(Gj.dot(Fj))
-        print("norm(G): ", np.linalg.norm(Gj),
-              "norm(F):", np.linalg.norm(Fj),
-              "norm(G.dot(F)):", GjFj)
-
-        end_c, end_t = time.clock(), time.time()
-        print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
-
-        # if self.using_complex:
-        #     tmp = np.zeros(Sij.shape[0]*2)
-        #     tmp[self.re_idx_array] = np.real(Gj)
-        #     tmp[self.im_idx_array] = np.imag(Gj)
-        #     Gj = tmp
-
-        if self.real_time:
-            tmp = Gj[self.re_idx_array]
-            Gj[self.re_idx_array] = -Gj[self.im_idx_array]
-            Gj[self.im_idx_array] = tmp
-
-        return Gj, Eavg / L, Evar / (L**2) / num_sample, GjFj
+        return {"SzSz" : SzSz, "Sz": Sz, "local_E": local_E}
 
     def getLocal_no_OO(self, config):
         '''
@@ -616,8 +658,61 @@ class NQS_1d():
         # Sz_j average over num_config
         # In this convention Sz_j is in [0,1]
         Sz_j = (Sz_j-0.5)
-
         return Sz_j
+
+    def Ising_local_expectation(self, config_arr, PBC=False):
+        '''
+        H = -J sz_i sz_j + g sx_i - h sz_i
+        '''
+        J = 0.4
+        g = 0.9045
+        h = 0.7090
+        num_config, L, inputShape1 = config_arr.shape
+        localE_arr = np.zeros(L, dtype=self.NP_COMPLEX)
+        oldAmp = self.eval_amp_array(config_arr)
+
+        ###########################
+        #  J sigma^z_i sigma^z_j  #
+        ###########################
+        config_shift_copy = np.zeros((num_config, L, inputShape1), dtype=np.int32)
+        config_shift_copy[:, :-1, :] = config_arr[:, 1:, :]
+        config_shift_copy[:, -1, :] = config_arr[:, 0, :]
+
+        # SzSz stores L : szsz expectation value over (i, i+1)
+        # SzSz_ stores L : szsz expectation value over (i-1, i)
+        SzSz = np.einsum('ijk,ijk->j', config_arr, config_shift_copy) / num_config
+        SzSz_ = SzSz.copy()
+        SzSz_[1:] = SzSz[:-1]
+        SzSz_[0] = SzSz[-1]
+        if not PBC:
+            SzSz_[0] = 0.5  # 0.5 corresponds to E=0
+            SzSz[-1] = 0.5  # 0.5 corresponds to E=0
+
+        localE_arr += (SzSz - 0.5) * 2 * (-J)/2
+        localE_arr += (SzSz_ - 0.5) * 2 * (-J)/2
+
+        #################
+        #  g sigma^x_i  #
+        #################
+
+        # num_site(L) x num_config x num_site(L) x num_spin
+        config_flip_arr = np.einsum('h,ijk->hijk', np.ones(L, dtype=np.float32), config_arr)
+        for i in range(L):
+            config_flip_arr[i, :, i, :] = (1 - config_flip_arr[i, :, i, :])
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(L*num_config, L, inputShape1))
+        flip_Amp_arr = flip_Amp_arr.reshape((L, num_config))
+        # localE += g (flip_Amp) / oldAmp
+        localE_arr += np.einsum('ij, j -> i',  flip_Amp_arr, 1./oldAmp * g) / num_config
+
+        #################
+        #  h sigma^z_i  #
+        #################
+        # num_config x L
+        Sz = config_arr[:, :, 0]
+        localE_arr += ((np.einsum('ij->j', Sz) / num_config) - 0.5 ) * 2 * (-h)
+
+        return localE_arr
 
     def local_E_AFH_batch(self, config_arr, J=1):
         '''
@@ -716,9 +811,9 @@ class NQS_1d():
         for convenient we use the following convention
         H = -J sz_i sz_j + g sx_i - h sz_i
         '''
-        J = 1. # self.J
-        g = 0.5 # self.g
-        h = 0. # self.h
+        J = 0.4 # self.J
+        g = 0.9045 # self.g
+        h = 0.7090 # self.h
         '''
         Base on the fact that, in one-hot representation
         sigma^z siamg^z Interaction
@@ -746,13 +841,6 @@ class NQS_1d():
             localE_arr += np.einsum('ij->i', SzSz[:,:-1] - 0.5) * 2 * (-J)
 
         #################
-        #  h sigma^z_i  #
-        #################
-        # num_config x L
-        Sz = config_arr[:, :, 0]
-        localE_arr += np.einsum('ij->i', Sz * h)
-
-        #################
         #  g sigma^x_i  #
         #################
 
@@ -766,6 +854,33 @@ class NQS_1d():
         # localE += g (flip_Amp) / oldAmp
         localE_arr += np.einsum('ij -> j',  flip_Amp_arr) / oldAmp * g
 
+        #################
+        #  h sigma^z_i  #
+        #################
+        # num_config x L
+        Sz = (config_arr[:, :, 0] - 0.5) * 2
+        localE_arr += np.einsum('ij->i', -Sz * h)
+
+        return localE_arr
+
+    def local_E_Sz_batch(self, config_arr):
+        '''
+        Because we can not apply the S+ directly to the state,
+        We minimized Sz directly for the center site.
+        This effectively leads to exp(-Sz) on the center site.
+        we assume 0 represent up and 1 represent down.
+        '''
+        num_config, L, inputShape1 = config_arr.shape
+        localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
+        oldAmp = self.eval_amp_array(config_arr)
+
+        #################
+        #  h sigma^z_i  #
+        #################
+        # num_config x L
+        Sz_mid = (config_arr[:, L//2, 0]-0.5)*2
+        localE_arr += Sz_mid
+
         return localE_arr
 
     def local_E_J1J2_batch_log(self, config_arr):
@@ -776,7 +891,7 @@ class NQS_1d():
 ############################
 
 
-class NQS_2d():
+class NQS_2d(NQS_base):
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
                  using_complex=False, single_precision=True, real_time=False,
                  pinv_rcond=1e-6):
@@ -793,7 +908,7 @@ class NQS_2d():
         self.inputShape = inputShape
         self.Lx = inputShape[0]
         self.Ly = inputShape[1]
-        self.LxLy = self.Lx*self.Ly
+        self.LxLy = self.num_site = self.Lx*self.Ly
         if self.Lx != self.Ly:
             print("not a square lattice !!!")
 
@@ -1001,212 +1116,6 @@ class NQS_2d():
 
         acceptance_ratio = np.sum(final_mask)/batch_size
         return acceptance_ratio
-
-    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
-        numPara = self.net_num_para
-        # OOsum = np.zeros((numPara, numPara))
-        if self.using_complex:
-            NP_DTYPE = self.NP_COMPLEX
-        else:
-            NP_DTYPE = self.NP_FLOAT
-        Osum = np.zeros((numPara), dtype=NP_DTYPE)
-        Earray = np.zeros((num_sample), dtype=NP_DTYPE)
-        EOsum = np.zeros((numPara), dtype=NP_DTYPE)
-        Oarray = np.zeros((numPara, num_sample), dtype=NP_DTYPE)
-
-        start_c, start_t = time.clock(), time.time()
-        corrlength = self.corrlength
-        configDim = list(self.config.shape)
-        configDim[0] = num_sample
-        configArray = np.zeros(configDim, dtype=np.int32)
-
-        if (self.batch_size == 1):
-            for i in range(1, 1 + num_sample * corrlength):
-                self.new_config()
-                if i % corrlength == 0:
-                    configArray[i / corrlength - 1] = self.config[0]
-
-        else:
-            sum_accept_ratio = 0
-            for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
-                ac = self.new_config_batch()
-                sum_accept_ratio += ac
-                bs = self.batch_size
-                if i % corrlength == 0:
-                    i_c = int(i/corrlength)
-                    configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
-                else:
-                    pass
-
-            print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
-
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
-
-        # for i in range(num_sample):
-        #     Earray[i] = self.get_local_E(configArray[i:i+1])
-        Earray = self.get_local_E_batch(configArray)
-
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
-        # np.savetxt('X.csv', configArray[:,:,:,0].reshape([-1,64]), '%d', delimiter=',')
-        # np.savetxt('Y.csv', self.eval_amp_array(configArray).reshape([-1,1]), '%.8e', delimiter=',')
-
-        if not SR:
-            Eavg = np.average(Earray)
-            Evar = np.var(Earray)
-            print(self.get_self_amp_batch()[:5])
-            print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / (self.LxLy**2) / num_sample)
-            if self.moving_E_avg != None:
-                self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-                print("moving_E_avg/N !!!!: ", self.moving_E_avg / self.LxLy)
-                Earray = Earray - self.moving_E_avg
-            else:
-                Earray = Earray - Eavg
-
-            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
-            # Reg
-            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
-                Glist[idx] = Glist[idx] /num_sample + W * self.reg
-
-            Gj = np.concatenate([g.flatten() for g in Glist])
-            end_c, end_t = time.clock(), time.time()
-            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-            print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample, None
-        else:
-            pass
-
-
-        Oarray = self.NNet.run_unaggregated_gradient(configArray)
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-
-        # for i in range(num_sample):
-        #     GList = self.NNet.backProp(configArray[i:i+1])
-        #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
-
-        # end_c, end_t = time.clock(), time.time()
-        # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
-        # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
-
-
-
-        # Osum = np.einsum('ij->i', Oarray)
-        # EOsum = np.einsum('ij,j->i', Oarray, Earray)
-        Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # This <O^*>
-        EOsum = Oarray.conjugate().dot(Earray)  # <O^* E>
-
-        # for i in range(num_sample):
-        #     localO, localE, localEO = self.getLocal_no_OO(configArray[i:i+1])
-        #     Osum += localO
-        #     Earray[i] = localE
-        #     EOsum += localEO
-        #     Oarray[:, i] = localO
-
-        if not explicit_SR:
-            pass
-        else:
-            # This is wrong should be deleted
-            # OOsum = Oarray.conjugate().dot(Oarray.T)
-            mask = 1- 2*self.NNet.im_para_array
-            Oarray_ = np.einsum('i,ij->ij', mask, Oarray)
-            OOsum = Oarray.dot(Oarray_.T)
-
-        end_c, end_t = time.clock(), time.time()
-        print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
-        start_c, start_t = time.clock(), time.time()
-
-        Eavg = np.average(Earray)
-        Evar = np.var(Earray)
-        # print(self.getSelfAmp())
-        print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / self.LxLy, "  Var: ", Evar / (self.LxLy**2) / num_sample)
-
-        #####################################
-        #  Fj = 2Re[ <O_iH> - <H><O_i> ]
-        #  Fj = <O_iH> - <H><O_i>
-        #####################################
-
-        # The networks are all parametrized by real-valued variables.
-        # As a result, Fj should be real and is real by definition.
-        # we cast the type to real by np.real
-
-        if self.moving_E_avg is None:
-            # Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
-            Fj = np.real((EOsum / num_sample - Eavg * Osum / num_sample))
-            Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
-            if self.using_complex:
-                Fj = Fj[self.re_idx_array] + 1j*Fj[self.im_idx_array]
-                ####   ####   ####
-
-        else:
-            self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
-            # Fj = np.real(2. * (EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
-            Fj = np.real((EOsum / num_sample - self.moving_E_avg * Osum / num_sample))
-            print("moving_E_avg/N !!!!: ", self.moving_E_avg / self.LxLy)
-
-        if not explicit_SR:
-            def implicit_S(v):
-                avgO = Osum.flatten()/num_sample
-                finalv = - avgO.dot(v) * avgO.conjugate()
-                finalv += Oarray.conjugate().dot((Oarray.T.dot(v)))/num_sample
-                return np.real(finalv + v * 1e-4)
-
-            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
-
-            Gj, info = scipy.sparse.linalg.minres(implicit_Sij, Fj, x0=Gj)
-            print("conv Gj : ", info)
-        else:
-            #####################################
-            # S_ij = <O_i O_j > - <O_i><O_j>   ##
-            #####################################
-            # Sij = np.real(OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten().conjugate(), Osum.flatten()) / (num_sample**2))
-            Sij = OOsum/num_sample - np.einsum('i,j->ij', Osum.flatten() / num_sample,
-                                               np.einsum('i,i->i', (1-2*self.NNet.im_para_array), Osum.flatten() /num_sample))
-
-            if self.using_complex:
-                Sij = Sij[self.re_idx_array][:, self.re_idx_array] - Sij[self.im_idx_array][:, self.im_idx_array] + 1j * Sij[self.im_idx_array][:, self.re_idx_array] + 1j * Sij[self.re_idx_array][:, self.im_idx_array];
-
-            # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
-            # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
-            Sij = Sij+np.diag(np.ones(Sij.shape[0])*1e-4)
-            # Sij = Sij + np.diag((1-self.NNet.im_para_array) * 1e-4)
-            ############
-            # Method 1 #
-            ############
-            # invSij = np.linalg.inv(Sij)
-            # Gj = invSij.dot(Fj.T)
-            ############
-            # Method 2 #
-            ############
-            # invSij = np.linalg.pinv(Sij, self.pinv_rcond)
-            # Gj = invSij.dot(Fj.T)
-            ############
-            # Method 3 #
-            ############
-            # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-            # Gj, info = scipy.sparse.linalg.lgmres(Sij, Fj)
-            Gj, info = scipy.sparse.linalg.cg(Sij, Fj) # , x0=Gj)
-            print("conv Gj : ", info)
-
-
-        # Gj = Fj.T
-        GjFj = np.linalg.norm(Gj.dot(Fj))
-        print("norm(G): ", np.linalg.norm(Gj),
-              "norm(F):", np.linalg.norm(Fj),
-              "G.dot(F):", GjFj)
-
-        end_c, end_t = time.clock(), time.time()
-        print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
-
-        if self.using_complex:
-            tmp = np.zeros(Sij.shape[0]*2)
-            tmp[self.re_idx_array] = np.real(Gj)
-            tmp[self.im_idx_array] = np.imag(Gj)
-            Gj = tmp
-
-        return Gj, Eavg / self.LxLy, Evar / (self.LxLy**2) / num_sample, GjFj
 
     def local_E_2dAFH_batch(self, config_arr, J=1):
         '''
