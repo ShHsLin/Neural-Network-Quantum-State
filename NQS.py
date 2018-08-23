@@ -18,6 +18,62 @@ class NQS_base():
     def __init__(self):
         return
 
+    def getSelfAmp(self):
+        return float(self.NNet.forwardPass(self.config))
+
+    def get_self_amp_batch(self):
+        return self.NNet.forwardPass(self.config).flatten()
+
+    def get_self_log_amp_batch(self):
+        return self.NNet.forwardPass_log_psi(self.config).flatten()
+
+    def update_stabilizer(self):
+        current_amp = self.get_self_amp_batch()
+        max_abs_amp = np.max(np.abs(current_amp))
+        log_max_abs_amp = np.log(max_abs_amp)
+        print("exp_stabilier = %.5e, increments = %.5e " % (self.NNet.sess.run(self.NNet.exp_stabilizer),
+                                                            log_max_abs_amp))
+        self.NNet.exp_stabilizer_add(log_max_abs_amp)
+        return
+
+    def eval_amp_array(self, configArray):
+        # for 1d:
+        # (batch_size, inputShape[0], inputShape[1])
+        # for 2d:
+        # (batch_size, inputShape[0], inputShape[1], inputShape[2])
+        array_shape = configArray.shape
+        max_size = self.max_batch_size
+        if array_shape[0] <= max_size:
+            return self.NNet.forwardPass(configArray).flatten()
+        else:
+            if self.using_complex:
+                amp_array = np.empty((array_shape[0], ), dtype=self.NP_COMPLEX)
+            else:
+                amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
+
+            for idx in range(array_shape[0] // max_size):
+                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+
+            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            return amp_array
+
+    def eval_log_amp_array(self, configArray):
+        # for 1d:
+        # (batch_size, inputShape[0], inputShape[1])
+        # for 2d:
+        # (batch_size, inputShape[0], inputShape[1], inputShape[2])
+        array_shape = configArray.shape
+        max_size = self.max_batch_size
+        if array_shape[0] <= max_size:
+            return self.NNet.forwardPass_log_psi(configArray).flatten()
+        else:
+            log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
+            for idx in range(array_shape[0] // max_size):
+                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_psi(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+
+            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            return log_amp_array
+
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
         numPara = self.net_num_para
         num_site = self.num_site
@@ -292,7 +348,6 @@ class NQS_1d(NQS_base):
         self.im_idx_array = np_arange[np.array(self.NNet.im_para_array,
                                                dtype=bool)]
 
-
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             self.get_local_E_batch = self.local_E_Ising_batch
@@ -327,56 +382,6 @@ class NQS_1d(NQS_base):
             self.config[:, :, 0] = x
             self.config[:, :, 1] = (1 - x)
             return
-
-    def getSelfAmp(self):
-        return float(self.NNet.forwardPass(self.config))
-
-    def get_self_amp_batch(self):
-        return self.NNet.forwardPass(self.config).flatten()
-
-    def get_self_log_amp_batch(self):
-        return self.NNet.forwardPass_log_psi(self.config).flatten()
-
-    def update_stabilizer(self):
-        current_amp = self.get_self_amp_batch()
-        max_abs_amp = np.max(np.abs(current_amp))
-        log_max_abs_amp = np.log(max_abs_amp)
-        print("exp_stabilier = %.5e, increments = %.5e " % (self.NNet.sess.run(self.NNet.exp_stabilizer),
-                                                            log_max_abs_amp))
-        self.NNet.exp_stabilizer_add(log_max_abs_amp)
-        return
-
-    def eval_amp_array(self, configArray):
-        # (batch_size, inputShape[0], inputShape[1])
-        array_shape = configArray.shape
-        max_size = self.max_batch_size
-        if array_shape[0] <= max_size:
-            return self.NNet.forwardPass(configArray).flatten()
-        else:
-            if self.using_complex:
-                amp_array = np.empty((array_shape[0], ), dtype=self.NP_COMPLEX)
-            else:
-                amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
-
-            for idx in range(array_shape[0] // max_size):
-                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
-
-            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
-            return amp_array
-
-    def eval_log_amp_array(self, configArray):
-        # (batch_size, inputShape[0], inputShape[1])
-        array_shape = configArray.shape
-        max_size = self.max_batch_size
-        if array_shape[0] <= max_size:
-            return self.NNet.forwardPass_log_psi(configArray).flatten()
-        else:
-            log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
-            for idx in range(array_shape[0] // max_size):
-                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_psi(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
-
-            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
-            return log_amp_array
 
     def new_config(self):
         L = self.config.shape[1]
@@ -973,56 +978,6 @@ class NQS_2d(NQS_base):
             self.config[:, :, :, 0] = x
             self.config[:, :, :, 1] = (1 - x)
             return
-
-    def getSelfAmp(self):
-        return float(self.NNet.forwardPass(self.config))
-
-    def get_self_amp_batch(self):
-        return self.NNet.forwardPass(self.config).flatten()
-
-    def get_self_log_amp_batch(self):
-        return self.NNet.forwardPass_log_psi(self.config).flatten()
-
-    def update_stabilizer(self):
-        current_amp = self.get_self_amp_batch()
-        max_abs_amp = np.max(np.abs(current_amp))
-        log_max_abs_amp = np.log(max_abs_amp)
-        print("exp_stabilier = %.5e, increments = %.5e " % (self.NNet.sess.run(self.NNet.exp_stabilizer),
-                                                            log_max_abs_amp))
-        self.NNet.exp_stabilizer_add(log_max_abs_amp)
-        return
-
-    def eval_amp_array(self, configArray):
-        # (batch_size, inputShape[0], inputShape[1], inputShape[2])
-        array_shape = configArray.shape
-        max_size = self.max_batch_size
-        if array_shape[0] <= max_size:
-            return self.NNet.forwardPass(configArray).flatten()
-        else:
-            if self.using_complex:
-                amp_array = np.empty((array_shape[0], ), dtype=self.NP_COMPLEX)
-            else:
-                amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
-
-            for idx in range(array_shape[0] // max_size):
-                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
-
-            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
-            return amp_array
-
-    def eval_log_amp_array(self, configArray):
-        # (batch_size, inputShape[0], inputShape[1], inputShape[2])
-        array_shape = configArray.shape
-        max_size = self.max_batch_size
-        if array_shape[0] <= max_size:
-            return self.NNet.forwardPass_log_psi(configArray).flatten()
-        else:
-            log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
-            for idx in range(array_shape[0] // max_size):
-                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_psi(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
-
-            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
-            return log_amp_array
 
     def new_config(self):
         '''
