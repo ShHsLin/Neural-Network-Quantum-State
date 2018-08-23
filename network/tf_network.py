@@ -732,47 +732,68 @@ class tf_network:
             # conv_bias = tf.exp(conv_bias)
             # out = tf.reshape(tf.multiply(pool4, conv_bias), [-1, 1])
 
-            out = tf.real((out))
+        if self.using_complex:
             return out, log_psi
+        else:
+            return tf.real(out), None
 
-    def build_ResNet(self, x):
+    def build_ResNet(self, x, activation):
+        act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, 0]
-            fc1 = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1')
-            fc1 = tf.nn.softplus(fc1)
-            fc1 = fc1 + x
+            x = tf.cast(x, dtype=self.TF_FLOAT)
+            fc1 = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha, 'fc1',
+                               dtype=tf.complex64)
+            fc1 = act(fc1)
+            # fc1 = fc1 + x
 
-            fc2 = tf_.fc_layer(fc1, self.L * self.alpha, self.L * self.alpha, 'fc2')
-            fc2 = tf.nn.softplus(fc2)
+            fc2 = tf_.fc_layer(fc1, self.L * self.alpha, self.L * self.alpha, 'fc2',
+                               dtype=tf.complex64)
+            fc2 = act(fc2)
             fc2 = fc2 + fc1
 
-            fc3 = tf_.fc_layer(fc2, self.L * self.alpha, self.L * self.alpha, 'fc3')
-            fc3 = tf.nn.softplus(fc3)
+            fc3 = tf_.fc_layer(fc2, self.L * self.alpha, self.L * self.alpha, 'fc3',
+                               dtype=tf.complex64)
+            fc3 = act(fc3)
+            fc3 = fc3 + fc2
 
-            out_re = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_re')
-            out_re = out_re + tf_.fc_layer(x, self.L, 1, 'v_bias')
-            out_im = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_im')
-            out = tf.multiply(tf.exp(out_re), tf.cos(out_im))
+            out = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out',
+                               dtype=tf.complex64)
+            log_psi = out + tf_.fc_layer(tf.complex(x, 0.), self.L, 1,
+                                         'v_bias', dtype=tf.complex64)
+            log_psi = tf.reshape(log_psi, [-1, 1])
+            out = tf.exp(log_psi)
 
-        return out, tf.complex(out_re, out_im)
+        if self.using_complex:
+            return out, log_psi
+        else:
+            return tf.real(out), None
 
     def build_RBM_1d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             # inputShape = x.get_shape().as_list()
             x = tf.cast(x[:, :, 0], dtype=self.TF_FLOAT)
-            fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
-            fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
-            fc1 = tf.complex(fc1_re, fc1_im)
+            fc1 = tf_.fc_layer(tf.complex(x, 0.), self.L, self.L * self.alpha,
+                               'fc1_complex', dtype=tf.complex64)
+            # fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
+            # fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
+            # fc1 = tf.complex(fc1_re, fc1_im)
             fc2 = tf_.softplus2(fc1)
             # fc2 = tf_.complex_relu(fc1)
 
-            v_bias_re = tf_.fc_layer(x, self.L, 1, 'v_bias_re')
-            v_bias_im = tf_.fc_layer(x, self.L, 1, 'v_bias_im')
+            v_bias = tf_.fc_layer(tf.complex(x, 0.), self.L, 1, 'v_bias',
+                                  dtype=tf.complex64)
+            # v_bias_re = tf_.fc_layer(x, self.L, 1, 'v_bias_re')
+            # v_bias_im = tf_.fc_layer(x, self.L, 1, 'v_bias_im')
+            # v_bias = tf.complex(v_bias_re, v_bias_im)
             log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
-            log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
-            out = tf.real(tf.exp(log_prob))
+            log_prob = tf.add(log_prob, v_bias)
+            out = tf.exp(log_prob)
 
-        return out, None
+        if self.using_complex:
+            return out, log_prob
+        else:
+            return tf.real(out), None
 
     def build_RBM_cosh_1d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
