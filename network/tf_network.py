@@ -178,28 +178,40 @@ class tf_network:
                 # grad_log_psi would be cast to real by tensorflow default !
                 # To prevent this, we manually compute the gradient.
                 # Cast gradient back to real only before apply_gradient.
+                #
+                # Computing O not O^* here.
+                # We explicitly do the confugation with numpy array.
                 self.log_grads_real = tf.gradients(tf.real(self.log_psi), self.para_list)
-                '''
-                we add a minus in front of tf.imag to take the complex conjugate
-                of the wavefunction
-                such that we take the O^* instead of O
-                '''
-                self.log_grads_imag = tf.gradients(-tf.imag(self.log_psi), self.para_list)
-                # self.log_grads = [tf.complex(self.log_grads_real[i], self.log_grads_imag[i])
-                #                   for i in range(len(self.log_grads_real))]
-                self.log_grads = [None]*len(self.log_grads_real)
-
-                for idx in range(len(self.re_para_idx)):
-                    re_idx = self.re_para_idx[idx]
-                    im_idx = self.im_para_idx[idx]
-                    dre_re = self.log_grads_real[re_idx]
-                    dre_im = self.log_grads_imag[re_idx]
-                    dim_re = self.log_grads_real[im_idx]
-                    dim_im = self.log_grads_imag[im_idx]
-                    self.log_grads[re_idx] = (dre_re - dim_im) / 2.
-                    # self.log_grads[re_idx] = (tf.real(self.log_grads[re_idx]) + im_in_im) / 2.
-                    self.log_grads[im_idx] = (dim_re + dre_im) / 2.
-                    # self.log_grads[im_idx] = (tf.real(self.log_grads[im_idx]) - im_in_re) / 2.
+                self.log_grads_imag = tf.gradients(tf.imag(self.log_psi), self.para_list)
+                ##############
+                # Method 1. ##
+                ##############
+                # We simply combine the grad of the real part and the imag part.
+                ##############
+                self.log_grads = [tf.complex(self.log_grads_real[i], self.log_grads_imag[i])
+                                  for i in range(len(self.log_grads_real))]
+                ##############
+                # Method 2. ##
+                ##############
+                # We reorder the gradient derivative by the definition of wirtinger derivative.
+                # Weirdly this does not give the correct value gradient value after calculation
+                # and comparing to plain gradient desecent.
+                ##############
+                # self.log_grads = [None]*len(self.log_grads_real)
+                # for idx in range(len(self.re_para_idx)):
+                #     re_idx = self.re_para_idx[idx]
+                #     im_idx = self.im_para_idx[idx]
+                #     dre_re = self.log_grads_real[re_idx]
+                #     dre_im = self.log_grads_imag[re_idx]
+                #     dim_re = self.log_grads_real[im_idx]
+                #     dim_im = self.log_grads_imag[im_idx]
+                #     self.log_grads[re_idx] = (dre_re) / 2.
+                #     self.log_grads[im_idx] = (dim_re) / 2.
+                #     # self.log_grads[re_idx] = (dre_re + dim_im) / 2.
+                #     # O^*
+                #     # self.log_grads[im_idx] = (dim_re - dre_im) / 2.
+                #     # O
+                #     # self.log_grads[im_idx] = (-dim_re + dre_im) / 2.
 
                 # (2.1)
                 self.E_grads = tf.gradients(self.log_psi, self.para_list, grad_ys=self.E_loc_m_avg)
@@ -288,8 +300,8 @@ class tf_network:
         https://stackoverflow.com/questions/38994037/tensorflow-while-loop-for-training
         '''
         if self.using_complex:
-            # unaggregated_grad = tf.TensorArray(dtype=self.TF_COMPLEX, size=tf.shape(self.x)[0])
-            unaggregated_grad = tf.TensorArray(dtype=self.TF_FLOAT, size=tf.shape(self.x)[0])
+            unaggregated_grad = tf.TensorArray(dtype=self.TF_COMPLEX, size=tf.shape(self.x)[0])
+            # unaggregated_grad = tf.TensorArray(dtype=self.TF_FLOAT, size=tf.shape(self.x)[0])
         else:
             unaggregated_grad = tf.TensorArray(dtype=self.TF_FLOAT, size=tf.shape(self.x)[0])
 
@@ -304,22 +316,31 @@ class tf_network:
                 if single_log_psi is None:
                     single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
 
+                ##############
+                # Method 1
+                ##############
                 single_log_grads_real = tf.gradients(tf.real(single_log_psi), self.para_list)
-                single_log_grads_imag = tf.gradients(-tf.imag(single_log_psi), self.para_list)
-                # single_log_grads = [tf.complex(single_log_grads_real[j], single_log_grads_imag[j])
-                #                     for j in range(len(single_log_grads_real))]
-                single_log_grads = [None]*len(single_log_grads_real)
-                for idx in range(len(self.re_para_idx)):
-                    re_idx = self.re_para_idx[idx]
-                    im_idx = self.im_para_idx[idx]
-                    single_dre_re = single_log_grads_real[re_idx]
-                    single_dre_im = single_log_grads_imag[re_idx]
-                    single_dim_re = single_log_grads_real[im_idx]
-                    single_dim_im = single_log_grads_imag[im_idx]
-                    single_log_grads[re_idx] = (single_dre_re - single_dim_im) / 2.
-                    # single_log_grads[re_idx] = tf.real(tf.real(single_log_grads[re_idx]) + single_im_in_im) / 2.
-                    single_log_grads[im_idx] = (single_dim_re + single_dre_im) / 2.
-                    # single_log_grads[im_idx] = tf.real(tf.real(single_log_grads[im_idx]) - single_im_in_re) / 2.
+                single_log_grads_imag = tf.gradients(tf.imag(single_log_psi), self.para_list)
+                single_log_grads = [tf.complex(single_log_grads_real[j], single_log_grads_imag[j])
+                                    for j in range(len(single_log_grads_real))]
+                ##############
+                # Method 2
+                ##############
+                # single_log_grads = [None]*len(single_log_grads_real)
+                # for idx in range(len(self.re_para_idx)):
+                #     re_idx = self.re_para_idx[idx]
+                #     im_idx = self.im_para_idx[idx]
+                #     single_dre_re = single_log_grads_real[re_idx]
+                #     single_dre_im = single_log_grads_imag[re_idx]
+                #     single_dim_re = single_log_grads_real[im_idx]
+                #     single_dim_im = single_log_grads_imag[im_idx]
+                #     single_log_grads[re_idx] = (single_dre_re ) / 2.
+                #     single_log_grads[im_idx] = (single_dim_re) / 2.
+                #     # single_log_grads[re_idx] = (single_dre_re + single_dim_im) / 2.
+                #     # O^*
+                #     # single_log_grads[im_idx] = (single_dim_re - single_dre_im) / 2.
+                #     # O
+                #     # single_log_grads[im_idx] = (-single_dim_re + single_dre_im) / 2.
 
 
                 ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in single_log_grads], axis=0 ))
