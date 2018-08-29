@@ -179,7 +179,7 @@ def circular_conv_1d_complex(bottom, filter_size, in_channels, out_channels,
             # pad_size = filter_size - 1
             bottom_pad = tf.concat([bottom, bottom[:, :filter_size-1, :]], 1)
             bottom_pad_re = tf.real(bottom_pad)
-            bottom_pad_im = tf.real(bottom_pad)
+            bottom_pad_im = tf.imag(bottom_pad)
             conv_re = (tf.nn.conv1d(bottom_pad_re, filt_re, stride_size, padding='VALID') -
                        tf.nn.conv1d(bottom_pad_im, filt_im, stride_size, padding='VALID'))
             conv_im = (tf.nn.conv1d(bottom_pad_im, filt_re, stride_size, padding='VALID') +
@@ -248,7 +248,7 @@ def circular_conv_2d_complex(bottom, filter_size, in_channels, out_channels,
             bottom_pad_x = tf.concat([bottom, bottom[:, :filter_size-1, :, :]], 1)
             bottom_pad_xy = tf.concat([bottom_pad_x, bottom_pad_x[:, :, :filter_size-1, :]], 2)
             bottom_pad_re = tf.real(bottom_pad_xy)
-            bottom_pad_im = tf.real(bottom_pad_xy)
+            bottom_pad_im = tf.imag(bottom_pad_xy)
             stride_list = [1, stride_size, stride_size, 1]
             conv_re = (tf.nn.conv2d(bottom_pad_re, filt_re, stride_list, padding='VALID') -
                        tf.nn.conv2d(bottom_pad_im, filt_im, stride_list, padding='VALID'))
