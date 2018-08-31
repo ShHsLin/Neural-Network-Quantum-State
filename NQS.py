@@ -727,8 +727,8 @@ class NQS_1d(NQS_base):
         SzSz = 0 if ud or du
         '''
         num_config, L, inputShape1 = config_arr.shape
-        localE_arr = np.zeros((num_config))
         oldAmp = self.eval_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
 
         # PBC
         config_shift_copy = np.zeros((num_config, L, inputShape1), dtype=np.int32)
@@ -761,8 +761,8 @@ class NQS_1d(NQS_base):
         SzSz = 0 if ud or du
         '''
         num_config, L, inputShape1 = config_arr.shape
-        localE_arr = np.zeros((num_config))
         oldAmp = self.eval_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
 
         ####################
         # PBC   J1 term   ##
@@ -828,8 +828,8 @@ class NQS_1d(NQS_base):
         we assume 0 represent up and 1 represent down
         '''
         num_config, L, inputShape1 = config_arr.shape
-        localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
         oldAmp = self.eval_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
 
         ###########################
         #  J sigma^z_i sigma^z_j  #
@@ -876,8 +876,8 @@ class NQS_1d(NQS_base):
         we assume 0 represent up and 1 represent down.
         '''
         num_config, L, inputShape1 = config_arr.shape
-        localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
         oldAmp = self.eval_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
 
         #################
         #  h sigma^z_i  #
@@ -1074,14 +1074,26 @@ class NQS_2d(NQS_base):
 
     def local_E_2dAFH_batch(self, config_arr, J=1):
         '''
+        To compute the Energz of 2d Heisenberg model with
+        the configuration given in config_array.
+
         Basic idea is due to the fact that
         Sz Sz Interaction
         SzSz = 1 if uu or dd
         SzSz = 0 if ud or du
+        Input:
+            config_arr:
+                np.array of shape (num_config, Lx, Ly, local_dim)
+                dtype=np.int
+        Output:
+            localE_arr:
+                np.array of shape (num_config)
+                dtype=float or complex
+                dtype depends on whether we are using complex amplitude wavefunction.
         '''
         num_config, Lx, Ly, local_dim = config_arr.shape
-        localE_arr = np.zeros((num_config))
         oldAmp = self.eval_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
 
         # S_ij dot S_(i+1)j
         # PBC
@@ -1136,17 +1148,30 @@ class NQS_2d(NQS_base):
         return localE_arr
 
     def local_E_2dJ1J2_batch(self, config_arr):
-        J1 = 1.
-        J2 = self.J2
         '''
+        To compute the Energz of 2d J1J2 model with
+        the configuration given in config_array.
+
         Basic idea is due to the fact that
         Sz Sz Interaction
         SzSz = 1 if uu or dd
         SzSz = 0 if ud or du
+        Input:
+            config_arr:
+                np.array of shape (num_config, Lx, Ly, local_dim)
+                dtype=np.int
+        Output:
+            localE_arr:
+                np.array of shape (num_config)
+                dtype=float or complex
+                dtype depends on whether we are using complex amplitude wavefunction.
         '''
+        J1 = 1.
+        J2 = self.J2
+
         num_config, Lx, Ly, local_dim = config_arr.shape
-        localE_arr = np.zeros((num_config), dtype=np.complex64)
         oldAmp = self.eval_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
 
 
         ########################
@@ -1260,18 +1285,28 @@ class NQS_2d(NQS_base):
         return localE_arr
 
     def local_E_2dJ1J2_batch_log(self, config_arr):
+        '''
+        See explanation in local_E_2dJ1J2_batch.
+        The difference here is we compute exp(log_amp1-log_amp2),
+        instead of amp1/amp2, to improve numerical stability.
+
+        Input:
+            config_arr:
+                np.array of shape (num_config, Lx, Ly, local_dim)
+                dtype=np.int
+        Output:
+            localE_arr:
+                np.array of shape (num_config)
+                dtype=complex
+                regardless of using real/complex amplitude wavefunction.
+        '''
         J1 = 1.
         J2 = self.J2
-        '''
-        Basic idea is due to the fact that
-        Sz Sz Interaction
-        SzSz = 1 if uu or dd
-        SzSz = 0 if ud or du
-        '''
+
         num_config, Lx, Ly, local_dim = config_arr.shape
-        localE_arr = np.zeros((num_config), dtype=np.complex64)
-        # old_log_amp shape (num_config,1)
         old_log_amp = self.eval_log_amp_array(config_arr)
+        # old_log_amp shape (num_config,1)
+        localE_arr = np.zeros((num_config), dtype=np.complex64)
 
 
         ########################
