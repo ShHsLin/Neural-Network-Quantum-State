@@ -76,13 +76,18 @@ def parse_args():
                         default='0', type=int)
     parser.add_argument('--integration', dest='integration',
                         help='numerical integration method'
-                        'Deafult: \'rk4\'',
+                        'Default: \'rk4\'',
                         default='rk4', type=str)
     parser.add_argument('--pinv_rcond', dest='pinv_rcond',
                         help='Cutoff for small singular values,'
                         'in the routine of np.linalg.pinv'
-                        'Deafult: 1e-6',
+                        'Default: 1e-6',
                         default=1e-6, type=float)
+    parser.add_argument('--debug', dest='debug',
+                        help='flag for debug, the seed for random number'
+                        'is fixed, so the result would be reproducable.'
+                        ' Giving True(1) or False(0). Default: 0.',
+                        default=0, type=int)
 
     if len(sys.argv) == 1:
         pass

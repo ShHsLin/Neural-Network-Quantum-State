@@ -313,6 +313,8 @@ class tf_network:
             if self.using_complex:
                 single_pred, single_log_psi = self.build_network(self.which_net, single_x,
                                                                  self.activation)
+                # single_pred, single_log_psi = self.pred, self.log_psi
+
                 if single_log_psi is None:
                     single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
 
@@ -347,6 +349,7 @@ class tf_network:
             else:
                 single_pred, single_log_psi = self.build_network(self.which_net, single_x,
                                                                  self.activation)
+                # single_pred, single_log_psi = self.pred, self.log_psi
                 if single_log_psi is None:
                     single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
 
@@ -575,7 +578,7 @@ class tf_network:
 # #             out = tf_.fc_layer(pool4, fc_dim, 1, 'out', biases=False, dtype=tf.complex64)
 #             # out_re = tf_.fc_layer(pool4, fc_dim, 1, 'out_re', biases=False)
 #             # out_im = tf_.fc_layer(pool4, fc_dim, 1, 'out_im', biases=False)
-#             out = tf.reduce_sum(pool4, [1], keep_dims=True)
+#             out = tf.reduce_sum(pool4, [1], keepdims=True)
 #             out_re = tf.real(out)  # + tf_.fc_layer(x[:, :, 0], self.L, 1, 'v_bias_re')
 #             out_im = tf.imag(out)
 #
@@ -596,11 +599,11 @@ class tf_network:
                                             stride_size=2, biases=True, bias_scale=300., FFT=False)
 
             conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
-            pool4 = tf.reduce_sum(conv1, [1, 2], keep_dims=False)
+            pool4 = tf.reduce_sum(conv1, [1, 2], keepdims=False)
             pool4 = tf.exp(pool4)
 
             # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
-            # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
+            # pool4 = tf.reduce_prod(conv1, [1, 2], keepdims=False)
 
             # Fully connected layer
             # fc_dim = self.alpha  # np.prod(pool4.get_shape().as_list()[1:])
@@ -612,7 +615,7 @@ class tf_network:
             conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
                                                 stride_size=2, bias_scale=100., FFT=False)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-                                      [1, 2], keep_dims=False)
+                                      [1, 2], keepdims=False)
             out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
             out = tf.reshape(out, [-1, 1])
 
@@ -627,7 +630,7 @@ class tf_network:
             #                       tf.range(inputShape[1], dtype=self.TF_FLOAT))
             # sym_phase = sym_phase * tf.cos(theta)
             # print(sym_phase.get_shape().as_list())
-            # sym_phase = tf.reduce_sum(sym_phase, [1], keep_dims=True)
+            # sym_phase = tf.reduce_sum(sym_phase, [1], keepdims=True)
             # print(sym_phase.get_shape().as_list())
             # sym_phase = tf.real(tf.log(tf.complex(sym_phase + 1e-8, 0.)))
             # print(out_im.get_shape().as_list())
@@ -656,7 +659,7 @@ class tf_network:
             conv1 = tf_.complex_relu_neg(tf.complex(conv1_re, conv1_im))
             conv2 = conv1
 
-            pool4 = tf.reduce_sum(conv2, [1, 2], keep_dims=False)
+            pool4 = tf.reduce_sum(conv2, [1, 2], keepdims=False)
             pool4 = tf.exp(pool4)
 
             conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
@@ -664,7 +667,7 @@ class tf_network:
             conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
                                                 stride_size=2, bias_scale=100.)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-                                      [1, 2], keep_dims=False)
+                                      [1, 2], keepdims=False)
             out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
 
         if self.using_complex:
@@ -690,7 +693,7 @@ class tf_network:
                                                  bias_scale=100.)
             conv2 = tf_.softplus2(conv2)
 
-            log_psi = tf.reduce_sum(conv2, [1, 2], keep_dims=False)
+            log_psi = tf.reduce_sum(conv2, [1, 2], keepdims=False)
             pool3 = tf.exp(log_psi)
 
             ## Conv Bias
@@ -699,7 +702,7 @@ class tf_network:
             # conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
             #                                     stride_size=2, bias_scale=100.)
             # conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-            #                           [1, 2], keep_dims=False)
+            #                           [1, 2], keepdims=False)
             # out = tf.reshape(tf.multiply(pool3, tf.exp(conv_bias)), [-1, 1])
             out = tf.reshape(pool3, [-1, 1])
             log_psi = tf.reshape(log_psi, [-1, 1])
@@ -732,12 +735,12 @@ class tf_network:
             conv3 = act(conv3)
 
             ## Pooling
-            pool4 = tf.reduce_sum(conv3, [1, 2], keep_dims=False)
+            pool4 = tf.reduce_sum(conv3, [1, 2], keepdims=False)
             log_psi = tf.reshape(pool4, [-1, 1])
             out = tf.exp(log_psi)
 
             ## FC layer
-            # conv3 = tf.reduce_sum(conv3, [1], keep_dims=False)
+            # conv3 = tf.reduce_sum(conv3, [1], keepdims=False)
             # conv3 = tf.reshape(conv3, [-1, self.alpha*2])
             # out = tf_.fc_layer(conv3, self.alpha*2, 1, 'out_complex',
             #                    biases=True, dtype=tf.complex64)
@@ -749,7 +752,7 @@ class tf_network:
             # conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
             #                                     stride_size=2, bias_scale=100.)
             # conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-            #                           [1, 2], keep_dims=False)
+            #                           [1, 2], keepdims=False)
             # conv_bias = tf.exp(conv_bias)
             # out = tf.reshape(tf.multiply(pool4, conv_bias), [-1, 1])
 
@@ -807,7 +810,7 @@ class tf_network:
             # v_bias_re = tf_.fc_layer(x, self.L, 1, 'v_bias_re')
             # v_bias_im = tf_.fc_layer(x, self.L, 1, 'v_bias_im')
             # v_bias = tf.complex(v_bias_re, v_bias_im)
-            log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+            log_prob = tf.reduce_sum(fc2, axis=1, keepdims=True)
             log_prob = tf.add(log_prob, v_bias)
             out = tf.exp(log_prob)
 
@@ -831,10 +834,10 @@ class tf_network:
             # !!! forward prediction is correct !!!
             # fc2 = tf.cosh(fc1)
             # v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
-            # out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
+            # out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keepdims=True))
             # out = tf.real(out)
             fc2 = tf.log(tf.cosh(fc1))
-            log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+            log_prob = tf.reduce_sum(fc2, axis=1, keepdims=True)
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
             out = tf.exp(log_prob)
 
@@ -856,18 +859,18 @@ class tf_network:
                                             stride_size=2, biases=True, bias_scale=300., FFT=False)
 
             conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
-            pool4 = tf.reduce_sum(conv1, [1, 2], keep_dims=False)
+            pool4 = tf.reduce_sum(conv1, [1, 2], keepdims=False)
             pool4 = tf.exp(pool4)
 
             # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
-            # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
+            # pool4 = tf.reduce_prod(conv1, [1, 2], keepdims=False)
 
             conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
                                                 stride_size=2, bias_scale=100., FFT=False)
             conv_bias_im = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_im',
                                                 stride_size=2, bias_scale=100., FFT=False)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-                                      [1, 2], keep_dims=False)
+                                      [1, 2], keepdims=False)
             out = tf.reshape(tf.multiply(pool4, tf.exp(conv_bias)), [-1, 1])
 
         if self.using_complex:
@@ -916,7 +919,7 @@ class tf_network:
             fc3_complex = act(fc3_complex)
             fc3_complex = fc3_complex  + fc2_complex
 
-            fc4_complex = tf.reduce_sum(fc3_complex, axis=1, keep_dims=True)
+            fc4_complex = tf.reduce_sum(fc3_complex, axis=1, keepdims=True)
             fc4_complex = tf.reshape(fc4_complex, [-1, 1])
             # out = tf.multiply(tf.exp(tf.real(fc4_complex) / self.L), tf.cos(tf.imag(fc4_complex)))
             # fc4_complex = tf_.fc_layer(fc3_complex, self.L * self.alpha, 1, 'fc4_complex',
@@ -945,7 +948,7 @@ class tf_network:
 
             v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
             v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im')
-            log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+            log_prob = tf.reduce_sum(fc2, axis=1, keepdims=True)
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
             out = tf.exp(log_prob)
 
@@ -969,13 +972,13 @@ class tf_network:
             # v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
             # v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im') * 100
             # v_bias = tf.exp(tf.complex(v_bias_re, v_bias_im))
-            # out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keep_dims=True))
+            # out = tf.multiply(v_bias, tf.reduce_prod(fc2, axis=1, keepdims=True))
             # out = tf.real(out)
 
             fc2 = tf.log(tf.cosh(fc1))
             v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
             v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im')
-            log_prob = tf.reduce_sum(fc2, axis=1, keep_dims=True)
+            log_prob = tf.reduce_sum(fc2, axis=1, keepdims=True)
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
             log_prob = tf.reshape(log_prob, [-1,1])
             out = tf.exp(log_prob)
@@ -994,15 +997,19 @@ class tf_network:
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
             conv1_re = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=2, biases=True, bias_scale=1, FFT=False)
+                                            stride_size=2, biases=True, bias_scale=1, FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
                                             # stride_size=2, biases=True, bias_scale=3000.*2/64/self.alpha, FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=2, biases=True, bias_scale=1, FFT=False)
+                                            stride_size=2, biases=True, bias_scale=1, FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
                                             # stride_size=2, biases=True, bias_scale=3140.*2/64/self.alpha, FFT=False)
 
             conv1 = act(tf.complex(conv1_re, conv1_im))
             # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
-            pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
+            pool4 = tf.reduce_sum(conv1, [1, 2, 3], keepdims=False)
             # pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
             pool4_real = tf.real(pool4)
             pool4_imag = tf.imag(pool4)
@@ -1062,7 +1069,7 @@ class tf_network:
 
             conv1 = tf_.softplus2(tf.complex(conv1_re, conv1_im))
             # conv1 = tf_.complex_relu(tf.complex(conv1_re, conv1_im))
-            pool4 = tf.reduce_sum(conv1, [1, 2, 3], keep_dims=False)
+            pool4 = tf.reduce_sum(conv1, [1, 2, 3], keepdims=False)
             # pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
             pool4_real = tf.real(pool4)
             pool4_imag = tf.imag(pool4)
@@ -1072,14 +1079,14 @@ class tf_network:
             # return tf.reshape(tf.real(pool4), [-1,1])
 
             # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
-            # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
+            # pool4 = tf.reduce_prod(conv1, [1, 2], keepdims=False)
 
             conv_bias_re = tf_.circular_conv_2d(x[:, :, :, 0:2], 2, 2, 1, 'conv_bias_re',
                                                 stride_size=2, biases=False, bias_scale=1., FFT=False)
             conv_bias_im = tf_.circular_conv_2d(x[:, :, :, 0:2], 2, 2, 1, 'conv_bias_im',
                                                 stride_size=2, biases=False, bias_scale=1., FFT=False)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-                                      [1, 2, 3], keep_dims=False)
+                                      [1, 2, 3], keepdims=False)
             final_real = pool4_real + tf.real(conv_bias)
             # final_real = tf.clip_by_value(final_real, -60., 60.)
             final_real = final_real - self.exp_stabilizer
@@ -1111,8 +1118,8 @@ class tf_network:
                                                  bias_scale=1.)
             conv2 = act(conv2)
 
-            pool3 = tf.reduce_sum(conv2[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
-                    tf.reduce_sum(conv2[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
+            pool3 = tf.reduce_sum(conv2[:, :, :, :self.alpha], [1, 2, 3], keepdims=False) -\
+                    tf.reduce_sum(conv2[:, :, :, self.alpha:], [1, 2, 3], keepdims=False)
 
             pool3_real = tf.real(pool3)
             # pool3_real = tf.clip_by_value(tf.real(pool3), -70., 70.)
@@ -1146,7 +1153,7 @@ class tf_network:
                                                  bias_scale=1.)
             conv2 = act(conv2)
 
-            pool3 = tf.reduce_sum(conv2, [1, 2, 3], keep_dims=False)
+            pool3 = tf.reduce_sum(conv2, [1, 2, 3], keepdims=False)
             pool3_real = tf.real(pool3)
             # pool3_real = tf.clip_by_value(tf.real(pool3), -60., 60.)
             pool3_imag = tf.imag(pool3)
@@ -1182,9 +1189,9 @@ class tf_network:
                                                  bias_scale=1.)
             conv3 = act(conv3)
 
-            # pool4 = tf.reduce_sum(conv3[:, :, :, :self.alpha], [1, 2, 3], keep_dims=False) -\
-            #         tf.reduce_sum(conv3[:, :, :, self.alpha:], [1, 2, 3], keep_dims=False)
-            pool4 = tf.reduce_sum(conv3, [1, 2, 3], keep_dims=False)
+            # pool4 = tf.reduce_sum(conv3[:, :, :, :self.alpha], [1, 2, 3], keepdims=False) -\
+            #         tf.reduce_sum(conv3[:, :, :, self.alpha:], [1, 2, 3], keepdims=False)
+            pool4 = tf.reduce_sum(conv3, [1, 2, 3], keepdims=False)
             pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
             pool4_imag = tf.imag(pool4)
             log_prob = tf.complex(pool4_real, pool4_imag)
@@ -1221,7 +1228,7 @@ class tf_network:
                                                  bias_scale=1.)
             conv3 = act(conv3)
 
-            pool4 = tf.reduce_sum(conv3, [1, 2, 3], keep_dims=False)
+            pool4 = tf.reduce_sum(conv3, [1, 2, 3], keepdims=False)
             pool4_real = tf.real(pool4)
             # pool4_real = tf.clip_by_value(tf.real(pool4), -60., 60.)
             pool4_real = pool4_real - self.exp_stabilizer
@@ -1247,7 +1254,7 @@ class tf_network:
             conv1 = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1',
                                          stride_size=2, biases=True, bias_scale=1., FFT=False)
             conv1 = act(conv1)
-            pool1 = tf.reduce_mean(conv1, [1, 2], keep_dims=False)
+            pool1 = tf.reduce_mean(conv1, [1, 2], keepdims=False)
             # pool1 = tf.Print(pool1,[pool1[:3,:], 'pool1'])
 
             out_re = tf_.fc_layer(pool1, self.alpha, 1, 'out_re', biases=False)
@@ -1282,7 +1289,7 @@ class tf_network:
                                          stride_size=1, biases=True, bias_scale=1., FFT=False)
             conv3 = act(conv3)
 
-            pool3 = tf.reduce_mean(conv3, [1, 2], keep_dims=False)
+            pool3 = tf.reduce_mean(conv3, [1, 2], keepdims=False)
             # pool1 = tf.Print(pool1,[pool1[:3,:], 'pool1'])
 
             out_re = tf_.fc_layer(pool3, self.alpha*2, 1, 'out_re', biases=False)
@@ -1351,7 +1358,7 @@ class tf_network:
                                      stride_size=2, biases=True, bias_scale=1., FFT=False)
             x = act(x)
 
-            x = tf.reduce_mean(x, [1, 2], keep_dims=False)
+            x = tf.reduce_mean(x, [1, 2], keepdims=False)
             out_re = x[:,0]
             # out_re = tf.Print(out_re, [out_re[:3], 'out_re'])
             out_im = x[:,1]
@@ -1385,7 +1392,7 @@ class tf_network:
                                      stride_size=2, biases=True, bias_scale=1., FFT=False)
             x = act(x)
 
-            x = tf.reduce_sum(x, [1, 2], keep_dims=False)
+            x = tf.reduce_sum(x, [1, 2], keepdims=False)
             out_re = x[:,0]
             # out_re = tf.Print(out_re, [out_re[:3,:], 'out_re'])
             out_im = x[:,1]
