@@ -73,7 +73,7 @@ class tf_FCN:
         }
 
         # Construct model
-        self.pred = self.conv_net(self.x, self.weights, self.biases, self.keep_prob, inputShape)
+        self.amp = self.conv_net(self.x, self.weights, self.biases, self.keep_prob, inputShape)
 
         self.model_var_list = tf.global_variables()
 
@@ -88,7 +88,7 @@ class tf_FCN:
         self.para_list = self.weights.values()  # +self.biases.values()
 
         # Define Gradient
-        self.grads = tf.gradients(tf.log(self.pred), self.para_list)  # pred --> cost
+        self.grads = tf.gradients(tf.log(self.amp), self.para_list)  # pred --> cost
         # Do some operation on grads
         self.newgrads = [tf.placeholder(tf.float32, g.get_shape()) for g in self.grads]
         self.train_op = self.optimizer.apply_gradients(zip(self.newgrads,
@@ -99,7 +99,7 @@ class tf_FCN:
         self.sess.run(init)
 
     def forwardPass(self, X0):
-        return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def backProp(self, X0):
         return self.sess.run(self.grads, feed_dict={self.x: X0, self.keep_prob: 1.})

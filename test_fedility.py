@@ -77,10 +77,10 @@ if __name__ == "__main__":
 
             true_out = tf.placeholder(tf.float32, [None, 1])
             v1 = true_out
-            v2 = Net.pred
+            v2 = Net.amp
             cost = -tf.reduce_sum(tf.multiply(v1, v2))/tf.norm(v1)/tf.norm(v2)
-            # cost = -tf.reduce_sum(tf.multiply(true_out, tf.log(Net.pred)))
-            # cost = tf.nn.l2_loss((Net.pred - true_out))
+            # cost = -tf.reduce_sum(tf.multiply(true_out, tf.log(Net.amp)))
+            # cost = tf.nn.l2_loss((Net.amp - true_out))
 
             # learning_rate = tf.Variable(lr)
             # Optimizer = tf_.select_optimizer(optimizer=opt, learning_rate=learning_rate,
@@ -117,7 +117,7 @@ if __name__ == "__main__":
                 batch_mask = np.random.choice(len(Y), batch_size, p=p)
 
                 if i % 5000 == 0:
-                    y = sess.run(Net.pred, feed_dict={Net.x: X})
+                    y = sess.run(Net.amp, feed_dict={Net.x: X})
                     print('y norm : ', np.linalg.norm(y))
                     c = Y.flatten().dot(y.flatten())/np.linalg.norm(Y)/np.linalg.norm(y)
                     print(c)
@@ -131,8 +131,8 @@ if __name__ == "__main__":
                         plt.show()
                     pass
 
-                c, y = sess.run([cost, Net.pred], feed_dict={Net.x: X[batch_mask],
-                                                             true_out: Y[batch_mask]})
+                c, y = sess.run([cost, Net.amp], feed_dict={Net.x: X[batch_mask],
+                                                            true_out: Y[batch_mask]})
                 print(c)
                 batch_cos_accu.append(-c)
 

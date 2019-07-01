@@ -29,16 +29,23 @@ if __name__ == "__main__":
     X[:,:,:,1] = 1-X_half
     Y = np.genfromtxt('Y2.csv', delimiter=',').reshape((60000, 1))
     # Y = np.sign(Y)
+
+    X_half = np.genfromtxt('X16.csv', delimiter=',')
+    X = np.zeros([2**16, 4, 4, 2])
+    X[:,:,:,0] = X_half.reshape([2**16, 4, 4])
+    X[:,:,:,1] = 1-X_half.reshape([2**16, 4, 4])
+    Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
+
     print(X.shape, Y.shape)
 
     with Net.sess as sess:
 
         true_out = tf.placeholder(tf.float32, [None, 1])
         v1 = true_out
-        v2 = Net.pred
+        v2 = tf.real(Net.amp)
         cost = -tf.reduce_sum(tf.multiply(v1, v2))/tf.norm(v1)/tf.norm(v2)
-        # cost = -tf.reduce_sum(tf.multiply(true_out, tf.log(Net.pred)))
-        # cost = tf.nn.l2_loss((Net.pred - true_out))
+        # cost = -tf.reduce_sum(tf.multiply(true_out, tf.log(Net.amp)))
+        # cost = tf.nn.l2_loss((Net.amp - true_out))
         for w in Net.para_list:
             cost += reg * tf.nn.l2_loss(w)
 
@@ -56,7 +63,8 @@ if __name__ == "__main__":
 
         print(len(Net.model_var_list), len(Net.para_list))
         saver = tf.train.Saver(Net.model_var_list)
-        ckpt_path = 'wavefunction/Pretrain/'+which_net+'/L'+str(L)
+        # ckpt_path = 'wavefunction/Pretrain/'+which_net+'/L'+str(L)
+        ckpt_path = 'wavefunction/vmc2d/'+which_net+'_'+act+'/L'+str(L)+'a'+str(alpha)
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
@@ -80,27 +88,32 @@ if __name__ == "__main__":
         batch_cos_accu = []
         # import pdb;pdb.set_trace()
 
-        for i in range(100000+1):
+        for i in range(100000):
             # batch_mask = np.random.choice(len(Y), batch_size)  # ,p=Y*Y)
             batch_mask = np.random.choice(len(Y), batch_size, p=p)
 
             if i % 5000 == 0:
-                y = sess.run(Net.pred, feed_dict={Net.x: X})
+                y = sess.run(Net.amp, feed_dict={Net.x: X})
                 print(('y norm : ', np.linalg.norm(y)))
                 c = Y.flatten().dot(y.flatten())/np.linalg.norm(Y)/np.linalg.norm(y)
                 print(c)
                 total_cos_accu.append(c)
                 PLOT = True
+                import pdb;pdb.set_trace()
+                mask = np.sum(X[:,:,:,0], axis=(1,2)) == 8
+                y_mask = y[mask]
+                print("Sz 0 prob : ", y_mask.T.conjugate().dot(y_mask))
+                pdb.set_trace()
                 if PLOT:
                     import matplotlib.pyplot as plt
                     fig = plt.figure()
                     plt.plot(Y/np.linalg.norm(Y), '-o')
-                    plt.plot(y/np.linalg.norm(y), '--')
+                    plt.plot(y.real/np.linalg.norm(y.real), '--')
                     plt.show()
                 pass
 
-            _, c, y = sess.run([train_step, cost, Net.pred], feed_dict={Net.x: X[batch_mask],
-                                                                        true_out: Y[batch_mask]})
+            _, c, y = sess.run([train_step, cost, Net.amp], feed_dict={Net.x: X[batch_mask],
+                                                                       true_out: Y[batch_mask]})
             batch_cos_accu.append(-c)
 
             if i % 500 == 0:

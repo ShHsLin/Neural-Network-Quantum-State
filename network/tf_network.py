@@ -112,7 +112,7 @@ class tf_network:
             self.registered = False
 
         all_out = self.build_network(which_net, self.x, self.activation)
-        self.pred, self.log_amp = all_out[:2]
+        self.amp, self.log_amp = all_out[:2]
         try:
             self.log_cond_amp, self.prob = all_out[2:]
         except:
@@ -120,12 +120,12 @@ class tf_network:
 
 
         if self.log_amp is None:
-            # self.log_amp = tf.log(self.pred)
+            # self.log_amp = tf.log(self.amp)
             # For real-valued wavefunction, log_amp is only a intermediate step for
             # Log gradient. log_amp should not be read out. Otherwise, one need to
             # define as below,
             #
-            self.log_amp = tf.log(tf.cast(self.pred, self.TF_COMPLEX))
+            self.log_amp = tf.log(tf.cast(self.amp, self.TF_COMPLEX))
             # Cast type to complex before log, to prevent nan in
             # the case for tf.float input < 0
             #
@@ -166,12 +166,12 @@ class tf_network:
         self.num_para = self.getNumPara()
         # Define optimizer
         if optimizer == "KFAC":
-            # self.layer_collection.register_categorical_predictive_distribution(tf.square(self.pred),
-            #                                                                    targets=tf.square(self.pred))
-            # kfac_loss = LogProbLoss(self.pred)
+            # self.layer_collection.register_categorical_predictive_distribution(tf.square(self.amp),
+            #                                                                    targets=tf.square(self.amp))
+            # kfac_loss = LogProbLoss(self.amp)
             kfac_loss = LogProbLoss(self.prob)
-            # kfac_loss = kfac.python.ops.loss_functions.LogProbLoss(tf.square(self.pred))
-            self.layer_collection._register_loss_function(kfac_loss, self.pred, 'log_prob_loss')
+            # kfac_loss = kfac.python.ops.loss_functions.LogProbLoss(tf.square(self.amp))
+            self.layer_collection._register_loss_function(kfac_loss, self.amp, 'log_prob_loss')
             # using amp as P, to compute <O^*O> = <logp logp>
             # Error might occur for not taking complex conjugate ???
             # for var in self.para_list:
@@ -180,7 +180,7 @@ class tf_network:
             # self.layer_collection.auto_register_layers(var_list=self.para_list,
             #                                            batch_size=self.batch_size)
             self.layer_collection.auto_register_layers(var_list=self.para_list)
-            # self.layer_collection.register_loss_function(-self.log_amp, self.pred, 'loss_base')
+            # self.layer_collection.register_loss_function(-self.log_amp, self.amp, 'loss_base')
         else:
             pass
 
@@ -354,7 +354,7 @@ class tf_network:
         return new_X
 
     def plain_forwardPass(self, X0):
-        return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def plain_forwardPass_log_amp(self, X0):
         return self.sess.run(self.log_amp, feed_dict={self.x: X0, self.keep_prob: 1.})
@@ -393,17 +393,17 @@ class tf_network:
             if self.using_complex:
                 single_all_out = self.build_network(self.which_net, single_x,
                                                     self.activation)
-                single_pred, single_log_amp = single_all_out[:2]
+                single_amp, single_log_amp = single_all_out[:2]
                 try:
                     single_log_cond_amp, single_prob = single_all_out[2:]
                 except:
                     print(" NO NAQS USED !!! ")
 
-                # single_pred, single_log_amp = self.build_network(self.which_net, single_x,
+                # single_amp, single_log_amp = self.build_network(self.which_net, single_x,
                 #                                                  self.activation)
 
                 if single_log_amp is None:
-                    single_log_amp = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
+                    single_log_amp = tf.log(tf.cast(single_amp, self.TF_COMPLEX))
 
                 ##############
                 # Method 1
@@ -436,15 +436,15 @@ class tf_network:
             else:
                 single_all_out = self.build_network(self.which_net, single_x,
                                                     self.activation)
-                single_pred, single_log_amp = single_all_out[:2]
+                single_amp, single_log_amp = single_all_out[:2]
                 try:
                     single_log_cond_amp, single_prob = single_all_out[2:]
                 except:
                     print(" NO NAQS USED !!! ")
 
-                # single_pred, single_log_amp = self.pred, self.log_amp
+                # single_amp, single_log_amp = self.amp, self.log_amp
                 if single_log_amp is None:
-                    single_log_amp = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
+                    single_log_amp = tf.log(tf.cast(single_amp, self.TF_COMPLEX))
 
                 # single_log_amp = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
                 ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in tf.gradients(single_log_amp, self.para_list, grad_ys=tf.complex(1.,0.))], axis=0 ))
@@ -513,7 +513,7 @@ class tf_network:
 
     def pre_forwardPass(self, X0):
         X0 = self.enrich_features(X0)
-        return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def pre_backProp(self, X0):
         X0 = self.enrich_features(X0)

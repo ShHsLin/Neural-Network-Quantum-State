@@ -53,8 +53,8 @@ if __name__ == "__main__":
     # Y = np.zeros((num_train, 1))
     # amp_array = np.genfromtxt(open('EigenVec/EigVec_L'+str(L)+'V20W0E0.csv', 'r'))
     # for i in range(len(amp_array)):
-    #     idx = to_large_dict[''.join([str(int(ele)) for ele in newbasis[i, :, 0]])]
-    #     Y[idx] = amp_array[i]
+        #     idx = to_large_dict[''.join([str(int(ele)) for ele in newbasis[i, :, 0]])]
+        #     Y[idx] = amp_array[i]
 
     # X_nz = X[(np.abs(Y) * np.ones((1, 32)) >= 1e-15)]
     # Y_nz = Y[(np.abs(Y) >= 1e-15)]
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     # Y = Y_nz.reshape((len(Y_nz),1))
 
     # y for all Sz sector #
-    Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'.csv').reshape((2**L, 1))
+    Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'_OBC.csv').reshape((2**L, 1))
     # Y = np.sign(Y)
     print(X.shape, Y.shape)
     # Y = Y * np.sqrt(Y.size)
@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
         true_out = tf.placeholder(tf.float32, [None, 1])
         v1 = true_out
-        v2 = Net.pred
+        v2 = Net.amp
         # Batch fidelity
         # cost = -tf.reduce_sum(tf.multiply(v1, v2))/tf.norm(v1)/tf.norm(v2)
 
@@ -86,8 +86,8 @@ if __name__ == "__main__":
         # cost = -tf.real(tf.norm( tf.log(tf.complex(v2,0.))-tf.log(tf.complex(v1,0.)) ))
         # cost = -tf.reduce_sum(tf.divide(v2,v1+1e-8)) + 1. * tf.norm(v2)
 
-        # cost = -tf.reduce_sum(tf.multiply(true_out, tf.log(Net.pred)))
-        # cost = tf.nn.l2_loss((Net.pred - true_out))
+        # cost = -tf.reduce_sum(tf.multiply(true_out, tf.log(Net.amp)))
+        # cost = tf.nn.l2_loss((Net.amp - true_out))
 
         learning_rate = tf.Variable(lr)
         Optimizer = tf_.select_optimizer(optimizer=opt, learning_rate=learning_rate,
@@ -105,6 +105,7 @@ if __name__ == "__main__":
         ckpt_path = 'wavefunction/Pretrain/'+which_net+'/L'+str(L)
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)
+
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(Net.sess, ckpt.model_checkpoint_path)
@@ -129,7 +130,7 @@ if __name__ == "__main__":
             batch_mask = np.random.choice(len(Y), batch_size, p=p)
 
             if i % 5000 == 0:
-                y = sess.run(Net.pred, feed_dict={Net.x: X})
+                y = sess.run(Net.amp, feed_dict={Net.x: X})
                 print(('y norm : ', np.linalg.norm(y)))
                 c = Y.flatten().dot(y.flatten())/np.linalg.norm(Y)/np.linalg.norm(y)
                 print(c)
@@ -141,17 +142,16 @@ if __name__ == "__main__":
                     plt.plot(Y/np.linalg.norm(Y), '-o')
                     plt.plot(y/np.linalg.norm(y), '--')
                     plt.show()
-                pass
 
-            _, c, y = sess.run([train_step, cost, Net.pred], feed_dict={Net.x: X[batch_mask],
-                                                                        true_out: Y[batch_mask]})
+            _, c, y = sess.run([train_step, cost, Net.amp], feed_dict={Net.x: X[batch_mask],
+                                                                       true_out: Y[batch_mask]})
             batch_cos_accu.append(-c)
 
             if i % 500 == 0:
                 print(("step:", i, " cosine accuracy:", -c, "Y norm",
-                      np.linalg.norm(Y[batch_mask]), "y norm:", np.linalg.norm(y)))
-# "dot:",
-# y.T.dot(Y[batch_mask])[0]/np.linalg.norm(Y[batch_mask])/np.linalg.norm(y))
+                       np.linalg.norm(Y[batch_mask]), "y norm:", np.linalg.norm(y)))
+                # "dot:",
+                # y.T.dot(Y[batch_mask])[0]/np.linalg.norm(Y[batch_mask])/np.linalg.norm(y))
                 saver.save(sess, ckpt_path + '/pre')
 
     np.savetxt('log/pretrain/L%d_%s_a%s_%s%.e_batch.csv' % (L, which_net, alpha, opt, lr),
