@@ -112,20 +112,20 @@ class tf_network:
             self.registered = False
 
         all_out = self.build_network(which_net, self.x, self.activation)
-        self.pred, self.log_psi = all_out[:2]
+        self.pred, self.log_amp = all_out[:2]
         try:
-            self.log_cond_psi, self.prob = all_out[2:]
+            self.log_cond_amp, self.prob = all_out[2:]
         except:
             print(" NOT USING NAQS !!!")
 
 
-        if self.log_psi is None:
-            # self.log_psi = tf.log(self.pred)
-            # For real-valued wavefunction, log_psi is only a intermediate step for
-            # Log gradient. log_psi should not be read out. Otherwise, one need to
+        if self.log_amp is None:
+            # self.log_amp = tf.log(self.pred)
+            # For real-valued wavefunction, log_amp is only a intermediate step for
+            # Log gradient. log_amp should not be read out. Otherwise, one need to
             # define as below,
             #
-            self.log_psi = tf.log(tf.cast(self.pred, self.TF_COMPLEX))
+            self.log_amp = tf.log(tf.cast(self.pred, self.TF_COMPLEX))
             # Cast type to complex before log, to prevent nan in
             # the case for tf.float input < 0
             #
@@ -172,7 +172,7 @@ class tf_network:
             kfac_loss = LogProbLoss(self.prob)
             # kfac_loss = kfac.python.ops.loss_functions.LogProbLoss(tf.square(self.pred))
             self.layer_collection._register_loss_function(kfac_loss, self.pred, 'log_prob_loss')
-            # using psi as P, to compute <O^*O> = <logp logp>
+            # using amp as P, to compute <O^*O> = <logp logp>
             # Error might occur for not taking complex conjugate ???
             # for var in self.para_list:
             #     self.layer_collection.define_linked_parameters(var)
@@ -180,7 +180,7 @@ class tf_network:
             # self.layer_collection.auto_register_layers(var_list=self.para_list,
             #                                            batch_size=self.batch_size)
             self.layer_collection.auto_register_layers(var_list=self.para_list)
-            # self.layer_collection.register_loss_function(-self.log_psi, self.pred, 'loss_base')
+            # self.layer_collection.register_loss_function(-self.log_amp, self.pred, 'loss_base')
         else:
             pass
 
@@ -216,22 +216,22 @@ class tf_network:
             # Define Energy Gradient, loss = E(wave function)
             if not using_complex:
                 # (1.1) real log_grads
-                # real-valued wavefunction, log_psi, grad_log_psi are all real
-                self.log_grads = tf.gradients(self.log_psi, self.para_list, grad_ys=tf.complex(1.,0.))
+                # real-valued wavefunction, log_amp, grad_log_amp are all real
+                self.log_grads = tf.gradients(self.log_amp, self.para_list, grad_ys=tf.complex(1.,0.))
                 # (2.1)
-                self.E_grads = tf.gradients(self.log_psi, self.para_list, grad_ys=tf.complex(self.E_loc_m_avg,0.))
-                # log_psi is always complex, so we need to specify grad_ys
+                self.E_grads = tf.gradients(self.log_amp, self.para_list, grad_ys=tf.complex(self.E_loc_m_avg,0.))
+                # log_amp is always complex, so we need to specify grad_ys
             else:
                 # (1.2) complex log_grads
-                # complex-valued wavefunction, log_psi are all complex, but
-                # grad_log_psi would be cast to real by tensorflow default !
+                # complex-valued wavefunction, log_amp are all complex, but
+                # grad_log_amp would be cast to real by tensorflow default !
                 # To prevent this, we manually compute the gradient.
                 # Cast gradient back to real only before apply_gradient.
                 #
                 # Computing O not O^* here.
                 # We explicitly do the confugation with numpy array.
-                self.log_grads_real = tf.gradients(tf.real(self.log_psi), self.para_list)
-                self.log_grads_imag = tf.gradients(tf.imag(self.log_psi), self.para_list)
+                self.log_grads_real = tf.gradients(tf.real(self.log_amp), self.para_list)
+                self.log_grads_imag = tf.gradients(tf.imag(self.log_amp), self.para_list)
                 ##############
                 # Method 1. ##
                 ##############
@@ -263,8 +263,8 @@ class tf_network:
                 #     # self.log_grads[im_idx] = (-dim_re + dre_im) / 2.
 
                 # (2.1)
-                self.E_grads = tf.gradients(self.log_psi, self.para_list, grad_ys=self.E_loc_m_avg)
-                # log_psi is always complex, so we need to specify grad_ys
+                self.E_grads = tf.gradients(self.log_amp, self.para_list, grad_ys=self.E_loc_m_avg)
+                # log_amp is always complex, so we need to specify grad_ys
 
 
         # Pseudo Code for batch Gradient
@@ -323,7 +323,7 @@ class tf_network:
             self.vanilla_back_prop = self.pre_vanilla_back_prop
         else:
             self.forwardPass = self.plain_forwardPass
-            self.forwardPass_log_psi = self.plain_forwardPass_log_psi
+            self.forwardPass_log_amp = self.plain_forwardPass_log_amp
             self.backProp = self.plain_backProp
             self.vanilla_back_prop = self.plain_vanilla_back_prop
 
@@ -356,14 +356,14 @@ class tf_network:
     def plain_forwardPass(self, X0):
         return self.sess.run(self.pred, feed_dict={self.x: X0, self.keep_prob: 1.})
 
-    def plain_forwardPass_log_psi(self, X0):
-        return self.sess.run(self.log_psi, feed_dict={self.x: X0, self.keep_prob: 1.})
+    def plain_forwardPass_log_amp(self, X0):
+        return self.sess.run(self.log_amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def plain_backProp(self, X0):
         return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
 
-    def plain_get_cond_log_psi(self, X0):
-        return self.sess.run(self.log_cond_psi, feed_dict={self.x: X0, self.keep_prob: 1.})
+    def plain_get_cond_log_amp(self, X0):
+        return self.sess.run(self.log_cond_amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def build_unaggregated_gradient(self):
         '''
@@ -393,23 +393,23 @@ class tf_network:
             if self.using_complex:
                 single_all_out = self.build_network(self.which_net, single_x,
                                                     self.activation)
-                single_pred, single_log_psi = single_all_out[:2]
+                single_pred, single_log_amp = single_all_out[:2]
                 try:
-                    single_log_cond_psi, single_prob = single_all_out[2:]
+                    single_log_cond_amp, single_prob = single_all_out[2:]
                 except:
                     print(" NO NAQS USED !!! ")
 
-                # single_pred, single_log_psi = self.build_network(self.which_net, single_x,
+                # single_pred, single_log_amp = self.build_network(self.which_net, single_x,
                 #                                                  self.activation)
 
-                if single_log_psi is None:
-                    single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
+                if single_log_amp is None:
+                    single_log_amp = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
 
                 ##############
                 # Method 1
                 ##############
-                single_log_grads_real = tf.gradients(tf.real(single_log_psi), self.para_list)
-                single_log_grads_imag = tf.gradients(tf.imag(single_log_psi), self.para_list)
+                single_log_grads_real = tf.gradients(tf.real(single_log_amp), self.para_list)
+                single_log_grads_imag = tf.gradients(tf.imag(single_log_amp), self.para_list)
                 single_log_grads = [tf.complex(single_log_grads_real[j], single_log_grads_imag[j])
                                     for j in range(len(single_log_grads_real))]
                 ##############
@@ -436,18 +436,18 @@ class tf_network:
             else:
                 single_all_out = self.build_network(self.which_net, single_x,
                                                     self.activation)
-                single_pred, single_log_psi = single_all_out[:2]
+                single_pred, single_log_amp = single_all_out[:2]
                 try:
-                    single_log_cond_psi, single_prob = single_all_out[2:]
+                    single_log_cond_amp, single_prob = single_all_out[2:]
                 except:
                     print(" NO NAQS USED !!! ")
 
-                # single_pred, single_log_psi = self.pred, self.log_psi
-                if single_log_psi is None:
-                    single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
+                # single_pred, single_log_amp = self.pred, self.log_amp
+                if single_log_amp is None:
+                    single_log_amp = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
 
-                # single_log_psi = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
-                ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in tf.gradients(single_log_psi, self.para_list, grad_ys=tf.complex(1.,0.))], axis=0 ))
+                # single_log_amp = tf.log(tf.cast(self.build_network(self.which_net, single_x, self.activation)[0], self.TF_COMPLEX))
+                ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in tf.gradients(single_log_amp, self.para_list, grad_ys=tf.complex(1.,0.))], axis=0 ))
             return (i+1, ta)
 
         n, final_unaggregated_grad = tf.while_loop(condition, body, init_state, back_prop=False)
@@ -462,8 +462,8 @@ class tf_network:
         # Not sure whether it is bug from tensorflow or not.
         # 
         # E_vec = (self.E_loc - tf.reduce_mean(self.E_loc))
-        # E = tf.reduce_sum(tf.multiply(E_vec, log_psi))
-        # E = (tf.multiply(E_vec, log_psi))
+        # E = tf.reduce_sum(tf.multiply(E_vec, log_amp))
+        # E = (tf.multiply(E_vec, log_amp))
         # return self.sess.run(tf.gradients(E, self.para_list),
 
         # because grad_ys has to have the same shape as ys
@@ -608,11 +608,11 @@ class tf_network:
             out_re = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out_re')
             out_re = tf.clip_by_value(out_re, -60., 60.)
             out_im = tf_.fc_layer(fc1, self.LxLy * self.alpha, 1, 'out_im')
-            log_psi = tf.copmlex(out_re, out_im)
-            out = tf.exp(log_psi)
+            log_amp = tf.copmlex(out_re, out_im)
+            out = tf.exp(log_amp)
 
         if self.using_complex:
-            return out, log_psi
+            return out, log_amp
         else:
             return tf.real(out), None
 
@@ -644,12 +644,12 @@ class tf_network:
             fc3 = tf.nn.tanh(fc3)
             out_re = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_re')
             out_im = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_im')
-            log_psi = tf.complex(out_re, out_im)
-            out = tf.exp(log_psi)
+            log_amp = tf.complex(out_re, out_im)
+            out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
         if self.using_complex:
-            return out, log_psi
+            return out, log_amp
         else:
             return tf.real(out), None
 
@@ -789,8 +789,8 @@ class tf_network:
                                                  bias_scale=100.)
             conv2 = tf_.softplus2(conv2)
 
-            log_psi = tf.reduce_sum(conv2, [1, 2], keepdims=False)
-            pool3 = tf.exp(log_psi)
+            log_amp = tf.reduce_sum(conv2, [1, 2], keepdims=False)
+            pool3 = tf.exp(log_amp)
 
             ## Conv Bias
             # conv_bias_re = tf_.circular_conv_1d(x, 2, inputShape[-1], 1, 'conv_bias_re',
@@ -801,10 +801,10 @@ class tf_network:
             #                           [1, 2], keepdims=False)
             # out = tf.reshape(tf.multiply(pool3, tf.exp(conv_bias)), [-1, 1])
             out = tf.reshape(pool3, [-1, 1])
-            log_psi = tf.reshape(log_psi, [-1, 1])
+            log_amp = tf.reshape(log_amp, [-1, 1])
 
         if self.using_complex:
-            return out, log_psi
+            return out, log_amp
         else:
             return tf.real(out), None
 
@@ -832,8 +832,8 @@ class tf_network:
 
             ## Pooling
             pool4 = tf.reduce_sum(conv3, [1, 2], keepdims=False)
-            log_psi = tf.reshape(pool4, [-1, 1])
-            out = tf.exp(log_psi)
+            log_amp = tf.reshape(pool4, [-1, 1])
+            out = tf.exp(log_amp)
 
             ## FC layer
             # conv3 = tf.reduce_sum(conv3, [1], keepdims=False)
@@ -853,7 +853,7 @@ class tf_network:
             # out = tf.reshape(tf.multiply(pool4, conv_bias), [-1, 1])
 
         if self.using_complex:
-            return out, log_psi
+            return out, log_amp
         else:
             return tf.real(out), None
 
@@ -879,13 +879,13 @@ class tf_network:
 
             out = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out',
                                dtype=tf.complex64)
-            log_psi = out + tf_.fc_layer(tf.complex(x, 0.), self.L, 1,
+            log_amp = out + tf_.fc_layer(tf.complex(x, 0.), self.L, 1,
                                          'v_bias', dtype=tf.complex64)
-            log_psi = tf.reshape(log_psi, [-1, 1])
-            out = tf.exp(log_psi)
+            log_amp = tf.reshape(log_amp, [-1, 1])
+            out = tf.exp(log_amp)
 
         if self.using_complex:
-            return out, log_psi
+            return out, log_amp
         else:
             return tf.real(out), None
 
@@ -1430,13 +1430,13 @@ class tf_network:
             # out_re = tf.clip_by_value(out_re, -60., 60.)
             out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_im',
                                   layer_collection=self.layer_collection, registered=self.registered)
-            log_psi = tf.complex(out_re, out_im)
-            out = tf.exp(log_psi)
+            log_amp = tf.complex(out_re, out_im)
+            out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
         self.registered=True
         if self.using_complex:
-            return out, log_psi
+            return out, log_amp
         else:
             return tf.real(out), None
 
@@ -1473,28 +1473,28 @@ class tf_network:
             out0_re = out0_re - log_l2_norm
             out1_re = out1_re - log_l2_norm
 
-            log_cond_psi_0 = tf.complex(out0_re, out0_im)
-            log_cond_psi_1 = tf.complex(out1_re, out1_im)
-            log_cond_psi = tf.stack([log_cond_psi_0, log_cond_psi_1], axis=-1)
+            log_cond_amp_0 = tf.complex(out0_re, out0_im)
+            log_cond_amp_1 = tf.complex(out1_re, out1_im)
+            log_cond_amp = tf.stack([log_cond_amp_0, log_cond_amp_1], axis=-1)
             ## now a complex tensor of shape [batch_size, LxLy, 2]
 
             ############################################################
             ### Constructed a path without involving complex number ####
             ############################################################
-            re_cond_psi = tf.stack([2*out0_re, 2*out0_im], axis=-1)
-            log_prob = tf.reduce_sum(tf.multiply(re_cond_psi, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+            re_cond_amp = tf.stack([2*out0_re, 2*out0_im], axis=-1)
+            log_prob = tf.reduce_sum(tf.multiply(re_cond_amp, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
             prob = tf.exp(log_prob)
 
-            log_psi = tf.reduce_sum(tf.multiply(log_cond_psi, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+            log_amp = tf.reduce_sum(tf.multiply(log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
 
-            out = tf.exp(log_psi)
+            out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
         self.registered=True
         if self.using_complex:
-            return out, log_psi, log_cond_psi, prob
+            return out, log_amp, log_cond_amp, prob
         else:
-            return tf.real(out), None, log_cond_psi, prob
+            return tf.real(out), None, log_cond_amp, prob
 
 
     def build_pixelCNN_2d(self, x, activation, mode='2'):
@@ -1540,28 +1540,28 @@ class tf_network:
             out0_re = out0_re - log_l2_norm
             out1_re = out1_re - log_l2_norm
 
-            log_cond_psi_0 = tf.complex(out0_re, out0_im)
-            log_cond_psi_1 = tf.complex(out1_re, out1_im)
-            log_cond_psi = tf.stack([log_cond_psi_0, log_cond_psi_1], axis=-1)
+            log_cond_amp_0 = tf.complex(out0_re, out0_im)
+            log_cond_amp_1 = tf.complex(out1_re, out1_im)
+            log_cond_amp = tf.stack([log_cond_amp_0, log_cond_amp_1], axis=-1)
             ## now a complex tensor of shape [batch_size, LxLy, 2]
 
             ############################################################
             ### Constructed a path without involving complex number ####
             ############################################################
-            re_cond_psi = tf.stack([2*out0_re, 2*out0_im], axis=-1)
-            log_prob = tf.reduce_sum(tf.multiply(re_cond_psi, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+            re_cond_amp = tf.stack([2*out0_re, 2*out0_im], axis=-1)
+            log_prob = tf.reduce_sum(tf.multiply(re_cond_amp, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
             prob = tf.exp(log_prob)
 
-            log_psi = tf.reduce_sum(tf.multiply(log_cond_psi, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+            log_amp = tf.reduce_sum(tf.multiply(log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
 
-            out = tf.exp(log_psi)
+            out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
         self.registered=True
         if self.using_complex:
-            return out, log_psi, log_cond_psi, prob
+            return out, log_amp, log_cond_amp, prob
         else:
-            return tf.real(out), None, log_cond_psi, prob
+            return tf.real(out), None, log_cond_amp, prob
 
 
 
@@ -1616,28 +1616,28 @@ class tf_network:
 #             out0_re = out0_re - log_l2_norm
 #             out1_re = out1_re - log_l2_norm
 # 
-#             log_cond_psi_0 = tf.complex(out0_re, out0_im)
-#             log_cond_psi_1 = tf.complex(out1_re, out1_im)
-#             log_cond_psi = tf.stack([log_cond_psi_0, log_cond_psi_1], axis=-1)
+#             log_cond_amp_0 = tf.complex(out0_re, out0_im)
+#             log_cond_amp_1 = tf.complex(out1_re, out1_im)
+#             log_cond_amp = tf.stack([log_cond_amp_0, log_cond_amp_1], axis=-1)
 #             ## now a complex tensor of shape [batch_size, LxLy, 2]
 # 
 #             ############################################################
 #             ### Constructed a path without involving complex number ####
 #             ############################################################
-#             re_cond_psi = tf.stack([2*out0_re, 2*out0_im], axis=-1)
-#             log_prob = tf.reduce_sum(tf.multiply(re_cond_psi, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+#             re_cond_amp = tf.stack([2*out0_re, 2*out0_im], axis=-1)
+#             log_prob = tf.reduce_sum(tf.multiply(re_cond_amp, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
 #             prob = tf.exp(log_prob)
 # 
-#             log_psi = tf.reduce_sum(tf.multiply(log_cond_psi, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+#             log_amp = tf.reduce_sum(tf.multiply(log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
 # 
-#             out = tf.exp(log_psi)
+#             out = tf.exp(log_amp)
 #             out = tf.reshape(out, [-1, 1])
 # 
 #         self.registered=True
 #         if self.using_complex:
-#             return out, log_psi, log_cond_psi, prob
+#             return out, log_amp, log_cond_amp, prob
 #         else:
-#             return tf.real(out), None, log_cond_psi, prob
+#             return tf.real(out), None, log_cond_amp, prob
 
 
 
@@ -1664,13 +1664,13 @@ class tf_network:
             # out_re = tf.clip_by_value(out_re, -60., 60.)
             out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_im',
                                   layer_collection=self.layer_collection, registered=self.registered)
-            log_psi = tf.complex(out_re, out_im)
-            out = tf.exp(log_psi)
+            log_amp = tf.complex(out_re, out_im)
+            out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
         self.registered=True
         if self.using_complex:
-            return out, log_psi
+            return out, log_amp
         else:
             return tf.real(out), None
 

@@ -19,6 +19,9 @@ class NQS_base():
         return
 
     def list_to_vec(self, T_list):
+        '''
+        Transform a list of np.array to one single np.array (vector).
+        '''
         return np.concatenate([t.flatten() for t in T_list])
 
     def vec_to_list(self, T_vec):
@@ -42,7 +45,7 @@ class NQS_base():
         return self.NNet.forwardPass(self.config).flatten()
 
     def get_self_log_amp_batch(self):
-        return self.NNet.forwardPass_log_psi(self.config).flatten()
+        return self.NNet.forwardPass_log_amp(self.config).flatten()
 
     def update_stabilizer(self):
         current_amp = self.get_self_amp_batch()
@@ -54,6 +57,9 @@ class NQS_base():
         return
 
     def eval_amp_array(self, configArray):
+        '''
+        Return the amplitude of the NNQS/NAQS with NNet function, forwardPass.
+        '''
         # for 1d:
         # (batch_size, inputShape[0], inputShape[1])
         # for 2d:
@@ -82,13 +88,13 @@ class NQS_base():
         array_shape = configArray.shape
         max_size = self.max_batch_size
         if array_shape[0] <= max_size:
-            return self.NNet.forwardPass_log_psi(configArray).flatten()
+            return self.NNet.forwardPass_log_amp(configArray).flatten()
         else:
             log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
             for idx in range(array_shape[0] // max_size):
-                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_psi(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_amp(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
-            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_amp(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
             return log_amp_array
 
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True):
@@ -99,6 +105,7 @@ class NQS_base():
             NP_DTYPE = self.NP_COMPLEX
         else:
             NP_DTYPE = self.NP_FLOAT
+
         Osum = np.zeros((numPara), dtype=NP_DTYPE)
         Earray = np.zeros((num_sample), dtype=NP_DTYPE)
         EOsum = np.zeros((numPara), dtype=NP_DTYPE)
@@ -110,25 +117,32 @@ class NQS_base():
         configDim[0] = num_sample
         configArray = np.zeros(configDim, dtype=np.int32)
 
-        if (self.batch_size == 1):
-            for i in range(1, 1 + num_sample * corrlength):
-                self.new_config()
-                if i % corrlength == 0:
-                    configArray[i / corrlength - 1] = self.config[0]
-
+        NAQS = True
+        if NAQS:
+            for i in range(1, 1+int(num_sample//self.batch_size)):
+                self.forward_sampling(sym_sec=None)
+                configArray[(i-1)*self.batch_size: i*self.batch_size] = self.config.copy()
         else:
-            sum_accept_ratio = 0
-            for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
-                ac = self.new_config_batch()
-                sum_accept_ratio += ac
-                bs = self.batch_size
-                if i % corrlength == 0:
-                    i_c = int(i/corrlength)
-                    configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
-                else:
-                    pass
+            if (self.batch_size == 1):
+                for i in range(1, 1 + num_sample * corrlength):
+                    self.new_config()
+                    if i % corrlength == 0:
+                        configArray[i // corrlength - 1] = self.config[0]
 
-            print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
+            else:
+                sum_accept_ratio = 0
+                for i in range(1, 1 + int(num_sample * corrlength / self.batch_size)):
+                    ac = self.new_config_batch()
+                    sum_accept_ratio += ac
+                    bs = self.batch_size
+                    if i % corrlength == 0:
+                        i_c = i // corrlength
+                        configArray[(i_c-1)*bs: i_c*bs] = self.config[:]
+                    else:
+                        pass
+
+                print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
+
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
@@ -209,6 +223,15 @@ class NQS_base():
             end_c, end_t = time.clock(), time.time()
             print("<O> time (batch_gradient): ", end_c - start_c, end_t - start_t)
 
+            # Initiate KFAC
+            self.NNet.apply_cov_update(configArray)
+            self.NNet.apply_inverse_update(configArray)
+            end_c, end_t = time.clock(), time.time()
+            print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
+            Gj = self.list_to_vec([pair[0] for pair in self.NNet.apply_fisher_inverse(F_list, configArray)])
+            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, Gj.dot(F0_vec)
+            import pdb;pdb.set_trace()
+
             '''
             # compute OO, OO_F
             Oarray = self.NNet.run_unaggregated_gradient(configArray)
@@ -216,16 +239,7 @@ class NQS_base():
             OO = OOsum / num_sample
             end_c, end_t = time.clock(), time.time()
             print("OO explicit time ( SF ): ", end_c - start_c, end_t - start_t)
-            '''
 
-            # Initiate KFAC
-            self.NNet.apply_cov_update(configArray)
-            # self.NNet.apply_inverse_update(configArray)
-            end_c, end_t = time.clock(), time.time()
-            print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
-            # import pdb;pdb.set_trace()
-
-            '''
             # compute KFAC_OO_F
             KFAC_OO_F = self.NNet.apply_fisher_multiply(F_list, configArray)
             KFAC_OO_F = self.list_to_vec([pair[0] for pair in KFAC_OO_F])
@@ -253,6 +267,7 @@ class NQS_base():
                   OO_F.dot(KFAC_OO_F)/np.linalg.norm(OO_F)/np.linalg.norm(KFAC_OO_F))
             print(" norm (OO_F) / norm (multiply_F) ", np.linalg.norm(OO_F)/np.linalg.norm(KFAC_OO_F))
 
+            import pdb;pdb.set_trace()
 
             # compute <O><O>
             O_O = np.einsum('i,j->ij', Oi.conjugate(), Oi)
@@ -575,12 +590,15 @@ class NQS_1d(NQS_base):
         flip_config[np.arange(batch_size), randsite1, :] = (1 - flip_config[np.arange(batch_size), randsite1, :])
         flip_config[np.arange(batch_size), randsite2, :] = (1 - flip_config[np.arange(batch_size), randsite2, :])
 
-        ratio = np.zeros((batch_size,))
-        ratio[mask] = np.exp(2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask]))
-        ratio_square = ratio
-        # ratio = np.divide(np.abs(self.eval_amp_array(flip_config))+1e-45, np.abs(old_amp)+1e-45 )
-        # ratio_square = np.power(ratio,  2)
-        mask2 = np.random.random_sample((batch_size,)) < ratio_square
+        # ratio_square = np.zeros((batch_size,))
+        # ratio_square[mask] = np.exp(2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask]))
+        # # ratio = np.divide(np.abs(self.eval_amp_array(flip_config))+1e-45, np.abs(old_amp)+1e-45 )
+        # # ratio_square = np.power(ratio,  2)
+        # mask2 = np.random.random_sample((batch_size,)) < ratio_square
+
+        ratio_log = -np.inf * np.ones((batch_size,))
+        ratio_log[mask] = 2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask])
+        mask2 = np.log(np.random.random_sample((batch_size,))) < ratio_log
 
         final_mask = np.logical_and(mask, mask2)
         # update self.config
@@ -966,6 +984,9 @@ class NQS_1d(NQS_base):
 
         we assume 0 represent up and 1 represent down
         '''
+        J = 1 # self.J
+        g = 3.5 # self.g
+        h = 0. # self.h
         num_config, L, inputShape1 = config_arr.shape
         oldAmp = self.eval_amp_array(config_arr)
         localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
@@ -1083,7 +1104,6 @@ class NQS_2d(NQS_base):
 
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
-            raise NotImplementedError
             self.get_local_E_batch = self.local_E_Ising_batch
         elif Hamiltonian == 'Sz':
             raise NotImplementedError
@@ -1162,6 +1182,55 @@ class NQS_2d(NQS_base):
 
         return
 
+    def forward_sampling(self, sym_sec=None):
+        '''
+        Apply foward_sampling
+        '''
+        batch_size = self.batch_size
+        ## Reset the config to zeros
+        self.config = 0 * self.config
+        if sym_sec is None:
+            self.config = 0 * self.config
+            for site_i in range(self.Lx):
+                for site_j in range(self.Ly):
+                    cond_prob_amp = self.NNet.plain_get_cond_log_amp(self.config)
+                    cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch, 
+                    cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
+                    site_prob = cond_prob[:, site_i, site_j, :]
+                    mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
+                    self.config[mask, site_i, site_j, 0] = 1
+                    self.config[np.logical_not(mask), site_i, site_j, 1] = 1
+
+            return
+        else:
+            tmp_config = self.config.copy()
+            num_sampled = 0
+            while ( num_sampled < batch_size ):
+                ## Start sampling
+                self.config = 0 * self.config
+                for site_i in range(self.Lx):
+                    for site_j in range(self.Ly):
+                        cond_prob_amp = self.NNet.plain_get_cond_log_amp(self.config)
+                        cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch, 
+                        cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
+                        site_prob = cond_prob[:, site_i, site_j, :]
+                        mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
+                        self.config[mask, site_i, site_j, 0] = 1
+                        self.config[np.logical_not(mask), site_i, site_j, 1] = 1
+
+                Sz_array = np.sum(self.config[:,:,:,0], axis=(1,2))
+                sym_mask = (Sz_array == self.Lx * self.Ly // 2)
+                new_n_sampled = np.sum(sym_mask)
+                if num_sampled+new_n_sampled <= batch_size:
+                    tmp_config[num_sampled:num_sampled+new_n_sampled] = self.config[sym_mask]
+                    num_sampled += new_n_sampled
+                else:
+                    tmp_config[num_sampled:] = self.config[sym_mask][:batch_size-num_sampled]
+                    num_sampled = batch_size
+
+            self.config = tmp_config.copy()
+            return
+
     def new_config_batch(self):
         '''
         Implementation for
@@ -1198,12 +1267,15 @@ class NQS_2d(NQS_base):
         to_flip_idx = np.random.choice(batch_size, batch_size//10, replace=False)
         flip_config[to_flip_idx] = 1 - flip_config[to_flip_idx]
 
-        ratio = np.zeros((batch_size,))
-        ratio[mask] = np.exp(2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask]))
-        ratio_square = ratio
-        # ratio[mask] = np.divide(np.abs(self.eval_amp_array(flip_config[mask]))+1e-45, np.abs(old_amp[mask])+1e-45 )
-        # ratio_square = np.power(ratio,  2)
-        mask2 = np.random.random_sample((batch_size,)) < ratio_square
+        # ratio_square = np.zeros((batch_size,))
+        # ratio_square[mask] = np.exp(2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask]))
+        # # ratio[mask] = np.divide(np.abs(self.eval_amp_array(flip_config[mask]))+1e-45, np.abs(old_amp[mask])+1e-45 )
+        # mask2 = np.random.random_sample((batch_size,)) < ratio_square
+
+        ratio_log = -np.inf * np.ones((batch_size,))
+        ratio_log[mask] = 2.*np.real(self.eval_log_amp_array(flip_config[mask]) - old_log_amp[mask])
+        mask2 = np.log(np.random.random_sample((batch_size,))) < ratio_log
+
         final_mask = np.logical_and(mask, mask2)
         # update self.config
         self.config[final_mask] = flip_config[final_mask]
@@ -1211,7 +1283,94 @@ class NQS_2d(NQS_base):
         acceptance_ratio = np.sum(final_mask)/batch_size
         return acceptance_ratio
 
-    def local_E_2dAFH_batch(self, config_arr, J=1):
+    def local_E_Ising_batch(self, config_arr, PBC=False):
+        '''
+        To compute the Energz of 2d Transverse Field Ising model with
+        the configuration given in config_array.
+
+        H_TFI = -J*SzSz -g*Sx -h*Sz
+
+        Basic idea is due to the fact that
+        Sz Sz Interaction
+        SzSz = 1 if uu or dd
+        SzSz = 0 if ud or du
+
+        So we compute (SzSz-0.5) * 2 * J / 4
+
+        For the Sx term, we compute the amp for config_array_flip
+        Input:
+            config_arr:
+                np.array of shape (num_config, Lx, Ly, local_dim)
+                dtype=np.int
+        Output:
+            localE_arr:
+                np.array of shape (num_config)
+                dtype=float or complex
+                dtype depends on whether we are using complex amplitude wavefunction.
+        '''
+        J=1.
+        g=2.
+        h=0.
+
+        num_config, Lx, Ly, local_dim = config_arr.shape
+        oldAmp = self.eval_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
+
+        # S_ij dot S_(i+1)j
+        # PBC
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
+        config_shift_copy[:, :-1, :, :] = config_arr[:, 1:, :, :]
+        config_shift_copy[:, -1, :, :] = config_arr[:, 0, :, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * (-J)
+
+        ########################
+        # PBC : S_ij dot S_i(j+1)
+        ########################
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
+        config_shift_copy[:, :, :-1, :] = config_arr[:, :, 1:, :]
+        config_shift_copy[:, :, -1, :] = config_arr[:, :, 0, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * (-J)
+
+        #################
+        #  g sigma^x_i  #
+        #################
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
+
+        flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                   Lx, Ly, local_dim))
+        flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
+        # localE += g (flip_Amp) / oldAmp
+        localE_arr += np.einsum('ijk -> k',  flip_Amp_arr) / oldAmp * (-g)
+
+        #################
+        #  h sigma^z_i  #
+        #################
+        # num_config x L
+        Sz = (config_arr[:, :, :, 0] - 0.5) * 2
+        localE_arr += np.einsum('ijk->i', -Sz * h)
+
+        return localE_arr
+
+    def local_E_2dAFH_batch(self, config_arr, J=1, PBC=False):
         '''
         To compute the Energz of 2d Heisenberg model with
         the configuration given in config_array.
@@ -1220,6 +1379,9 @@ class NQS_2d(NQS_base):
         Sz Sz Interaction
         SzSz = 1 if uu or dd
         SzSz = 0 if ud or du
+        (2017version)
+
+        So we compute (SzSz-0.5) * 2 * J / 4
         Input:
             config_arr:
                 np.array of shape (num_config, Lx, Ly, local_dim)
@@ -1243,7 +1405,10 @@ class NQS_2d(NQS_base):
         #  i            j    k,  l
         # num_config , Lx , Ly, local_dim
         SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
-        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * J / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -1257,7 +1422,10 @@ class NQS_2d(NQS_base):
                                                                    Lx, Ly, local_dim))
         flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
         # localE += (1-SzSz).dot(flip_Amp) * J / oldAmp / 2
-        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
+        if PBC:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
+        else:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:-1,:], flip_Amp_arr[:-1,:,:]) * J / oldAmp / 2
 
         ########################
         # PBC : S_ij dot S_i(j+1)
@@ -1269,7 +1437,10 @@ class NQS_2d(NQS_base):
         #  i            j    k,  l
         # num_config , Lx , Ly, local_dim
         SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
-        localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * J / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -1283,7 +1454,11 @@ class NQS_2d(NQS_base):
                                                                    Lx, Ly, local_dim))
         flip_Amp_arr = flip_Amp_arr.reshape((Lx, Ly, num_config))
         # localE += (1-SzSz).dot(flip_Amp) * J / oldAmp / 2
-        localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
+        if PBC:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
+        else:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:,:-1], flip_Amp_arr[:,:-1,:]) * J / oldAmp / 2
+
         return localE_arr
 
     def local_E_2dJ1J2_batch(self, config_arr):
