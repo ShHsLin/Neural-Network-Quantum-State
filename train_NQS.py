@@ -10,18 +10,16 @@ from network.tf_network import tf_network
 import NQS
 
 
-
 def dw_to_glist(GradW, var_shape_list):
     grad_list = []
     grad_ind = 0
     for var_shape in var_shape_list:
         var_size = np.prod(var_shape)
-        grad_list.append(GradW[grad_ind:grad_ind + var_size].reshape(var_shape))
+        grad_list.append(
+            GradW[grad_ind:grad_ind + var_size].reshape(var_shape))
         grad_ind += var_size
 
     return grad_list
-
-
 
 
 if __name__ == "__main__":
@@ -32,11 +30,20 @@ if __name__ == "__main__":
                  "NN_RBM": 2}
 
     args = parse_args()
-    (L, which_net, lr, num_sample) = (args.L, args.which_net, args.lr, args.num_sample)
+    if bool(args.debug):
+        np.random.seed(0)
+        tf.set_random_seed(1234)
+    else:
+        pass
+
+    (L, which_net, lr, num_sample) = (
+        args.L, args.which_net, args.lr, args.num_sample)
     (J2, SR, reg, path) = (args.J2, bool(args.SR), args.reg, args.path)
     (act, SP, using_complex) = (args.act, bool(args.SP), bool(args.using_complex))
-    (real_time, integration, pinv_rcond) = (bool(args.real_time), args.integration, args.pinv_rcond)
-    if len(path)>0 and path[-1] != '/':
+    (real_time, integration, pinv_rcond) = (
+        bool(args.real_time), args.integration, args.pinv_rcond)
+
+    if len(path) > 0 and path[-1] != '/':
         path = path + '/'
 
     if args.alpha != 0:
@@ -44,8 +51,15 @@ if __name__ == "__main__":
     else:
         alpha = alpha_map[which_net]
 
-    opt, batch_size, H, dim, num_iter  = (args.opt, args.batch_size,
-                                          args.H, args.dim, args.num_iter)
+    opt, batch_size, H, dim, num_iter = (args.opt, args.batch_size,
+                                         args.H, args.dim, args.num_iter)
+    PBC = args.PBC
+
+    if opt == "KFAC":
+        KFAC = True
+    else:
+        KFAC = False
+
     if dim == 1:
         systemSize = (L, 2)
     elif dim == 2:
@@ -54,7 +68,8 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
-                     activation=act, using_complex=using_complex, single_precision=SP)
+                     activation=act, using_complex=using_complex, single_precision=SP,
+                     batch_size=num_sample)
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
                        J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
@@ -73,7 +88,7 @@ if __name__ == "__main__":
     print("Total num para: ", N.net_num_para)
     if SR:
         print("Using Stochastic Reconfiguration")
-        if N.net_num_para/1 < num_sample:
+        if N.net_num_para / 1 < num_sample:
             print("forming Sij explicitly")
             explicit_SR = True
         else:
@@ -89,7 +104,9 @@ if __name__ == "__main__":
         saver = tf.train.Saver(N.NNet.model_var_list)
 
         # ckpt_path = path + 'wavefunction/Pretrain/%s/L%d/' % (which_net, L)
-        ckpt_path = path + 'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim, which_net, act, L, alpha)
+        ckpt_path = path + \
+            'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim,
+                                                   which_net, act, L, alpha)
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
@@ -99,14 +116,16 @@ if __name__ == "__main__":
             print("Restore from last check point, stored at %s" % ckpt_path)
             # print(N.NNet.sess.run(N.NNet.para_list))
         else:
-            print("No checkpoint found, at %s " %ckpt_path)
+            print("No checkpoint found, at %s " % ckpt_path)
 
     except Exception as e:
         print(e)
         print("import weights only, not include stabilier, may cause numerical instability")
         saver = tf.train.Saver(N.NNet.para_list)
 
-        ckpt_path = path + 'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim, which_net, act, L, alpha)
+        ckpt_path = path + \
+            'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim,
+                                                   which_net, act, L, alpha)
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
@@ -116,26 +135,25 @@ if __name__ == "__main__":
             print("Restore from last check point, stored at %s" % ckpt_path)
             # print(N.NNet.sess.run(N.NNet.para_list))
         else:
-            print("No checkpoint found, at %s " %ckpt_path)
+            print("No checkpoint found, at %s " % ckpt_path)
 
         saver = tf.train.Saver(N.NNet.model_var_list)
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
-
-
 
     # Thermalization
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
     # N.update_stabilizer()
-    if batch_size > 1:
-        for i in range(1000):
-            N.new_config_batch()
-    else:
-        for i in range(1000):
-            N.new_config()
+    if which_net not in ['pixelCNN', 'NADE']:
+        if batch_size > 1:
+            for i in range(1000):
+                N.new_config_batch()
+        else:
+            for i in range(1000):
+                N.new_config()
 
     end_t, end_c = time.time(), time.clock()
-    print("Thermalization time: ", end_c-start_c, end_t-start_t)
+    print("Thermalization time: ", end_c - start_c, end_t - start_t)
 
     E_log = []
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
@@ -143,7 +161,7 @@ if __name__ == "__main__":
     GradW = None
     # N.moving_E_avg = E_avg * l
 
-    for iteridx in range(1, num_iter+1):
+    for iteridx in range(1, num_iter + 1):
         print(iteridx)
         # N.update_stabilizer()
 
@@ -154,18 +172,18 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
 
-
         GradW, E, E_var, GjFj = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                                      SR=SR, Gj=GradW, explicit_SR=explicit_SR)
+                                      SR=SR, Gj=GradW, explicit_SR=explicit_SR,
+                                      KFAC=KFAC)
 
         if not real_time:
             if SR:
                 # Trust region method:
-                if lr > lr/np.sqrt(GjFj):
+                if lr > lr / np.sqrt(GjFj):
                     GradW = GradW / np.sqrt(GjFj)
             else:
                 if np.linalg.norm(GradW) > 100:
-                    GradW = GradW/np.linalg.norm(GradW) * 100
+                    GradW = GradW / np.linalg.norm(GradW) * 100
 
             # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
 
@@ -177,19 +195,19 @@ if __name__ == "__main__":
             if integration == 'mid_point':
                 mid_pt_iter = 0
                 conv = False
-                while(mid_pt_iter<20 and not conv):
+                while(mid_pt_iter < 20 and not conv):
                     grad_list = dw_to_glist(GradW, var_shape_list)
-                    N.NNet.sess.run(N.NNet.learning_rate.assign(lr/2.))
+                    N.NNet.sess.run(N.NNet.learning_rate.assign(lr / 2.))
                     N.NNet.applyGrad(grad_list)
                     GradW_mid, E, E_var, GjFj = N.VMC(num_sample=num_sample,
                                                       iteridx=iteridx,
                                                       SR=SR, Gj=GradW,
                                                       explicit_SR=explicit_SR)
-                    if np.linalg.norm(GradW-GradW_mid)/np.linalg.norm(GradW) < 1e-6:
+                    if np.linalg.norm(GradW - GradW_mid) / np.linalg.norm(GradW) < 1e-6:
                         conv = True
                     else:
                         print("iter=", mid_pt_iter, " not conv yet : err = ",
-                              np.linalg.norm(GradW-GradW_mid)/np.linalg.norm(GradW))
+                              np.linalg.norm(GradW - GradW_mid) / np.linalg.norm(GradW))
 
                     grad_list = dw_to_glist(-GradW, var_shape_list)
                     N.NNet.applyGrad(grad_list)
@@ -202,7 +220,7 @@ if __name__ == "__main__":
                 k1 = GradW
                 grad_list = dw_to_glist(GradW, var_shape_list)
                 # Step size = h/2
-                N.NNet.sess.run(N.NNet.learning_rate.assign(lr/2.))
+                N.NNet.sess.run(N.NNet.learning_rate.assign(lr / 2.))
                 N.NNet.applyGrad(grad_list)
                 # x0 + k1 * h/2
                 GradW_2, E, E_var, GjFj = N.VMC(num_sample=num_sample,
@@ -234,7 +252,7 @@ if __name__ == "__main__":
                 grad_list = dw_to_glist(-GradW_3, var_shape_list)
                 N.NNet.applyGrad(grad_list)
                 # x0
-                GradW = (k1 + 2*k2 + 2*k3 + k4)/6.
+                GradW = (k1 + 2 * k2 + 2 * k3 + k4) / 6.
 
             elif integration == 'explicit_euler':
                 pass
@@ -257,7 +275,8 @@ if __name__ == "__main__":
                 break
             else:
                 print(" Wavefunction saved ~ ")
-                saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' % (opt, num_sample))
+                saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' %
+                           (opt, num_sample))
         else:
             pass
 

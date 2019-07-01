@@ -1,9 +1,24 @@
 import tensorflow as tf
 from functools import reduce
 import numpy as np
+from . import mask
+
+# The following argument is for setting up kfac optimizer
+import sys
+# We append the relative path to kfac cloned directory
+sys.path.append("../kfac")
+import kfac
+
+# Inverse update ops will be run every _INVERT_EVRY iterations.
+_INVERT_EVERY = 10
+# Covariance matrices will be update  _COV_UPDATE_EVERY iterations.
+_COV_UPDATE_EVERY = 1
+# Displays loss every _REPORT_EVERY iterations.
+_REPORT_EVERY = 10
 
 
-def select_optimizer(optimizer, learning_rate, momentum=0):
+def select_optimizer(optimizer, learning_rate, momentum=0, var_list=None,
+                     layer_collection=None):
     if optimizer == 'Adam':
         return tf.train.AdamOptimizer(learning_rate=learning_rate,
                                       epsilon=1e-3) #previous 1e-8
@@ -18,6 +33,32 @@ def select_optimizer(optimizer, learning_rate, momentum=0):
     elif optimizer == 'Adadelta':
         return tf.train.AdadeltaOptimizer(learning_rate=learning_rate,
                                           epsilon=1e-6)
+    elif optimizer == 'KFAC':
+        return kfac.KfacOptimizer(
+            learning_rate=learning_rate,
+            var_list=var_list,
+            cov_ema_decay=0.95,
+            damping=0.001,
+            layer_collection=layer_collection,
+            estimation_mode="empirical",
+            placement_strategy="round_robin",
+            # cov_devices=[device],
+            # inv_devices=[device],
+            momentum=0.9)
+        # return kfac.PeriodicInvCovUpdateKfacOpt(
+        #     invert_every=_INVERT_EVERY,
+        #     cov_update_every=_COV_UPDATE_EVERY,
+        #     learning_rate=learning_rate,
+        #     cov_ema_decay=0.95,
+        #     damping=0.001,
+        #     layer_collection=layer_collection,
+        #     placement_strategy="round_robin",
+        #     # cov_devices=[device],
+        #     # inv_devices=[device],
+        #     # trans_devices=[device],
+        #     var_list=var_list,
+        #     estimation_mode="empirical",
+        #     momentum=0.9)
     else:
         raise
 
@@ -40,9 +81,13 @@ def select_activation(activation):
         return tf.tanh
     elif activation == 'selu':
         return tf.nn.selu
+    elif activation == 'lncosh':
+        return logcosh
     else:
         raise NotImplementedError
 
+def logcosh(x):
+    return tf.math.log(tf.math.cosh(x))
 
 def leaky_relu(x):
     return tf.maximum(0.01*x, x)
@@ -138,7 +183,7 @@ def conv_layer1d(bottom, filter_size, in_channels,
 
 def circular_conv_1d(bottom, filter_size, in_channels, out_channels,
                      name, stride_size=1, biases=False, bias_scale=1.,
-                     FFT=False):
+                     FFT=False, dtype=tf.float64):
     '''
     FFT can be used instead of circular convolution. Although, the pad and conv
     approach is relatively slow comparing to ordinary conv operation, it is still
@@ -146,7 +191,8 @@ def circular_conv_1d(bottom, filter_size, in_channels, out_channels,
     '''
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var1d(filter_size, in_channels,
-                                           out_channels, biases=biases, bias_scale=bias_scale)
+                                           out_channels, biases=biases, bias_scale=bias_scale,
+                                           dtype=dtype)
         if not FFT:
             # bottom shape [None, Lx, channels]
             # pad_size = filter_size - 1
@@ -168,12 +214,14 @@ def circular_conv_1d(bottom, filter_size, in_channels, out_channels,
 
 def circular_conv_1d_complex(bottom, filter_size, in_channels, out_channels,
                              name, stride_size=1, biases=False, bias_scale=1.,
-                             FFT=False):
+                             FFT=False, dtype=tf.complex128):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt_re, conv_biases_re = get_conv_var1d(filter_size, in_channels, out_channels,
-                                                 name="real_", biases=biases, bias_scale=bias_scale)
+                                                 name="real_", biases=biases, bias_scale=bias_scale,
+                                                 dtype=dtype)
         filt_im, conv_biases_im = get_conv_var1d(filter_size, in_channels, out_channels,
-                                                 name="imag_", biases=biases, bias_scale=bias_scale)
+                                                 name="imag_", biases=biases, bias_scale=bias_scale,
+                                                 dtype=dtype)
         if not FFT:
             # bottom shape [None, Lx, channels]
             # pad_size = filter_size - 1
@@ -203,7 +251,8 @@ def circular_conv_1d_complex(bottom, filter_size, in_channels, out_channels,
 
 def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
                      name, stride_size=1, biases=False, bias_scale=1.,
-                     FFT=False):
+                     FFT=False, layer_collection=None, registered=False,
+                     dtype=tf.float64):
     '''
     FFT can be used instead of circular convolution. Although, the pad and conv
     approach is relatively slow comparing to ordinary conv operation, it is still
@@ -211,7 +260,8 @@ def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
     '''
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var2d(filter_size, in_channels, out_channels,
-                                           biases=biases, bias_scale=bias_scale)
+                                           biases=biases, bias_scale=bias_scale,
+                                           dtype=dtype)
         if not FFT:
             # bottom shape [None, Lx, Ly, channels]
             # pad_size = filter_size - 1
@@ -219,6 +269,19 @@ def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
             bottom_pad_xy = tf.concat([bottom_pad_x, bottom_pad_x[:, :, :filter_size-1, :]], 2)
             stride_list = [1, stride_size, stride_size, 1]
             conv = tf.nn.conv2d(bottom_pad_xy, filt, stride_list, padding='VALID')
+
+            if biases:
+                conv = tf.nn.bias_add(conv, conv_biases)
+                params = [filt, conv_biases]
+            else:
+                params = filt
+
+            if (layer_collection is not None) and (registered == False):
+                layer_collection.register_conv2d(params, stride_list, 'VALID',
+                                                 bottom_pad_xy, conv)
+
+            return conv
+
         else:
             raise NotImplementedError
             # tf_X_fft = tf.fft(tf.complex(tf.einsum('ijk->ikj', bottom), 0.))
@@ -226,22 +289,21 @@ def circular_conv_2d(bottom, filter_size, in_channels, out_channels,
             # tf_XW_fft = tf.einsum('ikj,klj->iklj', (tf_X_fft), tf.conj(tf_W_fft))
             # tf_XW = tf.einsum('iklj->ijl', tf.ifft(tf_XW_fft))
             # conv = tf.real(tf_XW)
-
-        if not biases:
-            return conv
-        else:
-            bias = tf.nn.bias_add(conv, conv_biases)
-            return bias
+            #
+            # Add biases
 
 
 def circular_conv_2d_complex(bottom, filter_size, in_channels, out_channels,
                              name, stride_size=1, biases=False, bias_scale=1.,
-                             FFT=False):
+                             FFT=False, layer_collection=None, registered=False,
+                             dtype=tf.complex128):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt_re, conv_biases_re = get_conv_var2d(filter_size, in_channels, out_channels,
-                                                 name="real_", biases=biases, bias_scale=bias_scale)
+                                                 name="real_", biases=biases, bias_scale=bias_scale,
+                                                 dtype=dtype)
         filt_im, conv_biases_im = get_conv_var2d(filter_size, in_channels, out_channels,
-                                                 name="imag_", biases=biases, bias_scale=bias_scale)
+                                                 name="imag_", biases=biases, bias_scale=bias_scale,
+                                                 dtype=dtype)
         if not FFT:
             # bottom shape [None, Lx, Ly, channels]
             # pad_size = filter_size - 1
@@ -250,11 +312,41 @@ def circular_conv_2d_complex(bottom, filter_size, in_channels, out_channels,
             bottom_pad_re = tf.real(bottom_pad_xy)
             bottom_pad_im = tf.imag(bottom_pad_xy)
             stride_list = [1, stride_size, stride_size, 1]
-            conv_re = (tf.nn.conv2d(bottom_pad_re, filt_re, stride_list, padding='VALID') -
-                       tf.nn.conv2d(bottom_pad_im, filt_im, stride_list, padding='VALID'))
-            conv_im = (tf.nn.conv2d(bottom_pad_im, filt_re, stride_list, padding='VALID') +
-                       tf.nn.conv2d(bottom_pad_re, filt_im, stride_list, padding='VALID'))
+
+            conv_RR = tf.nn.conv2d(bottom_pad_re, filt_re, stride_list, padding='VALID')
+            conv_II = tf.nn.conv2d(bottom_pad_im, filt_im, stride_list, padding='VALID')
+            conv_IR = tf.nn.conv2d(bottom_pad_im, filt_re, stride_list, padding='VALID')
+            conv_RI = tf.nn.conv2d(bottom_pad_re, filt_im, stride_list, padding='VALID')
+
+            if not biases:
+                params_RR = [filt_re]
+                params_II = [filt_im]
+                params_IR = [filt_re]
+                params_RI = [filt_im]
+            else:
+                conv_RR = tf.nn.bias_add(conv_RR, conv_biases_re)
+                conv_RI = tf.nn.bias_add(conv_RI, conv_biases_im)
+                params_RR = [filt_re, conv_biases_re]
+                params_II = [filt_im]
+                params_IR = [filt_re]
+                params_RI = [filt_im, conv_biases_im]
+
+            conv_re = conv_RR - conv_II
+            conv_im = conv_IR + conv_RI
             conv = tf.complex(conv_re, conv_im)
+
+            if (layer_collection is not None) and (registered == False):
+                layer_collection.register_conv2d(params_RR, stride_list, 'VALID',
+                                                 bottom_pad_re, conv_RR)
+                layer_collection.register_conv2d(params_II, stride_list, 'VALID',
+                                                 bottom_pad_im, conv_II)
+                layer_collection.register_conv2d(params_IR, stride_list, 'VALID',
+                                                 bottom_pad_im, conv_IR)
+                layer_collection.register_conv2d(params_RI, stride_list, 'VALID',
+                                                 bottom_pad_re, conv_RI)
+
+            return conv
+
         else:
             raise NotImplementedError
             # filt = tf.complex(filt_re, filt_im)
@@ -264,28 +356,59 @@ def circular_conv_2d_complex(bottom, filter_size, in_channels, out_channels,
             # tf_XW = tf.einsum('iklj->ijl', tf.ifft(tf_XW_fft))
             # conv = tf.real(tf_XW)
 
-        if not biases:
-            return conv
-        else:
-            conv_biases = tf.complex(conv_biases_re, conv_biases_im)
-            bias = tf.nn.bias_add(conv, conv_biases)
-            return bias
-
-
 def conv_layer2d(bottom, filter_size, in_channels,
-                 out_channels, name, stride_size=1, biases=False):
+                 out_channels, name, stride_size=1, padding='SAME', biases=True,
+                 dtype=tf.float64,
+                 layer_collection=None, registered=False):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var2d(filter_size, in_channels,
-                                           out_channels, biases=biases)
-        conv = tf.nn.conv2d(bottom, filt, [1, stride_size, stride_size, 1], padding='SAME')
-        if not biases:
-            return conv
+                                           out_channels, biases=biases, dtype=dtype)
+        stride_list = [1, stride_size, stride_size, 1]
+        conv = tf.nn.conv2d(bottom, filt, stride_list, padding=padding)
+
+        if biases:
+            conv = tf.nn.bias_add(conv, conv_biases)
+            params = [filt, conv_biases]
         else:
-            bias = tf.nn.bias_add(conv, conv_biases)
-            return bias
+            params = filt
+
+        if (layer_collection is not None) and (registered == False):
+            layer_collection.register_conv2d(params, stride_list, padding,
+                                             bottom, conv)
+
+        return conv
+
+def masked_conv_layer2d(bottom, filter_size, in_channels,
+                        out_channels, mask_type, name,
+                        stride_size=1, padding='SAME', biases=True, dtype=tf.float64,
+                        layer_collection=None, registered=False):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+        np_mask = mask.gen_conv_mask(mask_type, filter_size, in_channels, out_channels)
+        tf_mask = tf.constant(np_mask, dtype=dtype)
+
+        filt, conv_biases = get_conv_var2d(filter_size, in_channels,
+                                           out_channels, biases=biases, dtype=dtype)
+        stride_list = [1, stride_size, stride_size, 1]
+        conv = tf.nn.conv2d(bottom, filt * tf_mask,
+                            stride_list, padding=padding)
+
+        if biases:
+            conv = tf.nn.bias_add(conv, conv_biases)
+            params = [filt, conv_biases]
+        else:
+            params = filt
+
+        if (layer_collection is not None) and (registered == False):
+            layer_collection.register_conv2d(params, stride_list, padding,
+                                             bottom, conv)
+
+        return conv
 
 
-def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
+
+
+def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float64,
+             layer_collection=None, registered=False):
     '''
     The if...else... below could merge.
     '''
@@ -295,8 +418,13 @@ def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
             x = tf.reshape(bottom, [-1, in_size])
             if biases:
                 fc = tf.nn.bias_add(tf.matmul(x, weights), biases)
+                params = [weights, biases]
             else:
                 fc = tf.matmul(x, weights)
+                params = weights
+
+            if (layer_collection is not None) and (registered == False):
+                layer_collection.register_fully_connected(params, x, fc)
 
     else:
         part_dtype = {tf.complex64: tf.float32, tf.complex128: tf.float64}
@@ -307,10 +435,73 @@ def fc_layer(bottom, in_size, out_size, name, biases=True, dtype=tf.float32):
             fc = tf.matmul(x, complex_weights)
             if biases:
                 fc = tf.nn.bias_add(fc, complex_biases)
+                params = [complex_weights, complex_biases]
             else:
+                params = complex_weights
                 pass
 
+            if (layer_collection is not None) and (registered == False):
+                layer_collection.register_fully_connected(params, x, fc)
+
     return fc
+
+
+def masked_fc_layer(bottom, in_size, out_size, name,
+                    ordering, mask_type, biases=True, dtype=tf.float64,
+                    layer_collection=None, registered=False):
+    '''
+    implementing the masked fully connected layer.
+    The in_size and the out_size should be a multiple of size of the ordering.
+    in_size / |ordering| = # in_hidden
+    out_size / |ordering| = # out_hidden
+
+    https://stackoverflow.com/questions/44915379/arbitrary-filters-for-conv2d-as-opposed-to-rectangular
+    '''
+    N = ordering.size
+    assert in_size % N == 0
+    assert out_size % N == 0
+    in_hidden = in_size // N
+    out_hidden = out_size // N
+
+    np_dtype = {tf.float32: np.float32, tf.float64: np.float64,
+                tf.complex64: np.complex64, tf.complex128: np.float128}
+    np_mask = mask.gen_fc_mask(ordering, mask_type=mask_type, dtype=np_dtype[dtype],
+                               in_hidden=in_hidden, out_hidden=out_hidden)
+    tf_mask = tf.constant(np_mask, dtype=dtype)
+
+    if dtype not in [tf.complex64, tf.complex128]:
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+            weights, biases = get_fc_var(in_size, out_size, biases=biases, dtype=dtype)
+            x = tf.reshape(bottom, [-1, in_size])
+            if biases:
+                fc = tf.nn.bias_add(tf.matmul(x, weights*tf_mask), biases)
+                params = [weights, biases]
+            else:
+                fc = tf.matmul(x, weights)
+                params = weights
+
+            if (layer_collection is not None) and (registered == False):
+                layer_collection.register_fully_connected(params, x, fc)
+
+    else:
+        part_dtype = {tf.complex64: tf.float32, tf.complex128: tf.float64}
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+            complex_weights, complex_biases = get_fc_var(in_size, out_size,
+                                                         biases=biases, dtype=dtype)
+            x = tf.reshape(bottom, [-1, in_size])
+            fc = tf.matmul(x, complex_weights*tf_mask)
+            if biases:
+                fc = tf.nn.bias_add(fc, complex_biases)
+                params = [complex_weights, complex_biases]
+            else:
+                params = complex_weights
+                pass
+
+            if (layer_collection is not None) and (registered == False):
+                layer_collection.register_fully_connected(params, x, fc)
+
+    return fc
+
 
 
 def get_conv_var1d(filter_size, in_channels, out_channels, name="",
@@ -360,7 +551,7 @@ def get_conv_var1d(filter_size, in_channels, out_channels, name="",
 
 
 def get_conv_var2d(filter_size, in_channels, out_channels, name="",
-                   biases=False, dtype=tf.float32, bias_scale=1.):
+                   biases=False, dtype=tf.float64, bias_scale=1.):
     if dtype in [tf.complex64, tf.complex128]:
         # tensorflow optimizer does not support complex type
         # So we init with two sets of real variables
@@ -407,7 +598,7 @@ def get_conv_var2d(filter_size, in_channels, out_channels, name="",
             return filters, biases
 
 
-def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float32):
+def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
     if dtype in [tf.complex64, tf.complex128]:
         # tensorflow optimizer does not support complex type
         # So we init with two sets of real variables
@@ -488,6 +679,202 @@ def get_var_count(self):
         count += reduce(lambda x, y: x * y, v.get_shape().as_list())
 
     return count
+
+def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
+                       dtype, filter_size=3, activation=tf.nn.relu,
+                       layer_collection=None, registered=False):
+    '''
+    for starting block, input: x, output: out with two branch concat in channel dimension
+    for mid block,  input x with two branch concat in channel dimension
+                    output with two branch concat in channel dimension.
+    for end block,  input x with two branch concat in channel dimension
+                    output with 4 channel, representing spin up spin down amp = exp(r+i\theta)
+    '''
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+        ## Starting block
+        if block_type == 'start':
+            assert out_channel % 2 == 0
+            vertical_branch = x
+            horizontal_branch = x
+            # Should add padding, top 2 rows
+            ver_padded_x = tf.pad(vertical_branch, [[0, 0], [filter_size-1, 0],
+                                                    [filter_size//2, filter_size//2], [0, 0]],
+                                  "CONSTANT")
+            vertical_branch = conv_layer2d(ver_padded_x, filter_size, in_channel, out_channel//2,
+                                           name+'_ver', dtype=dtype, padding='VALID',
+                                           layer_collection=layer_collection,
+                                           registered=registered)
+            vertical_branch = activation(vertical_branch)
+
+            ## N H W C
+            down_shift_v_branch = tf.pad(vertical_branch[:,:-1,:,:], [[0,0], [1,0], [0,0], [0,0]],
+                                         "CONSTANT")
+            horizontal_branch = tf.concat([down_shift_v_branch, horizontal_branch], axis=3)
+
+            # Should add padding, top 2 rows && left 2 columns
+            hor_padded_x = tf.pad(horizontal_branch, [[0, 0], [filter_size-1, 0], [filter_size-1, 0], [0, 0]], "CONSTANT")
+            horizontal_branch = masked_conv_layer2d(hor_padded_x, filter_size, in_channel+out_channel//2, out_channel//2,
+                                                    'A2', name+'_hor', dtype=dtype, padding='VALID',
+                                                    layer_collection=layer_collection,
+                                                    registered=registered)
+            horizontal_branch = activation(horizontal_branch)
+            out = tf.concat([vertical_branch, horizontal_branch], 3)
+
+        elif block_type == 'mid':
+            assert in_channel % 2 == 0
+            assert out_channel % 2 == 0
+            vertical_branch = x[:,:,:,:in_channel//2]
+            horizontal_branch = x[:,:,:,in_channel//2:]
+            # Should add padding, top 2 rows
+            ver_padded_x = tf.pad(vertical_branch, [[0, 0], [filter_size-1, 0],
+                                                    [filter_size//2, filter_size//2], [0, 0]],
+                                  "CONSTANT")
+            vertical_branch = conv_layer2d(ver_padded_x, filter_size, in_channel//2, out_channel//2,
+                                           name+'_ver', padding='VALID', dtype=dtype,
+                                           layer_collection=layer_collection,
+                                           registered=registered)
+            vertical_branch = activation(vertical_branch)
+
+            ## Wrong CONCATE WAY 
+            # horizontal_branch = tf.concat([horizontal_branch[:,0:1,:,:],
+            #                                horizontal_branch[:,1:,:,:] + vertical_branch[:,:-1,:,:]],
+            #                               axis=1)
+            ## Correct Concate way
+            ## N H W C
+            down_shift_v_branch = tf.pad(vertical_branch[:,:-1,:,:], [[0,0], [1,0], [0,0], [0,0]],
+                                         "CONSTANT")
+            horizontal_branch = tf.concat([down_shift_v_branch, horizontal_branch], axis=3)
+
+            # Should add padding, top 2 rows && left 2 columns
+            hor_padded_x = tf.pad(horizontal_branch, [[0, 0], [filter_size-1, 0], [filter_size-1, 0], [0, 0]], "CONSTANT")
+            horizontal_branch = conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, out_channel//2,
+                                             name+'_hor', padding='VALID', dtype=dtype,
+                                             layer_collection=layer_collection,
+                                             registered=registered)
+            # horizontal_branch = masked_conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, out_channel//2,
+            #                                         'A2', name+'_hor', dtype=dtype, padding='VALID',
+            #                                         layer_collection=layer_collection,
+            #                                         registered=registered)
+
+            out = tf.concat([vertical_branch, horizontal_branch], 3)
+        elif block_type == 'end':
+            assert in_channel % 2 == 0
+            assert out_channel % 2 == 0
+            vertical_branch = x[:,:,:,:in_channel//2]
+            horizontal_branch = x[:,:,:,in_channel//2:]
+            # Should add padding, top 2 rows
+            ver_padded_x = tf.pad(vertical_branch, [[0, 0], [filter_size-1, 0],
+                                                    [filter_size//2, filter_size//2], [0, 0]],
+                                  "CONSTANT")
+            vertical_branch = conv_layer2d(ver_padded_x, filter_size, in_channel//2, out_channel//2,
+                                           name+'_ver', padding='VALID', dtype=dtype,
+                                           layer_collection=layer_collection,
+                                           registered=registered)
+            vertical_branch = activation(vertical_branch)
+
+            ## Wrong CONCATE WAY 
+            # horizontal_branch = tf.concat([horizontal_branch[:,0:1,:,:],
+            #                                horizontal_branch[:,1:,:,:] + vertical_branch[:,:-1,:,:]],
+            #                               axis=1)
+            ## Correct Concate way
+            ## N H W C
+            down_shift_v_branch = tf.pad(vertical_branch[:,:-1,:,:], [[0,0], [1,0], [0,0], [0,0]],
+                                         "CONSTANT")
+
+            horizontal_branch = tf.concat([down_shift_v_branch, horizontal_branch], axis=3)
+
+            # Should add padding, top 2 rows && left 2 columns
+            hor_padded_x = tf.pad(horizontal_branch, [[0, 0], [filter_size-1, 0], [filter_size-1, 0], [0, 0]], "CONSTANT")
+            horizontal_branch = conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, 4,
+                                             name+'_hor', padding='VALID', dtype=dtype,
+                                             layer_collection=layer_collection,
+                                             registered=registered)
+            # horizontal_branch = masked_conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, 4,
+            #                                         'A2', name+'_hor', dtype=dtype, padding='VALID',
+            #                                         layer_collection=layer_collection,
+            #                                         registered=registered)
+
+            out = horizontal_branch
+        else:
+            raise NotImplementedError
+
+        return out
+
+
+def pixel_block(x, in_channel, out_channel, block_type, name,
+                dtype, filter_size=3, activation=tf.nn.relu,
+                layer_collection=None, registered=False):
+    '''
+    for starting block, input: x, output: out with two branch concat in channel dimension
+    for mid block,  input x with two branch concat in channel dimension
+                    output with two branch concat in channel dimension.
+    for end block,  input x with two branch concat in channel dimension
+                    output with 4 channel, representing spin up spin down amp = exp(r+i\theta)
+    '''
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+        ## Starting block
+        if block_type == 'start':
+            assert out_channel % 2 == 0
+            # Should add padding, top 2 rows
+            ver_padded_x = tf.pad(x, [[0, 0], [filter_size-1, 0],
+                                      [filter_size//2, filter_size//2], [0, 0]], "CONSTANT")
+            vertical_branch = conv_layer2d(ver_padded_x, filter_size, in_channel, out_channel//2,
+                                           name+'_ver', dtype=dtype, padding='VALID',
+                                           layer_collection=layer_collection,
+                                           registered=registered)
+            vertical_branch = activation(vertical_branch)
+            # Should add shift and then 
+            # Should add padding, top 2 rows && left 2 columns
+            # hor_padded_x = tf.pad(x, [[0, 0], [2, 0], [2, 0], [0, 0]], "CONSTANT")
+
+            # This is an alternative implementation 
+            horizontal_branch = masked_conv_layer2d(x, filter_size, in_channel, out_channel//2, 'A',
+                                                    name+'_hor', dtype=dtype,
+                                                    layer_collection=layer_collection,
+                                                    registered=registered)
+            horizontal_branch = activation(horizontal_branch)
+            out = tf.concat([vertical_branch, horizontal_branch], 3)
+
+        elif block_type == 'mid':
+            assert in_channel % 2 == 0
+            assert out_channel % 2 == 0
+            vertical_branch = x[:,:,:,:in_channel//2]
+            horizontal_branch = x[:,:,:,in_channel//2:]
+            # Should add padding, top 2 rows
+            ver_padded_x = tf.pad(vertical_branch, [[0, 0], [filter_size-1, 0],
+                                                    [filter_size//2, filter_size//2], [0, 0]],
+                                  "CONSTANT")
+            vertical_branch = conv_layer2d(ver_padded_x, filter_size, in_channel//2, out_channel//2,
+                                           name+'_ver', padding='VALID', dtype=dtype,
+                                           layer_collection=layer_collection,
+                                           registered=registered)
+            vertical_branch = activation(vertical_branch)
+            ## N H W C
+            horizontal_branch = tf.concat([horizontal_branch[:,0:1,:,:],
+                                           horizontal_branch[:,1:,:,:] + vertical_branch[:,:-1,:,:]],
+                                          axis=1)
+            # Should add padding, top 2 rows && left 2 columns
+            horizontal_branch = masked_conv_layer2d(horizontal_branch, filter_size, in_channel//2,
+                                                    out_channel//2, 'B',
+                                                    name+'_hor', dtype=dtype,
+                                                    layer_collection=layer_collection,
+                                                    registered=registered)
+            horizontal_branch = activation(horizontal_branch)
+            out = tf.concat([vertical_branch, horizontal_branch], 3)
+        elif block_type == 'end':
+            assert in_channel % 2 == 0
+            assert out_channel == 4
+            horizontal_branch = x[:,:,:,in_channel//2:]
+            horizontal_branch = masked_conv_layer2d(horizontal_branch, filter_size, in_channel//2,
+                                                    out_channel, 'B',
+                                                    name+'_hor', dtype=dtype,
+                                                    layer_collection=layer_collection,
+                                                    registered=registered)
+            out = horizontal_branch
+        else:
+            raise NotImplementedError
+
+        return out
 
 
 def bottleneck_residual(x, in_channel, out_channel, name,

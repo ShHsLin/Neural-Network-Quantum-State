@@ -18,6 +18,23 @@ class NQS_base():
     def __init__(self):
         return
 
+    def list_to_vec(self, T_list):
+        return np.concatenate([t.flatten() for t in T_list])
+
+    def vec_to_list(self, T_vec):
+        '''
+        assuming the vector is related to the weight.
+        '''
+        var_shape_list = self.NNet.var_shape_list
+        T_list = []
+        T_ind = 0
+        for var_shape in var_shape_list:
+            var_size = np.prod(var_shape)
+            T_list.append(T_vec[T_ind:T_ind + var_size].reshape(var_shape))
+            T_ind += var_size
+
+        return T_list
+
     def getSelfAmp(self):
         return float(self.NNet.forwardPass(self.config))
 
@@ -74,7 +91,7 @@ class NQS_base():
             log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_psi(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
             return log_amp_array
 
-    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False):
+    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True):
         numPara = self.net_num_para
         num_site = self.num_site
         # OOsum = np.zeros((numPara, numPara))
@@ -123,11 +140,12 @@ class NQS_base():
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
 
+        Eavg = np.average(Earray)
+        Evar = np.var(Earray)
+        print(self.get_self_amp_batch()[:5])
+        print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
+
         if not SR:
-            Eavg = np.average(Earray)
-            Evar = np.var(Earray)
-            print(self.get_self_amp_batch()[:5])
-            print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
             if self.moving_E_avg != None:
                 self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
                 print("moving_E_avg/N !!!!: ", self.moving_E_avg / num_site)
@@ -163,7 +181,133 @@ class NQS_base():
             # plt.legend()
             # plt.show()
             # import pdb;pdb.set_trace()
-            return Gj, Eavg / L, Evar / (L**2) / num_sample, None
+            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, None
+        elif KFAC:  # SR + KFAC
+            if self.moving_E_avg != None:
+                self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+                print("moving_E_avg/N !!!!: ", self.moving_E_avg / num_site)
+                Earray = Earray - self.moving_E_avg
+            else:
+                Earray = Earray - Eavg
+
+            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            # Reg
+            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+                Glist[idx] = Glist[idx] /num_sample + W * self.reg
+
+            Gj = np.concatenate([g.flatten() for g in Glist])
+            end_c, end_t = time.clock(), time.time()
+            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+            print("norm(G): ", np.linalg.norm(Gj))
+
+            F0_vec = Gj
+            F_list = self.vec_to_list(F0_vec)
+
+            # compute <O> (or <O^*>)??
+            Olist = self.NNet.backProp(configArray)
+            Oi = np.concatenate([g.flatten() for g in Olist]) / num_sample
+            end_c, end_t = time.clock(), time.time()
+            print("<O> time (batch_gradient): ", end_c - start_c, end_t - start_t)
+
+            '''
+            # compute OO, OO_F
+            Oarray = self.NNet.run_unaggregated_gradient(configArray)
+            OOsum = Oarray.conjugate().dot(Oarray.T)
+            OO = OOsum / num_sample
+            end_c, end_t = time.clock(), time.time()
+            print("OO explicit time ( SF ): ", end_c - start_c, end_t - start_t)
+            '''
+
+            # Initiate KFAC
+            self.NNet.apply_cov_update(configArray)
+            # self.NNet.apply_inverse_update(configArray)
+            end_c, end_t = time.clock(), time.time()
+            print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
+            # import pdb;pdb.set_trace()
+
+            '''
+            # compute KFAC_OO_F
+            KFAC_OO_F = self.NNet.apply_fisher_multiply(F_list, configArray)
+            KFAC_OO_F = self.list_to_vec([pair[0] for pair in KFAC_OO_F])
+            end_c, end_t = time.clock(), time.time()
+            print("KFAC time ( OO_F): ", end_c - start_c, end_t - start_t)
+
+            # compute KFAC_OO
+            FB_BLOCKS = list(self.NNet.layer_collection.get_blocks())
+            OO_list = []
+            for i in FB_BLOCKS:
+                print(i._renorm_coeff)
+                OO_list.append(self.NNet.sess.run(i.full_fisher_block()))
+
+            KFAC_OO = scipy.linalg.block_diag(*OO_list)
+            end_c, end_t = time.clock(), time.time()
+            print("KFAC time ( construct OO): ", end_c - start_c, end_t - start_t)
+
+
+            print("< KFAC OO_F , F > :",
+                  KFAC_OO_F.dot(F0_vec)/np.linalg.norm(F0_vec)/np.linalg.norm(KFAC_OO_F))
+            OO_F = OO.dot(F0_vec)
+            print("< OO_F , F > :",
+                  OO_F.dot(F0_vec)/np.linalg.norm(F0_vec)/np.linalg.norm(OO_F))
+            print("< KFAC OO_F, OO_F > :",
+                  OO_F.dot(KFAC_OO_F)/np.linalg.norm(OO_F)/np.linalg.norm(KFAC_OO_F))
+            print(" norm (OO_F) / norm (multiply_F) ", np.linalg.norm(OO_F)/np.linalg.norm(KFAC_OO_F))
+
+
+            # compute <O><O>
+            O_O = np.einsum('i,j->ij', Oi.conjugate(), Oi)
+            O_O_F = Oi.conjugate()*(Oi.dot(F0_vec))
+            S_F = OO_F-O_O_F
+            S_F_ = KFAC_OO_F-O_O_F
+            print("< S_F, S_F_ > : ",
+                  S_F.dot(S_F_)/np.linalg.norm(S_F)/np.linalg.norm(S_F_))
+            print(" norm (S_F) / norm (S_F_) ", np.linalg.norm(S_F)/np.linalg.norm(S_F_))
+            '''
+
+            # ## PLOTTING THE OO_F and KFAC_OO_F vector
+            # import matplotlib.pyplot as plt
+            # plt.plot(OO_F/np.linalg.norm(OO_F), 'r'); plt.plot(KFAC_OO_F/np.linalg.norm(KFAC_OO_F), 'b'); plt.show();
+            # import pdb;pdb.set_trace()
+
+
+            # ## TESTING Fisher_inverse
+            # invOO_F0 = np.linalg.pinv(OO, 1e-6).dot(F0_vec)
+            # print(np.linalg.norm(invOO_F0), np.linalg.norm(G_prev_vec))
+            # invOO_F0 /= np.linalg.norm(invOO_F0)
+            # G_prev_vec /= np.linalg.norm(G_prev_vec)
+            # print(invOO_F0.dot(G_prev_vec))
+
+            # import matplotlib.pyplot as plt
+            # plt.plot(G_prev_vec, 'r')
+            # plt.plot(invOO_F0, 'b')
+            # plt.show()
+
+
+            def implicit_S(v):
+                avgO = Oi
+                finalv = - avgO.conjugate() * avgO.dot(v)
+
+                v_list = self.vec_to_list(v)
+                KFAC_OO_v = self.NNet.apply_fisher_multiply(v_list, configArray)
+                finalv += self.list_to_vec([pair[0] for pair in KFAC_OO_v])
+
+                return np.real(finalv)  + v * 1e-4
+
+            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
+
+            Gj, info = scipy.sparse.linalg.minres(implicit_Sij, F0_vec, x0=Gj)
+
+            end_c, end_t = time.clock(), time.time()
+            print("solving SG=F: ", end_c - start_c, end_t - start_t)
+            print("conv Gj : ", info)
+
+
+            print("norm(G): ", np.linalg.norm(Gj),
+                  "norm(F):", np.linalg.norm(F0_vec),
+                  "G.dot(F):", Gj.dot(F0_vec))
+
+            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, Gj.dot(F0_vec)
+
         else:
             pass
 
@@ -199,11 +343,6 @@ class NQS_base():
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
         start_c, start_t = time.clock(), time.time()
-
-        Eavg = np.average(Earray)
-        Evar = np.var(Earray)
-        print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
 
         #####################################
         #  Fj = 2Re[ <O_iH> - <H><O_i> ]
@@ -284,8 +423,8 @@ class NQS_base():
             ############
             else:
                 # possible method, minres, lgmres, cg
-                # Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
-                Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
+                Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
+                # Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
                 print("conv Gj : ", info)
 
         # Gj = Fj.T

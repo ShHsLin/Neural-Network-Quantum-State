@@ -3,12 +3,20 @@ import math
 import tensorflow as tf
 # from .hoshen_kopelman import  label
 from . import tf_wrapper as tf_
+from . import mask
 
+# The following argument is for setting up kfac optimizer
+import sys
+# We append the relative path to kfac cloned directory
+sys.path.append("../../kfac")
+import kfac
+from kfac.python.ops.loss_functions import LogProbLoss
 
 class tf_network:
     def __init__(self, which_net, inputShape, optimizer, dim, sess=None,
                  learning_rate=0.1125, momentum=0.90, alpha=2,
-                 activation=None, using_complex=True, single_precision=True):
+                 activation=None, using_complex=True, single_precision=True,
+                 batch_size=None):
         '''
         Arguments as follows:
         which_net:
@@ -28,10 +36,12 @@ class tf_network:
         self.learning_rate = tf.Variable(learning_rate, name='learning_rate')
         self.momentum = tf.Variable(momentum, name='momentum')
         self.exp_stabilizer = tf.Variable(0., name="exp_stabilizer")
+        self.global_step = tf.Variable(0, name="global_step")
         # dropout = 0.75  # Dropout, probability to keep units
         self.bn_is_training = True
         self.max_bp_batch_size = 512
         self.max_fp_batch_size = 5120
+        self.batch_size = batch_size
         if single_precision:
             self.TF_FLOAT = tf.float32
             self.NP_FLOAT = np.float32
@@ -76,6 +86,7 @@ class tf_network:
 
             self.Lx = int(inputShape[0])
             self.Ly = int(inputShape[1])
+            assert self.Lx == self.Ly
             self.LxLy = self.Lx * self.Ly
             self.channels = int(inputShape[2])
             if self.channels > 2:
@@ -84,13 +95,30 @@ class tf_network:
             else:
                 pass
 
-
+            self.ordering = mask.gen_raster_scan_order(self.Lx)
             self.build_network = self.build_network_2d
 
         else:
             raise NotImplementedError
 
-        self.pred, self.log_psi = self.build_network(which_net, self.x, self.activation)
+        # Define layer_collection
+        # layer_collection is defined before the build_ntwork
+        # so that one can register the layer while building the network.
+        if optimizer == "KFAC":
+            self.layer_collection = kfac.LayerCollection()
+            self.registered = False
+        else:
+            self.layer_collection = None
+            self.registered = False
+
+        all_out = self.build_network(which_net, self.x, self.activation)
+        self.pred, self.log_psi = all_out[:2]
+        try:
+            self.log_cond_psi, self.prob = all_out[2:]
+        except:
+            print(" NOT USING NAQS !!!")
+
+
         if self.log_psi is None:
             # self.log_psi = tf.log(self.pred)
             # For real-valued wavefunction, log_psi is only a intermediate step for
@@ -116,7 +144,7 @@ class tf_network:
             current_scope = tf.get_default_graph().get_name_scope() + '/network'
 
         self.para_list_w_bn = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=current_scope)
-        print("create variable")
+        print("We now have these variables:")
         self.para_list_wo_bn=[]
         for i in self.para_list_w_bn:
             print(i.name)
@@ -125,6 +153,7 @@ class tf_network:
             else:
                 self.para_list_wo_bn.append(i)
 
+        print("Created list of variables without batchnorm")
         self.para_list = self.para_list_wo_bn
         # para_list are list of variables for gradient calculation
         # should not include batchnorm variables.
@@ -136,15 +165,35 @@ class tf_network:
         self.var_shape_list = [var.get_shape().as_list() for var in self.para_list]
         self.num_para = self.getNumPara()
         # Define optimizer
+        if optimizer == "KFAC":
+            # self.layer_collection.register_categorical_predictive_distribution(tf.square(self.pred),
+            #                                                                    targets=tf.square(self.pred))
+            # kfac_loss = LogProbLoss(self.pred)
+            kfac_loss = LogProbLoss(self.prob)
+            # kfac_loss = kfac.python.ops.loss_functions.LogProbLoss(tf.square(self.pred))
+            self.layer_collection._register_loss_function(kfac_loss, self.pred, 'log_prob_loss')
+            # using psi as P, to compute <O^*O> = <logp logp>
+            # Error might occur for not taking complex conjugate ???
+            # for var in self.para_list:
+            #     self.layer_collection.define_linked_parameters(var)
+
+            # self.layer_collection.auto_register_layers(var_list=self.para_list,
+            #                                            batch_size=self.batch_size)
+            self.layer_collection.auto_register_layers(var_list=self.para_list)
+            # self.layer_collection.register_loss_function(-self.log_psi, self.pred, 'loss_base')
+        else:
+            pass
+
         self.optimizer = tf_.select_optimizer(optimizer, self.learning_rate,
-                                              self.momentum)
+                                              self.momentum, var_list=self.para_list,
+                                              layer_collection=self.layer_collection)
 
         self.re_para_idx = [i for i in range(len(self.para_list)) if 're' in self.para_list[i].name]
         self.im_para_idx = [i for i in range(len(self.para_list)) if 'im' in self.para_list[i].name]
         print("self.re_para_idx : ", self.re_para_idx)
         print("self.im_para_idx : ", self.im_para_idx)
-        assert {*self.re_para_idx} | {*self.im_para_idx} == {*range(len(self.para_list))}
-        assert len( {*self.re_para_idx} & {*self.im_para_idx} ) == 0
+        # assert {*self.re_para_idx} | {*self.im_para_idx} == {*range(len(self.para_list))}
+        # assert len( {*self.re_para_idx} & {*self.im_para_idx} ) == 0
 
         self.im_para_array = np.zeros(self.num_para, dtype=np.int)
         im_para_array_idx=0
@@ -234,11 +283,39 @@ class tf_network:
         # We apply CG/MINRES to obtain natural gradient.
         # Get the new gradient from outside by placeholder
         self.newgrads = [tf.placeholder(self.TF_FLOAT, g.get_shape()) for g in self.log_grads]
-        self.train_op = self.optimizer.apply_gradients(zip(self.newgrads,
-                                                           self.para_list))
+        ### SINCE THE NEW GRAD should be coming from the grad of the energy minimization
+        ### It should be a real value gradient
+        ### Since we now consider 
+        if self.using_complex:
+            self.newgrads_kfac = [tf.placeholder(self.TF_FLOAT, g.get_shape()) for g in self.log_grads]
+            # self.newgrads_kfac = [tf.placeholder(self.TF_COMPLEX, g.get_shape()) for g in self.log_grads]
+        else:
+            self.newgrads_kfac = [tf.placeholder(self.TF_FLOAT, g.get_shape()) for g in self.log_grads]
+
+        self.train_op = self.optimizer.apply_gradients(list(zip(self.newgrads,
+                                                                self.para_list)))
 
         self.update_exp_stabilizer = self.exp_stabilizer.assign(self.exp_stabilizer +
                                                                 self.dx_exp_stabilizer)
+
+        if optimizer == "KFAC":
+            cov_update_thunks, inv_update_thunks = self.optimizer.make_vars_and_create_op_thunks()
+            def make_update_op(update_thunks):
+                update_ops = [thunk() for thunk in update_thunks]
+                return tf.group(*update_ops)
+
+            cov_update_op = make_update_op(cov_update_thunks)
+            # with tf.control_dependencies([cov_update_op]):
+            inverse_op=tf.cond(tf.equal(tf.mod(self.global_step, 10), 0),
+                               lambda: make_update_op(inv_update_thunks), tf.no_op)
+            #     with tf.control_dependencies([inverse_op]):
+            self.cov_update_op = cov_update_op
+            self.inverse_op = inverse_op
+
+            self.fisher_inverse = self.optimizer._fisher_est.multiply_inverse(list(zip(self.newgrads_kfac,
+                                                                                       self.para_list)))
+            self.fisher_multiply = self.optimizer._fisher_est.multiply(list(zip(self.newgrads_kfac,
+                                                                                self.para_list)))
 
         if which_net in ['pre_sRBM']:
             self.forwardPass = self.pre_forwardPass
@@ -285,6 +362,9 @@ class tf_network:
     def plain_backProp(self, X0):
         return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
 
+    def plain_get_cond_log_psi(self, X0):
+        return self.sess.run(self.log_cond_psi, feed_dict={self.x: X0, self.keep_prob: 1.})
+
     def build_unaggregated_gradient(self):
         '''
         We build the while loop operation to parallelize the per example
@@ -311,9 +391,16 @@ class tf_network:
         def body(i, ta):
             single_x = self.x[i:i+1]
             if self.using_complex:
-                single_pred, single_log_psi = self.build_network(self.which_net, single_x,
-                                                                 self.activation)
-                # single_pred, single_log_psi = self.pred, self.log_psi
+                single_all_out = self.build_network(self.which_net, single_x,
+                                                    self.activation)
+                single_pred, single_log_psi = single_all_out[:2]
+                try:
+                    single_log_cond_psi, single_prob = single_all_out[2:]
+                except:
+                    print(" NO NAQS USED !!! ")
+
+                # single_pred, single_log_psi = self.build_network(self.which_net, single_x,
+                #                                                  self.activation)
 
                 if single_log_psi is None:
                     single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
@@ -347,8 +434,14 @@ class tf_network:
 
                 ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in single_log_grads], axis=0 ))
             else:
-                single_pred, single_log_psi = self.build_network(self.which_net, single_x,
-                                                                 self.activation)
+                single_all_out = self.build_network(self.which_net, single_x,
+                                                    self.activation)
+                single_pred, single_log_psi = single_all_out[:2]
+                try:
+                    single_log_cond_psi, single_prob = single_all_out[2:]
+                except:
+                    print(" NO NAQS USED !!! ")
+
                 # single_pred, single_log_psi = self.pred, self.log_psi
                 if single_log_psi is None:
                     single_log_psi = tf.log(tf.cast(single_pred, self.TF_COMPLEX))
@@ -381,6 +474,8 @@ class tf_network:
             E_loc_array : E_array - E_avg
         Output:
             returning the gradient, in python list of numpy array.
+            The gradient is always real. No matter whether the amplitudes
+            are complex or real.
 
         Note:
         1.  max_bp_batch_size should be tuned to not exceeding the
@@ -437,6 +532,28 @@ class tf_network:
     def applyGrad(self, grad_list):
         self.sess.run(self.train_op, feed_dict={i: d for i, d in
                                                 zip(self.newgrads, grad_list)})
+
+    def apply_cov_update(self, X0):
+        input_dict={}
+        input_dict[self.x] = X0
+        return self.sess.run(self.cov_update_op, feed_dict=input_dict)
+
+    def apply_inverse_update(self, X0):
+        input_dict={}
+        input_dict[self.x] = X0
+        return self.sess.run(self.inverse_op, feed_dict=input_dict)
+
+    def apply_fisher_inverse(self, F_list, X0):
+        input_dict = {i: d for i, d in list(zip(self.newgrads_kfac, F_list))}
+        # input_dict[self.x] = X0
+        return self.sess.run(self.fisher_inverse, feed_dict=input_dict)
+#         return self.sess.run(self.fisher_inverse, feed_dict={i: d for i, d in
+#                                                              list(zip(self.newgrads, F_list))})
+
+    def apply_fisher_multiply(self, F_list, X0):
+        input_dict = {i: d for i, d in list(zip(self.newgrads_kfac, F_list))}
+        # input_dict[self.x] = X0
+        return self.sess.run(self.fisher_multiply, feed_dict=input_dict)
 
     def exp_stabilizer_add(self, increments):
         self.sess.run(self.update_exp_stabilizer, feed_dict={self.dx_exp_stabilizer: increments})
@@ -529,28 +646,7 @@ class tf_network:
             out_im = tf_.fc_layer(fc3, self.L * self.alpha, 1, 'out_im')
             log_psi = tf.complex(out_re, out_im)
             out = tf.exp(log_psi)
-
-        if self.using_complex:
-            return out, log_psi
-        else:
-            return tf.real(out), None
-
-    def build_NN3_2d(self, x, activation):
-        act = tf_.select_activation(activation)
-        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
-            x = x[:, :, :, 0]
-            x = tf.cast(x, dtype=self.TF_FLOAT)
-            fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha//2, 'fc1')
-            fc1 = act(fc1)
-            fc2 = tf_.fc_layer(fc1, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc2')
-            fc2 = act(fc2)
-            fc3 = tf_.fc_layer(fc2, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc3')
-            fc3 = act(fc3)
-            out_re = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_re')
-            # out_re = tf.clip_by_value(out_re, -60., 60.)
-            out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_im')
-            log_psi = tf.complex(out_re, out_im)
-            out = tf.exp(log_psi)
+            out = tf.reshape(out, [-1, 1])
 
         if self.using_complex:
             return out, log_psi
@@ -960,6 +1056,7 @@ class tf_network:
     def build_RBM_cosh_2d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             inputShape = x.get_shape().as_list()
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             b_size, Lx, Ly, _ = inputShape
             LxLy = Lx * Ly
             x = tf.reshape(x[:, :, :, 0], [-1, LxLy])
@@ -999,12 +1096,12 @@ class tf_network:
             conv1_re = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
                                             stride_size=2, biases=True, bias_scale=1, FFT=False,
                                             layer_collection=self.layer_collection,
-                                            registered=self.registered)
+                                            registered=self.registered, dtype=self.TF_FLOAT)
                                             # stride_size=2, biases=True, bias_scale=3000.*2/64/self.alpha, FFT=False)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
                                             stride_size=2, biases=True, bias_scale=1, FFT=False,
                                             layer_collection=self.layer_collection,
-                                            registered=self.registered)
+                                            registered=self.registered, dtype=self.TF_FLOAT)
                                             # stride_size=2, biases=True, bias_scale=3140.*2/64/self.alpha, FFT=False)
 
             conv1 = act(tf.complex(conv1_re, conv1_im))
@@ -1019,19 +1116,24 @@ class tf_network:
             # return tf.reshape(tf.real(pool4), [-1,1])
 
             # conv1 = tf.cosh(tf.complex(conv1_re, conv1_im))
-            # pool4 = tf.reduce_prod(conv1, [1, 2], keep_dims=False)
+            # pool4 = tf.reduce_prod(conv1, [1, 2], keepdims=False)
 
             conv_bias_re = tf_.circular_conv_2d(x, 2, inputShape[-1], 1, 'conv_bias_re',
-                                                stride_size=2, biases=False, bias_scale=1., FFT=False)
+                                                stride_size=2, biases=False, bias_scale=1., FFT=False,
+                                                layer_collection=self.layer_collection,
+                                                registered=self.registered, dtype=self.TF_FLOAT)
             conv_bias_im = tf_.circular_conv_2d(x, 2, inputShape[-1], 1, 'conv_bias_im',
-                                                stride_size=2, biases=False, bias_scale=1., FFT=False)
+                                                stride_size=2, biases=False, bias_scale=1., FFT=False,
+                                                layer_collection=self.layer_collection,
+                                                registered=self.registered, dtype=self.TF_FLOAT)
             conv_bias = tf.reduce_sum(tf.complex(conv_bias_re, conv_bias_im),
-                                      [1, 2, 3], keep_dims=False)
+                                      [1, 2, 3], keepdims=False)
             final_real = tf.clip_by_value(pool4_real + tf.real(conv_bias), -60., 60.)
             final_imag = pool4_imag + tf.imag(conv_bias)
             final_real = final_real - self.exp_stabilizer
             out = tf.reshape(tf.exp(tf.complex(final_real, final_imag)), [-1, 1])
 
+        self.registered=True
         if self.using_complex:
             return out, None
         else:
@@ -1099,7 +1201,7 @@ class tf_network:
         else:
             return tf.real(out), None
 
-    def build_FCN2_2d(self, x, activation):
+    def build_FCN2v0_2d(self, x, activation):
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
@@ -1108,14 +1210,19 @@ class tf_network:
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
             conv1_re = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
             conv1 = act(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
-                                                 bias_scale=1.)
+                                                 bias_scale=1., layer_collection=self.layer_collection,
+                                                 registered=self.registered)
             conv2 = act(conv2)
 
             pool3 = tf.reduce_sum(conv2[:, :, :, :self.alpha], [1, 2, 3], keepdims=False) -\
@@ -1129,12 +1236,13 @@ class tf_network:
             out = tf.exp(log_prob)
             out = tf.reshape(out, [-1, 1])
 
+        self.registered=True
         if self.using_complex:
             return out, log_prob
         else:
             return tf.real(out), None
 
-    def build_FCN2v1_2d(self, x, activation):
+    def build_real_FCN2_2d(self, x, activation):
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
@@ -1142,15 +1250,57 @@ class tf_network:
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
-            conv1_re = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
-            conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
+            conv1_re = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+            conv1 = act(conv1_re)
+            conv2_re = tf_.circular_conv_2d(conv1, inputShape[1], self.alpha, self.alpha, 'conv2_re',
+                                            stride_size=2, biases=True, bias_scale=3., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+            conv2_im = tf_.circular_conv_2d(conv1, inputShape[1], self.alpha, self.alpha, 'conv2_im',
+                                            stride_size=2, biases=True, bias_scale=3., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+            conv2 = act(tf.complex(conv2_re, conv2_im))
+
+            pool3 = tf.reduce_sum(conv2, [1, 2, 3], keepdims=False)
+            pool3_real = tf.real(pool3)
+            # pool3_real = tf.clip_by_value(tf.real(pool3), -60., 60.)
+            pool3_imag = tf.imag(pool3)
+            log_prob = tf.complex(pool3_real, pool3_imag)
+            out = tf.exp(log_prob)
+            out = tf.reshape(out, [-1, 1])
+
+        self.registered=True
+        if self.using_complex:
+            return out, log_prob
+        else:
+            return tf.real(out), None
+
+    def build_FCN2_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x = x[:, :, :, 0:1]
+            x = tf.cast(x, self.TF_FLOAT)
+            inputShape = x.get_shape().as_list()
+            # x_shape = [num_data, Lx, Ly, num_spin(channels)]
+            # conv_layer2d(x, filter_size, in_channels, out_channels, name)
+            conv1_re = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_re',
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+            conv1_im = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1_im',
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
             conv1 = act(tf.complex(conv1_re, conv1_im))
 
-            conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
+            conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1], self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
-                                                 bias_scale=1.)
+                                                 bias_scale=1., layer_collection=self.layer_collection,
+                                                 registered=self.registered)
             conv2 = act(conv2)
 
             pool3 = tf.reduce_sum(conv2, [1, 2, 3], keepdims=False)
@@ -1161,32 +1311,40 @@ class tf_network:
             out = tf.exp(log_prob)
             out = tf.reshape(out, [-1, 1])
 
+        self.registered=True
         if self.using_complex:
             return out, log_prob
         else:
             return tf.real(out), None
 
-    def build_FCN3v1_2d(self, x, activation):
+    def build_FCN3v0_2d(self, x, activation):
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
             conv1_re = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
             conv1 = act(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
-                                                 bias_scale=1.)
+                                                 bias_scale=1., layer_collection=self.layer_collection,
+                                                 registered=self.registered)
             conv2 = act(conv2)
 
             conv3 = tf_.circular_conv_2d_complex(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2,
                                                  'conv3_complex', stride_size=1, biases=True,
-                                                 bias_scale=1.)
+                                                 bias_scale=1., layer_collection=self.layer_collection,
+                                                 registered=self.registered)
             conv3 = act(conv3)
 
             # pool4 = tf.reduce_sum(conv3[:, :, :, :self.alpha], [1, 2, 3], keepdims=False) -\
@@ -1200,6 +1358,7 @@ class tf_network:
 
             out = tf.reshape(out, [-1, 1])
 
+        self.registered=True
         if self.using_complex:
             return out, log_prob
         else:
@@ -1209,23 +1368,30 @@ class tf_network:
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
             conv1_re = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_re',
-                                            stride_size=1, biases=True, bias_scale=1., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=1., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
             conv1_im = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1_im',
-                                            stride_size=1, biases=True, bias_scale=3., FFT=False)
+                                            stride_size=1, biases=True, bias_scale=3., FFT=False,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
             conv1 = act(tf.complex(conv1_re, conv1_im))
 
             conv2 = tf_.circular_conv_2d_complex(conv1, inputShape[1]//2, self.alpha, self.alpha*2,
                                                  'conv2_complex', stride_size=2, biases=True,
-                                                 bias_scale=1.)
+                                                 bias_scale=1., layer_collection=self.layer_collection,
+                                                 registered=self.registered)
             conv2 = act(conv2)
 
             conv3 = tf_.circular_conv_2d_complex(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2,
                                                  'conv3_complex', stride_size=1, biases=True,
-                                                 bias_scale=1.)
+                                                 bias_scale=1., layer_collection=self.layer_collection,
+                                                 registered=self.registered)
             conv3 = act(conv3)
 
             pool4 = tf.reduce_sum(conv3, [1, 2, 3], keepdims=False)
@@ -1239,8 +1405,272 @@ class tf_network:
             out = tf.reshape(out, [-1, 1])
             log_prob = tf.reshape(log_prob, [-1, 1])
 
+        self.registered=True
         if self.using_complex:
             return out, log_prob
+        else:
+            return tf.real(out), None
+
+    def build_NN3_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x = x[:, :, :, 0]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
+            fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha//2, 'fc1',
+                               layer_collection=self.layer_collection, registered=self.registered)
+            fc1 = act(fc1)
+            fc2 = tf_.fc_layer(fc1, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc2',
+                               layer_collection=self.layer_collection, registered=self.registered)
+            fc2 = act(fc2)
+            fc3 = tf_.fc_layer(fc2, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc3',
+                               layer_collection=self.layer_collection, registered=self.registered)
+            fc3 = act(fc3)
+            out_re = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_re',
+                                  layer_collection=self.layer_collection, registered=self.registered)
+            # out_re = tf.clip_by_value(out_re, -60., 60.)
+            out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_im',
+                                  layer_collection=self.layer_collection, registered=self.registered)
+            log_psi = tf.complex(out_re, out_im)
+            out = tf.exp(log_psi)
+            out = tf.reshape(out, [-1, 1])
+
+        self.registered=True
+        if self.using_complex:
+            return out, log_psi
+        else:
+            return tf.real(out), None
+
+    def build_MADE_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x_reshaped = tf.reshape(x, [-1, self.LxLy, 2])
+            x = x_reshaped[:, :, 0]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
+            fc1 = tf_.masked_fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'masked_fc1',
+                                      self.ordering, 'A', layer_collection=self.layer_collection,
+                                      registered=self.registered, dtype=self.TF_FLOAT)
+            fc1 = act(fc1)
+            fc2 = tf_.masked_fc_layer(fc1, self.LxLy * self.alpha, self.LxLy * self.alpha,
+                                      'masked_fc2', self.ordering, 'B',
+                                      layer_collection=self.layer_collection,
+                                      registered=self.registered, dtype=self.TF_FLOAT)
+            fc2 = act(fc2)
+            fc3 = tf_.masked_fc_layer(fc2, self.LxLy * self.alpha, self.LxLy * 4,
+                                      'masked_fc3', self.ordering, 'B',
+                                      layer_collection=self.layer_collection,
+                                      registered=self.registered, dtype=self.TF_FLOAT)
+
+            fc3 = tf.reshape(fc3, [-1, self.LxLy, 4])
+            out0_re = fc3[:,:,0]
+            out1_re = fc3[:,:,1]
+            out0_im = fc3[:,:,2]
+            out1_im = fc3[:,:,3]
+            ## stable normalize ##
+            max_re = tf.math.maximum(out0_re, out1_re)
+            out0_re = out0_re - max_re
+            out1_re = out1_re - max_re
+            log_l2_norm = tf.log(tf.exp(2*out0_re) + tf.exp(2*out1_re)) / 2.
+            out0_re = out0_re - log_l2_norm
+            out1_re = out1_re - log_l2_norm
+
+            log_cond_psi_0 = tf.complex(out0_re, out0_im)
+            log_cond_psi_1 = tf.complex(out1_re, out1_im)
+            log_cond_psi = tf.stack([log_cond_psi_0, log_cond_psi_1], axis=-1)
+            ## now a complex tensor of shape [batch_size, LxLy, 2]
+
+            ############################################################
+            ### Constructed a path without involving complex number ####
+            ############################################################
+            re_cond_psi = tf.stack([2*out0_re, 2*out0_im], axis=-1)
+            log_prob = tf.reduce_sum(tf.multiply(re_cond_psi, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+            prob = tf.exp(log_prob)
+
+            log_psi = tf.reduce_sum(tf.multiply(log_cond_psi, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+
+            out = tf.exp(log_psi)
+            out = tf.reshape(out, [-1, 1])
+
+        self.registered=True
+        if self.using_complex:
+            return out, log_psi, log_cond_psi, prob
+        else:
+            return tf.real(out), None, log_cond_psi, prob
+
+
+    def build_pixelCNN_2d(self, x, activation, mode='2'):
+        if mode == '1':
+            pixel_block = tf_.pixel_block
+        elif mode == '2':
+            pixel_block = tf_.pixel_block_sharir
+
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x_reshaped = tf.reshape(x, [-1, self.LxLy, 2])
+            x_input = tf.cast(x, dtype=self.TF_FLOAT)
+
+            pixel_input = tf.cast(x, dtype=self.TF_FLOAT)
+            x = pixel_block(pixel_input, 2, 8*self.alpha, 'start', 'pixel_0',
+                            self.TF_FLOAT, activation=act,
+                            layer_collection=self.layer_collection,
+                            registered=self.registered)
+            for i in range(1, 10):
+                x = pixel_block(x, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
+                                self.TF_FLOAT, activation=act,
+                                layer_collection=self.layer_collection,
+                                registered=self.registered)
+
+            x = pixel_block(x, 8*self.alpha, 8*self.alpha, 'end', 'pixel_end',
+                            self.TF_FLOAT, activation=act,
+                            layer_collection=self.layer_collection,
+                            registered=self.registered)
+
+            fc3 = tf.reshape(x, [-1, self.LxLy, 4])
+
+            # out0_re = fc3[:,:,0]
+            out0_re = tf.zeros_like(fc3[:,:,0])
+            out1_re = fc3[:,:,1]
+            # out0_im = fc3[:,:,2]
+            out0_im = tf.zeros_like(fc3[:,:,2])
+            out1_im = fc3[:,:,3]
+            ## stable normalize ##
+            max_re = tf.math.maximum(out0_re, out1_re)
+            out0_re = out0_re - max_re
+            out1_re = out1_re - max_re
+            log_l2_norm = tf.log(tf.exp(2*out0_re) + tf.exp(2*out1_re)) / 2.
+            out0_re = out0_re - log_l2_norm
+            out1_re = out1_re - log_l2_norm
+
+            log_cond_psi_0 = tf.complex(out0_re, out0_im)
+            log_cond_psi_1 = tf.complex(out1_re, out1_im)
+            log_cond_psi = tf.stack([log_cond_psi_0, log_cond_psi_1], axis=-1)
+            ## now a complex tensor of shape [batch_size, LxLy, 2]
+
+            ############################################################
+            ### Constructed a path without involving complex number ####
+            ############################################################
+            re_cond_psi = tf.stack([2*out0_re, 2*out0_im], axis=-1)
+            log_prob = tf.reduce_sum(tf.multiply(re_cond_psi, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+            prob = tf.exp(log_prob)
+
+            log_psi = tf.reduce_sum(tf.multiply(log_cond_psi, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+
+            out = tf.exp(log_psi)
+            out = tf.reshape(out, [-1, 1])
+
+        self.registered=True
+        if self.using_complex:
+            return out, log_psi, log_cond_psi, prob
+        else:
+            return tf.real(out), None, log_cond_psi, prob
+
+
+
+
+#     def build_pixelCNN_2d(self, x, activation):
+#         act = tf_.select_activation(activation)
+#         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+#             x_reshaped = tf.reshape(x, [-1, self.LxLy, 2])
+#             x_input = tf.cast(x, dtype=self.TF_FLOAT)
+#             cv1 = tf_.masked_conv_layer2d(x_input, 5, 2, self.alpha*4, 'A',
+#                                           'masked_conv1', dtype=self.TF_FLOAT,
+#                                           layer_collection=self.layer_collection,
+#                                           registered=self.registered)
+#             cv1 = act(cv1)
+#             cv2 = tf_.masked_conv_layer2d(cv1, 3, self.alpha*4, self.alpha*2,
+#                                           'B', 'masked_conv2', dtype=self.TF_FLOAT,
+#                                           layer_collection=self.layer_collection,
+#                                           registered=self.registered)
+#             cv2 = act(cv2)
+#             cv3 = tf_.masked_conv_layer2d(cv2, 3, self.alpha*2, 4,
+#                                           'B', 'masked_conv3', dtype=self.TF_FLOAT,
+#                                           layer_collection=self.layer_collection,
+#                                           registered=self.registered)
+#             fc3 = tf.reshape(cv3, [-1, self.LxLy, 4])
+# 
+#             x_input2 = x_reshaped[:, :, 0]
+#             x_input2 = tf.cast(x_input2, dtype=self.TF_FLOAT)
+#             fc1 = tf_.masked_fc_layer(x_input2, self.LxLy, 2*self.LxLy, 'masked_fc1',
+#                                       self.ordering, 'A', layer_collection=self.layer_collection,
+#                                       registered=self.registered, dtype=self.TF_FLOAT)
+#             fc1 = act(fc1)
+#             fc1 = tf.reshape(fc1, [-1, self.LxLy, 2])
+#             # fc3 = fc3 - fc1
+# 
+#             # cv3 = act(cv3)
+#             # fc3 = tf.reshape(cv3, [-1, self.LxLy, self.alpha])
+#             # fc3 = tf_.masked_fc_layer(fc3, self.LxLy * self.alpha, self.LxLy * 4,
+#             #                           'masked_fc3', self.ordering, 'B', dtype=self.TF_FLOAT,
+#             #                           layer_collection=self.layer_collection,
+#             #                           registered=self.registered)
+#             # fc3 = tf.reshape(fc3, [-1, self.LxLy, 4])
+# 
+#             out0_re = fc3[:,:,0] + fc1[:,:,0]
+#             out1_re = fc3[:,:,1] + fc1[:,:,1]
+#             out0_im = fc3[:,:,2]
+#             out1_im = fc3[:,:,3]
+#             ## stable normalize ##
+#             max_re = tf.math.maximum(out0_re, out1_re)
+#             out0_re = out0_re - max_re
+#             out1_re = out1_re - max_re
+#             log_l2_norm = tf.log(tf.exp(2*out0_re) + tf.exp(2*out1_re)) / 2.
+#             out0_re = out0_re - log_l2_norm
+#             out1_re = out1_re - log_l2_norm
+# 
+#             log_cond_psi_0 = tf.complex(out0_re, out0_im)
+#             log_cond_psi_1 = tf.complex(out1_re, out1_im)
+#             log_cond_psi = tf.stack([log_cond_psi_0, log_cond_psi_1], axis=-1)
+#             ## now a complex tensor of shape [batch_size, LxLy, 2]
+# 
+#             ############################################################
+#             ### Constructed a path without involving complex number ####
+#             ############################################################
+#             re_cond_psi = tf.stack([2*out0_re, 2*out0_im], axis=-1)
+#             log_prob = tf.reduce_sum(tf.multiply(re_cond_psi, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+#             prob = tf.exp(log_prob)
+# 
+#             log_psi = tf.reduce_sum(tf.multiply(log_cond_psi, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+# 
+#             out = tf.exp(log_psi)
+#             out = tf.reshape(out, [-1, 1])
+# 
+#         self.registered=True
+#         if self.using_complex:
+#             return out, log_psi, log_cond_psi, prob
+#         else:
+#             return tf.real(out), None, log_cond_psi, prob
+
+
+
+    def build_ResNN3_2d(self, x, activation):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x = x[:, :, :, 0]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
+            x = tf.reshape(x, [-1, self.LxLy])
+            p_fc1 = tf_.fc_layer(x, self.LxLy, self.LxLy * self.alpha//2, 'fc1',
+                                 layer_collection=self.layer_collection, registered=self.registered)
+            fc1 = act(p_fc1)
+            fc1 = fc1 + x
+            p_fc2 = tf_.fc_layer(fc1, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc2',
+                                 layer_collection=self.layer_collection, registered=self.registered)
+            fc2 = act(p_fc2)
+            fc2 = fc2 + fc1
+            p_fc3 = tf_.fc_layer(fc2, self.LxLy * self.alpha //2, self.LxLy * self.alpha //2, 'fc3',
+                                 layer_collection=self.layer_collection, registered=self.registered)
+            fc3 = act(p_fc3)
+            fc3 = fc3 + fc2
+            out_re = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_re',
+                                  layer_collection=self.layer_collection, registered=self.registered)
+            # out_re = tf.clip_by_value(out_re, -60., 60.)
+            out_im = tf_.fc_layer(fc3, self.LxLy * self.alpha //2, 1, 'out_im',
+                                  layer_collection=self.layer_collection, registered=self.registered)
+            log_psi = tf.complex(out_re, out_im)
+            out = tf.exp(log_psi)
+            out = tf.reshape(out, [-1, 1])
+
+        self.registered=True
+        if self.using_complex:
+            return out, log_psi
         else:
             return tf.real(out), None
 
@@ -1248,24 +1678,30 @@ class tf_network:
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
             conv1 = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1',
-                                         stride_size=2, biases=True, bias_scale=1., FFT=False)
+                                         stride_size=2, biases=True, bias_scale=1., FFT=False,
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered)
             conv1 = act(conv1)
             pool1 = tf.reduce_mean(conv1, [1, 2], keepdims=False)
             # pool1 = tf.Print(pool1,[pool1[:3,:], 'pool1'])
 
-            out_re = tf_.fc_layer(pool1, self.alpha, 1, 'out_re', biases=False)
+            out_re = tf_.fc_layer(pool1, self.alpha, 1, 'out_re', biases=False,
+                                  layer_collection=self.layer_collection, registered=self.registered)
             out_re = tf.clip_by_value(out_re, -60., 60.)
             # out_re = tf.Print(out_re, [out_re[:3,:], 'out_re'])
 
-            out_im = tf_.fc_layer(pool1, self.alpha, 1, 'out_im', biases=False)
+            out_im = tf_.fc_layer(pool1, self.alpha, 1, 'out_im', biases=False,
+                                  layer_collection=self.layer_collection, registered=self.registered)
             # out_im = tf.Print(out_im, [out_im[:3,:], 'out_im'])
             out = tf.multiply(tf.exp(out_re), tf.sin(out_im))
             out = tf.reshape(out, [-1, 1])
 
+        self.registered=True
         if self.using_complex:
             raise NotImplementedError
             return out, tf.complex(out_re, math.pi/2.-out_im)
@@ -1276,36 +1712,48 @@ class tf_network:
         act = tf_.select_activation(activation)
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, 0:1]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # conv_layer2d(x, filter_size, in_channels, out_channels, name)
-            conv1 = tf_.circular_conv_2d(x, inputShape[1]//2, inputShape[-1], self.alpha, 'conv1',
-                                         stride_size=1, biases=True, bias_scale=1., FFT=False)
+            conv1 = tf_.circular_conv_2d(x, inputShape[1], inputShape[-1], self.alpha, 'conv1',
+                                         stride_size=1, biases=True, bias_scale=1., FFT=False,
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered)
             conv1 = act(conv1)
-            conv2 = tf_.circular_conv_2d(conv1, inputShape[1]//2, self.alpha, self.alpha*2, 'conv2',
-                                         stride_size=2, biases=True, bias_scale=1., FFT=False)
+            conv2 = tf_.circular_conv_2d(conv1, inputShape[1], self.alpha, self.alpha*2, 'conv2',
+                                         stride_size=2, biases=True, bias_scale=1., FFT=False,
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered)
             conv2 = act(conv2)
             conv3 = tf_.circular_conv_2d(conv2, inputShape[1]//2, self.alpha*2, self.alpha*2, 'conv3',
-                                         stride_size=1, biases=True, bias_scale=1., FFT=False)
+                                         stride_size=1, biases=True, bias_scale=1., FFT=False,
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered)
             conv3 = act(conv3)
 
             pool3 = tf.reduce_mean(conv3, [1, 2], keepdims=False)
             # pool1 = tf.Print(pool1,[pool1[:3,:], 'pool1'])
 
-            out_re = tf_.fc_layer(pool3, self.alpha*2, 1, 'out_re', biases=False)
+            out_re = tf_.fc_layer(pool3, self.alpha*2, 1, 'out_re', biases=False,
+                                  layer_collection=self.layer_collection, registered=self.registered)
             out_re = tf.clip_by_value(out_re, -60., 60.)
             # out_re = tf.Print(out_re, [out_re[:3,:], 'out_re'])
 
-            out_im = tf_.fc_layer(pool3, self.alpha*2, 1, 'out_im', biases=False)
+            out_im = tf_.fc_layer(pool3, self.alpha*2, 1, 'out_im', biases=False,
+                                  layer_collection=self.layer_collection, registered=self.registered)
             # out_im = tf.Print(out_im, [out_im[:3,:], 'out_im'])
-            out = tf.multiply(tf.exp(out_re), tf.sin(out_im))
+            log_prob = tf.complex(out_re, out_im)
+            # out = tf.multiply(tf.exp(out_re), tf.sin(out_im))
+            log_prob = tf.reshape(log_prob, [-1, 1])
+            out = tf.exp(log_prob)
             out = tf.reshape(out, [-1, 1])
 
+        self.registered=True
         if self.using_complex:
-            raise NotImplementedError
-            return out, tf.complex(out_re, math.pi/2.-out_im)
+            return out, log_prob
         else:
-            return out, None
+            return tf.real(out), None
 
     def build_real_ResNet10_2d(self, x, activation):
         act = tf_.select_activation(activation)
@@ -1318,16 +1766,17 @@ class tf_network:
                                      stride_size=1, biases=True, bias_scale=1., FFT=False)
             x = tf_.batch_norm(x, phase=self.bn_is_training, scope='bn1')
             x = act(x)
-            for i in range(10):
+            for i in range(3):
                 x = tf_.residual_block(x, self.alpha * 64, "block_"+str(i),
                                        stride_size=1, activation=act)
 
-            x = tf_.conv_layer2d(x, 1, self.alpha * 64, 1, "head_conv1")
+            # x = tf_.conv_layer2d(x, 1, self.alpha * 64, 1, "head_conv1")
+            x = tf.reduce_mean(x, [1, 2], keepdims=False)
             x = tf_.batch_norm(x, phase=self.bn_is_training, scope='head_bn1')
             x = act(x)
 
-            x = tf.reshape(x, [-1, Lx*Ly])
-            fc1 = tf_.fc_layer(x, Lx*Ly, self.alpha * 64, 'fc1')
+            x = tf.reshape(x, [-1, self.alpha * 64])
+            fc1 = tf_.fc_layer(x, self.alpha * 64, self.alpha * 64, 'fc1')
             fc1 = act(fc1)
             fc2 = tf_.fc_layer(fc1, self.alpha * 64, 2, 'fc2')
             out = tf.multiply(tf.exp(fc2[:,0]), tf.sin(fc2[:,1]))
@@ -1345,7 +1794,7 @@ class tf_network:
         Lx = int(inputShape[1])
         Ly = int(inputShape[2])
         with tf.variable_scope("network", reuse=None):
-            x = tf.cast(x, dtype=tf.float32)
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             x = tf_.circular_conv_2d(x, 3, inputShape[-1], self.alpha * 64, 'conv1',
                                      stride_size=1, biases=True, bias_scale=1., FFT=False)
             x = tf_.batch_norm(x, phase=self.bn_is_training, scope='bn1')
@@ -1410,6 +1859,7 @@ class tf_network:
     def build_Jastrow_2d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x = x[:, :, :, :]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             inputShape = x.get_shape().as_list()
             # x_shape = [num_data, Lx, Ly, num_spin(channels)]
             # def jastrow_2d_amp(config_array, Lx, Ly, local_d, name, sym=False):
@@ -1458,16 +1908,24 @@ class tf_network:
             return self.build_NN_linear_2d(x, activation)
         elif which_net == "NN3":
             return self.build_NN3_2d(x, activation)
+        elif which_net == 'MADE':
+            return self.build_MADE_2d(x, activation)
+        elif which_net == 'pixelCNN':
+            return self.build_pixelCNN_2d(x, activation)
+        elif which_net == "ResNN3":
+            return self.build_ResNN3_2d(x, activation)
         elif which_net == "RBM":
             return self.build_RBM_2d(x)
         elif which_net == "RBM_cosh":
             return self.build_RBM_cosh_2d(x)
         elif which_net == "sRBM":
             return self.build_sRBM_2d(x, activation)
+        elif which_net == "FCN2v0":
+            return self.build_FCN2v0_2d(x, activation)
+        elif which_net == "real_FCN2":
+            return self.build_real_FCN2_2d(x, activation)
         elif which_net == "FCN2":
             return self.build_FCN2_2d(x, activation)
-        elif which_net == "FCN2v1":
-            return self.build_FCN2v1_2d(x, activation)
         elif which_net == "FCN3v1":
             return self.build_FCN3v1_2d(x, activation)
         elif which_net == "FCN3v2":

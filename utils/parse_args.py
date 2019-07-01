@@ -20,13 +20,13 @@ def parse_args():
                         help='number of iteration for optimization. It is suggested'
                         ' that the multiplication of learning rate and number of iteration'
                         ' be around one, i.e. lr * num_iter = 1.  Default: 1500',
-                        default=1500, type=int)
+                        default=500, type=int)
     parser.add_argument('--num_sample', dest='num_sample',
                         help='Number of sampling in Monte Carlo process. Default: 5000',
                         default=5000, type=int)
     parser.add_argument('--batch_size', dest='batch_size',
                         help='Batch size in Network pretraining. Default: 500',
-                        default=500, type=int)
+                        default=512, type=int)
     parser.add_argument('--alpha', dest='alpha',
                         help='controll parameter for model complexity. Default: 4',
                         default=4, type=int)
@@ -87,6 +87,10 @@ def parse_args():
                         help='flag for debug, the seed for random number'
                         'is fixed, so the result would be reproducable.'
                         ' Giving True(1) or False(0). Default: 0.',
+                        default=0, type=int)
+    parser.add_argument('--PBC', dest='PBC',
+                        help='Determine the boundary condition;'
+                        'True if PBC, False if OBC. Default: False(0)',
                         default=0, type=int)
 
     if len(sys.argv) == 1:
