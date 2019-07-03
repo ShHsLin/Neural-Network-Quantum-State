@@ -39,13 +39,13 @@ class NQS_base():
         return T_list
 
     def getSelfAmp(self):
-        return float(self.NNet.forwardPass(self.config))
+        return float(self.NNet.get_amp(self.config))
 
     def get_self_amp_batch(self):
-        return self.NNet.forwardPass(self.config).flatten()
+        return self.NNet.get_amp(self.config).flatten()
 
     def get_self_log_amp_batch(self):
-        return self.NNet.forwardPass_log_amp(self.config).flatten()
+        return self.NNet.get_log_amp(self.config).flatten()
 
     def update_stabilizer(self):
         current_amp = self.get_self_amp_batch()
@@ -58,7 +58,7 @@ class NQS_base():
 
     def eval_amp_array(self, configArray):
         '''
-        Return the amplitude of the NNQS/NAQS with NNet function, forwardPass.
+        Return the amplitude of the NNQS/NAQS with NNet function, get_amp.
         '''
         # for 1d:
         # (batch_size, inputShape[0], inputShape[1])
@@ -67,7 +67,7 @@ class NQS_base():
         array_shape = configArray.shape
         max_size = self.max_batch_size
         if array_shape[0] <= max_size:
-            return self.NNet.forwardPass(configArray).flatten()
+            return self.NNet.get_amp(configArray).flatten()
         else:
             if self.using_complex:
                 amp_array = np.empty((array_shape[0], ), dtype=self.NP_COMPLEX)
@@ -75,9 +75,9 @@ class NQS_base():
                 amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
 
             for idx in range(array_shape[0] // max_size):
-                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.get_amp(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
-            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.get_amp(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
             return amp_array
 
     def eval_log_amp_array(self, configArray):
@@ -88,13 +88,13 @@ class NQS_base():
         array_shape = configArray.shape
         max_size = self.max_batch_size
         if array_shape[0] <= max_size:
-            return self.NNet.forwardPass_log_amp(configArray).flatten()
+            return self.NNet.get_log_amp(configArray).flatten()
         else:
             log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
             for idx in range(array_shape[0] // max_size):
-                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.forwardPass_log_amp(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
+                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.get_log_amp(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
-            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.forwardPass_log_amp(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.get_log_amp(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
             return log_amp_array
 
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True):
@@ -167,14 +167,17 @@ class NQS_base():
             else:
                 Earray = Earray - Eavg
 
-            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            Glist = self.NNet.get_E_grads(configArray, Earray)
+            ## The below seems to be wrong.
+            # Glist = self.NNet.get_E_grads(configArray, Earray.conjugate())
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
                 Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
             end_c, end_t = time.clock(), time.time()
-            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+            print("monte carlo time ( back propagation to get E_grads ): ",
+                  end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
             #
             # TO FIND BUG IN COMPLEX DERIVATIVE
@@ -204,21 +207,25 @@ class NQS_base():
             else:
                 Earray = Earray - Eavg
 
-            Glist = self.NNet.vanilla_back_prop(configArray, Earray)
+            Glist = self.NNet.get_E_grads(configArray, Earray)
+            ## The below seems to be wrong.
+            # Glist = self.NNet.get_E_grads(configArray, Earray.conjugate())
+
             # Reg
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
                 Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
             end_c, end_t = time.clock(), time.time()
-            print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+            print("monte carlo time ( back propagation to get E_grads ): ",
+                  end_c - start_c, end_t - start_t)
             print("norm(G): ", np.linalg.norm(Gj))
 
             F0_vec = Gj
             F_list = self.vec_to_list(F0_vec)
 
             # compute <O> (or <O^*>)??
-            Olist = self.NNet.backProp(configArray)
+            Olist = self.NNet.get_log_grads(configArray)
             Oi = np.concatenate([g.flatten() for g in Olist]) / num_sample
             end_c, end_t = time.clock(), time.time()
             print("<O> time (batch_gradient): ", end_c - start_c, end_t - start_t)
@@ -328,14 +335,14 @@ class NQS_base():
 
         Oarray = self.NNet.run_unaggregated_gradient(configArray)
         end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+        print("monte carlo time ( back propagation to get log_grads ): ", end_c - start_c, end_t - start_t)
 
         # for i in range(num_sample):
-        #     GList = self.NNet.backProp(configArray[i:i+1])
-        #     Oarray[:, i] = np.concatenate([g.flatten() for g in GList])
+        #     O_List = self.NNet.get_log_grads(configArray[i:i+1])
+        #     Oarray[:, i] = np.concatenate([g.flatten() for g in O_List])
 
         # end_c, end_t = time.clock(), time.time()
-        # print("monte carlo time ( backProp ): ", end_c - start_c, end_t - start_t)
+        # print("monte carlo time ( back propagtation to get log_grads ): ", end_c - start_c, end_t - start_t)
         # print("difference in backprop : ", np.linalg.norm(Oarray2-Oarray))
 
         # Osum = np.einsum('ij->i', Oarray)
@@ -491,7 +498,7 @@ class NQS_1d(NQS_base):
             self.NP_FLOAT = np.float32
             self.NP_COMPLEX = np.complex64
         else:
-            self.NP_FLAOT = np.float64
+            self.NP_FLOAT = np.float64
             self.NP_COMPLEX = np.complex128
 
         self.real_time = real_time
@@ -547,7 +554,7 @@ class NQS_1d(NQS_base):
             tempconfig = self.config.copy()
             tempconfig[0, randsite1, :] = (1 - tempconfig[0, randsite1, :])
             tempconfig[0, randsite2, :] = (1 - tempconfig[0, randsite2, :])
-            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
             if np.random.rand() < np.amin([1., ratio**2]):
                 self.config = tempconfig
             else:
@@ -560,13 +567,13 @@ class NQS_1d(NQS_base):
 #        if np.random.rand() < 0.5:
 #            randsite = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
-#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
 #        else:
 #            randsite = np.random.randint(L)
 #            randsite2 = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
 #            tempconfig[0, randsite2, :] = (tempconfig[0, randsite2, :] + 1) % 2
-#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
 #            if np.random.rand() < np.amin([1., ratio**2]):
 #                self.config = tempconfig
 #            else:
@@ -695,8 +702,8 @@ class NQS_1d(NQS_base):
         # if (localE-localE2)>1e-12:
         #     print(np.squeeze(config).T, localE, localE2)
 
-        GList = self.NNet.backProp(config)
-        localO = np.concatenate([g.flatten() for g in GList])
+        O_List = self.NNet.get_log_grads(config)
+        localO = np.concatenate([g.flatten() for g in O_List])
         localEO = localO * localE
 
         return localO, localE, localEO
@@ -719,7 +726,7 @@ class NQS_1d(NQS_base):
         for i in range(L):
             tempConfig = config.copy()
             tempConfig[0, i, :] = (1 - tempConfig[0, i, :])
-            tempAmp = float(self.NNet.forwardPass(tempConfig))
+            tempAmp = float(self.NNet.get_amp(tempConfig))
             localE -= h * tempAmp / oldAmp
 
         return localE
@@ -737,7 +744,7 @@ class NQS_1d(NQS_base):
                 tempConfig = config.copy()
                 tempConfig[0, i, :] = (1 - tempConfig[0, i, :])
                 tempConfig[0, i + 1, :] = (1 - tempConfig[0, i + 1, :])
-                tempAmp = float(self.NNet.forwardPass(tempConfig))
+                tempAmp = float(self.NNet.get_amp(tempConfig))
                 localE += J * tempAmp / oldAmp / 2
             else:
                 pass
@@ -750,7 +757,7 @@ class NQS_1d(NQS_base):
             tempConfig = config.copy()
             tempConfig[0, 0, :] = (1 - tempConfig[0, 0, :])
             tempConfig[0, L-1, :] = (1 - tempConfig[0, L-1, :])
-            tempAmp = float(self.NNet.forwardPass(tempConfig))
+            tempAmp = float(self.NNet.get_amp(tempConfig))
             localE += J * tempAmp / oldAmp / 2
 
         return localE
@@ -1093,7 +1100,7 @@ class NQS_2d(NQS_base):
             self.NP_FLOAT = np.float32
             self.NP_COMPLEX = np.complex64
         else:
-            self.NP_FLAOT = np.float64
+            self.NP_FLOAT = np.float64
             self.NP_COMPLEX = np.complex128
 
         self.real_time = real_time
@@ -1104,7 +1111,8 @@ class NQS_2d(NQS_base):
 
         print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
-            self.get_local_E_batch = self.local_E_Ising_batch
+            self.get_local_E_batch = self.local_E_Ising_batch_log
+            # self.get_local_E_batch = self.local_E_Ising_batch
         elif Hamiltonian == 'Sz':
             raise NotImplementedError
             '''
@@ -1113,7 +1121,8 @@ class NQS_2d(NQS_base):
             also applicable to Ising model.
             '''
         elif Hamiltonian == 'AFH':
-            self.get_local_E_batch = self.local_E_2dAFH_batch
+            # self.get_local_E_batch = self.local_E_2dAFH_batch
+            self.get_local_E_batch = self.local_E_2dAFH_batch_log
         elif Hamiltonian == 'J1J2':
             self.J2 = J2
 #             self.get_local_E_batch = self.local_E_2dJ1J2_batch
@@ -1156,7 +1165,7 @@ class NQS_2d(NQS_base):
             tempconfig = self.config.copy()
             tempconfig[0, randsite1_x, randsite1_y, :] = (1 - tempconfig[0, randsite1_x, randsite1_y, :])
             tempconfig[0, randsite2_x, randsite2_y, :] = (1 - tempconfig[0, randsite2_x, randsite2_y, :])
-            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
             if np.random.rand() < np.amin([1., ratio**2]):
                 self.config = tempconfig
             else:
@@ -1168,13 +1177,13 @@ class NQS_2d(NQS_base):
 #        if np.random.rand() < 0.5:
 #            randsite = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
-#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
 #        else:
 #            randsite = np.random.randint(L)
 #            randsite2 = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
 #            tempconfig[0, randsite2, :] = (tempconfig[0, randsite2, :] + 1) % 2
-#            ratio = self.NNet.forwardPass(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
 #            if np.random.rand() < np.amin([1., ratio**2]):
 #                self.config = tempconfig
 #            else:
@@ -1370,6 +1379,86 @@ class NQS_2d(NQS_base):
 
         return localE_arr
 
+    def local_E_Ising_batch_log(self, config_arr, PBC=False):
+        '''
+        See explanation in local_E_Ising_batch.
+        The difference here is we compute exp(log_amp1-log_amp2),
+        instead of amp1/amp2, to improve numerical stability.
+
+        Input:
+            config_arr:
+                np.array of shape (num_config, Lx, Ly, local_dim)
+                dtype=np.int
+        Output:
+            localE_arr:
+                np.array of shape (num_config)
+                dtype=complex
+        '''
+        J=1.
+        g=2.
+        h=0.
+
+        num_config, Lx, Ly, local_dim = config_arr.shape
+        old_log_amp = self.eval_log_amp_array(config_arr)
+        localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
+
+        # S_ij dot S_(i+1)j
+        # PBC
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
+        config_shift_copy[:, :-1, :, :] = config_arr[:, 1:, :, :]
+        config_shift_copy[:, -1, :, :] = config_arr[:, 0, :, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * (-J)
+
+        ########################
+        # PBC : S_ij dot S_i(j+1)
+        ########################
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
+        config_shift_copy[:, :, :-1, :] = config_arr[:, :, 1:, :]
+        config_shift_copy[:, :, -1, :] = config_arr[:, :, 0, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * (-J)
+
+        #################
+        #  g sigma^x_i  #
+        #################
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
+
+        flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                           Lx, Ly, local_dim))
+        flip_log_amp_arr = flip_log_amp_arr.reshape((Lx, Ly, num_config))
+        # localE += g * amp_ratio
+        amp_ratio = np.exp(flip_log_amp_arr -
+                           np.einsum('jk,i->jki', np.ones((Lx,Ly), dtype=self.NP_FLOAT), old_log_amp)
+                          )
+        localE_arr += np.einsum('ijk -> k',  amp_ratio) * (-g)
+
+        #################
+        #  h sigma^z_i  #
+        #################
+        # num_config x L
+        Sz = (config_arr[:, :, :, 0] - 0.5) * 2
+        localE_arr += np.einsum('ijk->i', -Sz * h)
+
+        return localE_arr
+
     def local_E_2dAFH_batch(self, config_arr, J=1, PBC=False):
         '''
         To compute the Energz of 2d Heisenberg model with
@@ -1458,6 +1547,102 @@ class NQS_2d(NQS_base):
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
         else:
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:,:-1], flip_Amp_arr[:,:-1,:]) * J / oldAmp / 2
+
+        return localE_arr
+
+    def local_E_2dAFH_batch_log(self, config_arr, J=1, PBC=False):
+        '''
+        To compute the Energy of 2d Heisenberg model with
+        the configuration given in config_array.
+
+        See explanation in local_E_2dAFH_batch.
+        The difference here is we compute exp(log_amp1-log_amp2),
+        instead of amp1/amp2, to improve numerical stability.
+
+        Input:
+            config_arr:
+                np.array of shape (num_config, Lx, Ly, local_dim)
+                dtype=np.int
+        Output:
+            localE_arr:
+                np.array of shape (num_config)
+                dtype=complex
+                regardless of using real/complex amplitude wavefunction.
+        '''
+        num_config, Lx, Ly, local_dim = config_arr.shape
+        old_log_amp = self.eval_log_amp_array(config_arr)
+        # old_log_amp shape (num_config,1)
+        localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
+
+        # S_ij dot S_(i+1)j
+        # PBC
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
+        config_shift_copy[:, :-1, :, :] = config_arr[:, 1:, :, :]
+        config_shift_copy[:, -1, :, :] = config_arr[:, 0, :, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * J / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
+                config_flip_arr[i, j, :, (i+1) % Lx, j, :] = 1 - config_flip_arr[i, j, :, (i+1) % Lx, j, :]
+
+        flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                           Lx, Ly, local_dim))
+        flip_log_amp_arr = flip_log_amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(amp_ratio) * J / 2
+        amp_ratio = np.exp(flip_log_amp_arr -
+                           np.einsum('jk,i->jki', np.ones((Lx,Ly), dtype=self.NP_FLOAT), old_log_amp)
+                          )
+
+        if PBC:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz), amp_ratio) * J / 2
+        else:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:-1,:], amp_ratio[:-1,:,:]) * J / 2
+
+        ########################
+        # PBC : S_ij dot S_i(j+1)
+        ########################
+        config_shift_copy = np.zeros((num_config, Lx, Ly, local_dim), dtype=np.int32)
+        config_shift_copy[:, :, :-1, :] = config_arr[:, :, 1:, :]
+        config_shift_copy[:, :, -1, :] = config_arr[:, :, 0, :]
+
+        #  i            j    k,  l
+        # num_config , Lx , Ly, local_dim
+        SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
+        if PBC:
+            localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
+        else:
+            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * J / 4
+
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        for i in range(Lx):
+            for j in range(Ly):
+                config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
+                config_flip_arr[i, j, :, i, (j+1) % Ly, :] = 1 - config_flip_arr[i, j, :, i, (j+1) % Ly, :]
+
+        flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
+                                                                           Lx, Ly, local_dim))
+        flip_log_amp_arr = flip_log_amp_arr.reshape((Lx, Ly, num_config))
+        # localE += (1-SzSz).dot(amp_ratio) * J / 2
+        amp_ratio = np.exp(flip_log_amp_arr -
+                           np.einsum('jk,i->jki', np.ones((Lx,Ly), dtype=self.NP_FLOAT), old_log_amp)
+                          )
+        if PBC:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz), amp_ratio) * J / 2
+        else:
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:,:-1], amp_ratio[:,:-1,:]) * J / 2
 
         return localE_arr
 

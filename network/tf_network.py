@@ -317,13 +317,20 @@ class tf_network:
             self.fisher_multiply = self.optimizer._fisher_est.multiply(list(zip(self.newgrads_kfac,
                                                                                 self.para_list)))
 
+        ### 
+        # The get_amp; get_log_amp functions are done with forward pass of NN
+        # The "plain" refer to no prerpocessing
+        # The "pre" refer to preprocessing the input data with augmentation
+        #
+        #
+        #
         if which_net in ['pre_sRBM']:
-            self.forwardPass = self.pre_forwardPass
+            self.get_amp = self.pre_get_amp
             self.backProp = self.pre_backProp
             self.vanilla_back_prop = self.pre_vanilla_back_prop
         else:
-            self.forwardPass = self.plain_forwardPass
-            self.forwardPass_log_amp = self.plain_forwardPass_log_amp
+            self.get_amp = self.plain_get_amp
+            self.get_log_amp = self.plain_get_log_amp
             self.backProp = self.plain_backProp
             self.vanilla_back_prop = self.plain_vanilla_back_prop
 
@@ -353,10 +360,10 @@ class tf_network:
         new_X = np.concatenate([X0, pos_label, neg_label], axis=-1)
         return new_X
 
-    def plain_forwardPass(self, X0):
+    def plain_get_amp(self, X0):
         return self.sess.run(self.amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
-    def plain_forwardPass_log_amp(self, X0):
+    def plain_get_log_amp(self, X0):
         return self.sess.run(self.log_amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
     def plain_backProp(self, X0):
@@ -511,7 +518,7 @@ class tf_network:
             return self.sess.run(self.E_grads,
                                  feed_dict={self.x: X0, self.E_loc_m_avg: E_loc_array})
 
-    def pre_forwardPass(self, X0):
+    def pre_get_amp(self, X0):
         X0 = self.enrich_features(X0)
         return self.sess.run(self.amp, feed_dict={self.x: X0, self.keep_prob: 1.})
 
