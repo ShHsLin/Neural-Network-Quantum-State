@@ -20,8 +20,8 @@ _REPORT_EVERY = 10
 def select_optimizer(optimizer, learning_rate, momentum=0, var_list=None,
                      layer_collection=None):
     if optimizer == 'Adam':
-        return tf.train.AdamOptimizer(learning_rate=learning_rate,
-                                      epsilon=1e-3) #previous 1e-8
+        return tf.train.AdamOptimizer(learning_rate=learning_rate)
+                                      # epsilon=1e-3) #previous 1e-8
     elif optimizer == 'Mom':
         return tf.train.MomentumOptimizer(learning_rate=learning_rate,
                                           momentum=momentum)
@@ -539,13 +539,14 @@ def get_conv_var1d(filter_size, in_channels, out_channels, name="",
     else:
         # initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0, 0.1)
         initial_value = tf.truncated_normal([filter_size, in_channels, out_channels], 0.0,
-                                            np.sqrt(2. / (filter_size * (in_channels + out_channels))))
+                                            np.sqrt(2. / (filter_size * (in_channels + out_channels))),
+                                            dtype=dtype)
         filters = get_var(initial_value, name + "weights", dtype=dtype)
 
         if not biases:
             return filters, None
         else:
-            initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
+            initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale, dtype=dtype)
             biases = get_var(initial_value, name + "biases", dtype=dtype)
             return filters, biases
 
@@ -561,11 +562,11 @@ def get_conv_var2d(filter_size, in_channels, out_channels, name="",
             part_dtype = tf.float64
 
         u = tf.random_uniform([filter_size, filter_size, in_channels, out_channels],
-                              minval=0, maxval=1.)
+                              minval=0, maxval=1., dtype=part_dtype)
         sigma = np.sqrt(2./(filter_size * filter_size * in_channels))
         w_mag = sigma * tf.sqrt(-2. * tf.log(1.-u))
         theta = tf.random_uniform([filter_size, filter_size, in_channels, out_channels],
-                                  minval=0, maxval=2.*np.pi)
+                                  minval=0, maxval=2.*np.pi, dtype=part_dtype)
         init_w_re = w_mag * tf.cos(theta)
         init_w_im = w_mag * tf.sin(theta)
         real_weights = get_var(init_w_re, name + "real_weights", dtype=part_dtype)
@@ -585,7 +586,8 @@ def get_conv_var2d(filter_size, in_channels, out_channels, name="",
         # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.01)
         initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels],
                                             0.,
-                                            np.sqrt(2. / (filter_size * filter_size * in_channels )))
+                                            np.sqrt(2. / (filter_size * filter_size * in_channels )),
+                                            dtype=dtype)
                                             # np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
                                             # Xavier init
         filters = get_var(initial_value, name + "weights", dtype=dtype)
@@ -593,7 +595,7 @@ def get_conv_var2d(filter_size, in_channels, out_channels, name="",
         if not biases:
             return filters, None
         else:
-            initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale)
+            initial_value = tf.truncated_normal([out_channels], .0, .001 * bias_scale, dtype=dtype)
             biases = get_var(initial_value, name + "biases", dtype=dtype)
             return filters, biases
 
