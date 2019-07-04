@@ -16,7 +16,7 @@ class tf_network:
     def __init__(self, which_net, inputShape, optimizer, dim, sess=None,
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True,
-                 batch_size=None):
+                 batch_size=None, using_symm=True):
         '''
         Arguments as follows:
         which_net:
@@ -62,6 +62,7 @@ class tf_network:
         self.activation = activation
         self.which_net = which_net
         self.using_complex = using_complex
+        self.using_symm = using_symm
         self.keep_prob = tf.placeholder(self.TF_FLOAT)
         self.dx_exp_stabilizer = tf.placeholder(self.TF_FLOAT)
         # Define
@@ -89,7 +90,7 @@ class tf_network:
             assert self.Lx == self.Ly
             self.LxLy = self.Lx * self.Ly
             self.channels = int(inputShape[2])
-            if self.channels > 2:
+            if self.channels > 3:
                 print("Not yet implemented for tJ, Hubbard model")
                 raise NotImplementedError
             else:
@@ -117,11 +118,15 @@ class tf_network:
         else:
             try:
                 self.amp, self.log_amp, self.log_cond_amp, self.prob = all_out[:4]
-                # self.symm_amp = all_out[4]
-                self.amp = all_out[4]
-                # self.symm_log_amp = all_out[5]
-                self.log_amp = all_out[5]
-                self.symm_prob = all_out[7]
+                if self.using_symm:
+                    # self.symm_amp = all_out[4]
+                    # self.symm_log_amp = all_out[5]
+                    self.amp = all_out[4]
+                    self.log_amp = all_out[5]
+                    self.symm_prob = all_out[7]
+                else:
+                    pass
+
             except:
                 raise Exception
 
@@ -1522,12 +1527,12 @@ class tf_network:
         ## single model, i.e. w.o. symmetry 
         ## using for sampling perpose only
         #######################################
-        self.registered=True  # Not to register the sampling head 
+        self.registered = self.using_symm  # Not to register the sampling head
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
-            x_reshaped = tf.reshape(x, [-1, self.LxLy, 2])
+            x_reshaped = tf.reshape(x, [-1, self.LxLy, self.channels])
 
             pixel_input = tf.cast(x, dtype=self.TF_FLOAT)
-            px = pixel_block(pixel_input, 2, 8*self.alpha, 'start', 'pixel_0',
+            px = pixel_block(pixel_input, self.channels, 8*self.alpha, 'start', 'pixel_0',
                              self.TF_FLOAT, activation=act,
                              layer_collection=self.layer_collection,
                              registered=self.registered)
@@ -1542,29 +1547,53 @@ class tf_network:
                              layer_collection=self.layer_collection,
                              registered=self.registered)
 
-            fc3 = tf.reshape(px, [-1, self.LxLy, 4])
+            fc3 = tf.reshape(px, [-1, self.LxLy, 2*self.channels])
 
-            out0_re = fc3[:,:,0]
-            out1_re = fc3[:,:,1]
-            out0_im = fc3[:,:,2]
-            out1_im = fc3[:,:,3]
-            ## stable normalize ##
-            max_re = tf.math.maximum(out0_re, out1_re)
-            out0_re = out0_re - max_re
-            out1_re = out1_re - max_re
-            log_l2_norm = tf.log(tf.exp(2*out0_re) + tf.exp(2*out1_re)) / 2.
-            out0_re = out0_re - log_l2_norm
-            out1_re = out1_re - log_l2_norm
+            # out0_re = fc3[:,:,0]
+            # out1_re = fc3[:,:,1]
+            # out0_im = fc3[:,:,2]
+            # out1_im = fc3[:,:,3]
+            # ## stable normalize ##
+            # max_re = tf.math.maximum(out0_re, out1_re)
+            # out0_re = out0_re - max_re
+            # out1_re = out1_re - max_re
+            # log_l2_norm = tf.log(tf.exp(2*out0_re) + tf.exp(2*out1_re)) / 2.
+            # out0_re = out0_re - log_l2_norm
+            # out1_re = out1_re - log_l2_norm
 
-            log_cond_amp_0 = tf.complex(out0_re, out0_im)
-            log_cond_amp_1 = tf.complex(out1_re, out1_im)
-            log_cond_amp = tf.stack([log_cond_amp_0, log_cond_amp_1], axis=-1)
-            ## now a complex tensor of shape [batch_size, LxLy, 2]
+            # log_cond_amp_0 = tf.complex(out0_re, out0_im)
+            # log_cond_amp_1 = tf.complex(out1_re, out1_im)
+            # log_cond_amp = tf.stack([log_cond_amp_0, log_cond_amp_1], axis=-1)
+            # ## now a complex tensor of shape [batch_size, LxLy, 2]
+
+            log_cond_amp_re_list = []
+            log_cond_amp_im_list = []
+            for i in range(self.channels):
+                log_cond_amp_re_list.append(fc3[:,:,i])
+                log_cond_amp_im_list.append(fc3[:,:,self.channels+i])
+
+            log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
+            max_re = tf.math.reduce_max(log_cond_amp_re_stacked, axis=-1)
+            for i in range(self.channels):
+                log_cond_amp_re_list[i] = log_cond_amp_re_list[i] - max_re
+
+            log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
+            log_l2_norm = tf.log(tf.math.reduce_sum(tf.exp(2*log_cond_amp_re_stacked),
+                                                    axis=[-1])) / 2.
+            for i in range(self.channels):
+                log_cond_amp_re_list[i] = log_cond_amp_re_list[i] - log_l2_norm
+
+            log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
+            log_cond_amp_im_stacked = tf.stack(log_cond_amp_im_list, axis=-1)
+            log_cond_amp = tf.complex(log_cond_amp_re_stacked, log_cond_amp_im_stacked)
+            # now a complex tensor of shape [batch_size, LxLy, num_channels]
 
             ############################################################
             ### Constructed a path without involving complex number ####
             ############################################################
-            re_cond_prob = tf.stack([2*out0_re, 2*out1_re], axis=-1)
+            # re_cond_prob = tf.stack([2*out0_re, 2*out1_re], axis=-1)
+            re_cond_prob = log_cond_amp_re_stacked * 2.
+
             log_prob = tf.reduce_sum(tf.multiply(re_cond_prob, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
             prob = tf.exp(log_prob)
 
@@ -1574,94 +1603,127 @@ class tf_network:
             out = tf.reshape(out, [-1, 1])
 
 
-        #######################################
-        ## mixture model, i.e. w. symmetry  ###
-        #######################################
-        self.registered=False
-        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
-            num_symm = 8
-            symm_x = tf.concat([tf.image.rot90(x, k=0),
-                                tf.image.rot90(x, k=1),
-                                tf.image.rot90(x, k=2),
-                                tf.image.rot90(x, k=3),
-                                tf.image.rot90(1-x, k=0),
-                                tf.image.rot90(1-x, k=1),
-                                tf.image.rot90(1-x, k=2),
-                                tf.image.rot90(1-x, k=3)], axis=0)
+        if not self.using_symm:
+            return out, log_amp, log_cond_amp, prob
+        else:
+            #######################################
+            ## mixture model, i.e. w. symmetry  ###
+            #######################################
+            self.registered=False
+            with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+                num_symm = 8
+                symm_x = tf.concat([tf.image.rot90(x, k=0),
+                                    tf.image.rot90(x, k=1),
+                                    tf.image.rot90(x, k=2),
+                                    tf.image.rot90(x, k=3),
+                                    tf.image.rot90(1-x, k=0),
+                                    tf.image.rot90(1-x, k=1),
+                                    tf.image.rot90(1-x, k=2),
+                                    tf.image.rot90(1-x, k=3)], axis=0)
 
-            symm_x_reshaped = tf.reshape(symm_x, [-1, self.LxLy, 2])
+                symm_x_reshaped = tf.reshape(symm_x, [-1, self.LxLy, 2])
 
-            symm_pixel_input = tf.cast(symm_x, dtype=self.TF_FLOAT)
-            px = pixel_block(symm_pixel_input, 2, 8*self.alpha, 'start', 'pixel_0',
-                             self.TF_FLOAT, activation=act,
-                             layer_collection=self.layer_collection,
-                             registered=self.registered)
-            for i in range(1, 10):
-                px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
+                symm_pixel_input = tf.cast(symm_x, dtype=self.TF_FLOAT)
+                px = pixel_block(symm_pixel_input, 2, 8*self.alpha, 'start', 'pixel_0',
+                                 self.TF_FLOAT, activation=act,
+                                 layer_collection=self.layer_collection,
+                                 registered=self.registered)
+                for i in range(1, 10):
+                    px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
+                                     self.TF_FLOAT, activation=act,
+                                     layer_collection=self.layer_collection,
+                                     registered=self.registered)
+
+                px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'end', 'pixel_end',
                                  self.TF_FLOAT, activation=act,
                                  layer_collection=self.layer_collection,
                                  registered=self.registered)
 
-            px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'end', 'pixel_end',
-                             self.TF_FLOAT, activation=act,
-                             layer_collection=self.layer_collection,
-                             registered=self.registered)
+                symm_fc3 = tf.reshape(px, [-1, self.LxLy, 4])
 
-            symm_fc3 = tf.reshape(px, [-1, self.LxLy, 4])
+                # symm_out0_re = symm_fc3[:,:,0]
+                # symm_out1_re = symm_fc3[:,:,1]
+                # symm_out0_im = symm_fc3[:,:,2]
+                # symm_out1_im = symm_fc3[:,:,3]
+                # ## stable normalize ##
+                # symm_max_re = tf.math.maximum(symm_out0_re, symm_out1_re)
+                # symm_out0_re = symm_out0_re - symm_max_re
+                # symm_out1_re = symm_out1_re - symm_max_re
+                # symm_log_l2_norm = tf.log(tf.exp(2*symm_out0_re) + tf.exp(2*symm_out1_re)) / 2.
+                # symm_out0_re = symm_out0_re - symm_log_l2_norm
+                # symm_out1_re = symm_out1_re - symm_log_l2_norm
 
-            symm_out0_re = symm_fc3[:,:,0]
-            symm_out1_re = symm_fc3[:,:,1]
-            symm_out0_im = symm_fc3[:,:,2]
-            symm_out1_im = symm_fc3[:,:,3]
-            ## stable normalize ##
-            symm_max_re = tf.math.maximum(symm_out0_re, symm_out1_re)
-            symm_out0_re = symm_out0_re - symm_max_re
-            symm_out1_re = symm_out1_re - symm_max_re
-            symm_log_l2_norm = tf.log(tf.exp(2*symm_out0_re) + tf.exp(2*symm_out1_re)) / 2.
-            symm_out0_re = symm_out0_re - symm_log_l2_norm
-            symm_out1_re = symm_out1_re - symm_log_l2_norm
+                # symm_log_cond_amp_0 = tf.complex(symm_out0_re, symm_out0_im)
+                # symm_log_cond_amp_1 = tf.complex(symm_out1_re, symm_out1_im)
+                # symm_log_cond_amp = tf.stack([symm_log_cond_amp_0,
+                #                               symm_log_cond_amp_1], axis=-1)
+                # ## now a complex tensor of shape [batch_size, LxLy, 2]
 
-            symm_log_cond_amp_0 = tf.complex(symm_out0_re, symm_out0_im)
-            symm_log_cond_amp_1 = tf.complex(symm_out1_re, symm_out1_im)
-            symm_log_cond_amp = tf.stack([symm_log_cond_amp_0,
-                                          symm_log_cond_amp_1], axis=-1)
-            ## now a complex tensor of shape [batch_size, LxLy, 2]
 
-            ############################################################
-            ### Constructed a path without involving complex number ####
-            ############################################################
-            symm_re_cond_prob = tf.stack([2*symm_out0_re, 2*symm_out1_re], axis=-1)
-            symm_log_prob = tf.reduce_sum(tf.multiply(symm_re_cond_prob,
-                                                      tf.cast(symm_x_reshaped, self.TF_FLOAT)), axis=[1,2])
-            symm_log_prob = tf.transpose(tf.reshape(symm_log_prob, [num_symm, -1]), [1,0])
-            symm_prob = tf.exp(symm_log_prob)
-            symm_prob = tf.reduce_sum(symm_prob, axis=[1]) / float(num_symm)
+                symm_log_cond_amp_re_list = []
+                symm_log_cond_amp_im_list = []
+                for i in range(self.channels):
+                    symm_log_cond_amp_re_list.append(symm_fc3[:,:,i])
+                    symm_log_cond_amp_im_list.append(symm_fc3[:,:,self.channels+i])
 
-            symm_im_cond_amp = tf.stack([tf.complex(tf.zeros_like(symm_out0_im, dtype=self.TF_FLOAT),
-                                                    symm_out0_im),
-                                         tf.complex(tf.zeros_like(symm_out1_im, dtype=self.TF_FLOAT),
-                                                    symm_out1_im)], axis=-1)
-            symm_im_log_amp = tf.reduce_sum(tf.multiply(symm_im_cond_amp,
-                                                        tf.cast(symm_x_reshaped, self.TF_COMPLEX)), axis=[1,2])
-            symm_im_log_amp = tf.transpose(tf.reshape(symm_im_log_amp, [num_symm, -1]), [1,0])
-            symm_im_amp = tf.exp(symm_im_log_amp)
-            symm_im_amp = tf.reduce_sum(symm_im_amp, axis=[1])
+                symm_log_cond_amp_re_stacked = tf.stack(symm_log_cond_amp_re_list, axis=-1)
+                symm_max_re = tf.math.reduce_max(symm_log_cond_amp_re_stacked, axis=-1)
+                for i in range(self.channels):
+                    symm_log_cond_amp_re_list[i] = symm_log_cond_amp_re_list[i] - symm_max_re
 
-            final_symm_log_amp_re = tf.log(symm_prob) / 2.
-            final_symm_log_amp_im = tf.imag(tf.log(symm_im_amp))
-            final_symm_log_amp = tf.complex(final_symm_log_amp_re, final_symm_log_amp_im)
-            final_symm_log_amp = tf.reshape(final_symm_log_amp, [-1, 1])
-            final_symm_out = tf.exp(final_symm_log_amp)
+                symm_log_cond_amp_re_stacked = tf.stack(symm_log_cond_amp_re_list, axis=-1)
+                symm_log_l2_norm = tf.log(tf.math.reduce_sum(tf.exp(2*symm_log_cond_amp_re_stacked),
+                                                             axis=[-1])) / 2.
+                for i in range(self.channels):
+                    symm_log_cond_amp_re_list[i] = symm_log_cond_amp_re_list[i] - symm_log_l2_norm
 
-        self.registered=True
+                symm_log_cond_amp_re_stacked = tf.stack(symm_log_cond_amp_re_list, axis=-1)
+                symm_log_cond_amp_im_stacked = tf.stack(symm_log_cond_amp_im_list, axis=-1)
+                symm_log_cond_amp = tf.complex(log_cond_amp_re_stacked, log_cond_amp_im_stacked)
+                # now a complex tensor of shape [batch_size, LxLy, num_channels]
 
-        if self.using_complex:
-            # return out, log_amp, log_cond_amp, prob
-            return (out, log_amp, log_cond_amp, prob,
-                    final_symm_out, final_symm_log_amp, None, symm_prob)
-        else:
-            raise NotImplementedError
-            # return tf.real(out), None, log_cond_amp, prob
+
+                ############################################################
+                ### Constructed a path without involving complex number ####
+                ############################################################
+                # symm_re_cond_prob = tf.stack([2*symm_out0_re, 2*symm_out1_re], axis=-1)
+                symm_re_cond_prob = symm_log_cond_amp_re_stacked * 2.
+
+                symm_log_prob = tf.reduce_sum(tf.multiply(symm_re_cond_prob,
+                                                          tf.cast(symm_x_reshaped, self.TF_FLOAT)), axis=[1,2])
+                symm_log_prob = tf.transpose(tf.reshape(symm_log_prob, [num_symm, -1]), [1,0])
+                symm_prob = tf.exp(symm_log_prob)
+                symm_prob = tf.reduce_sum(symm_prob, axis=[1]) / float(num_symm)
+
+                # symm_im_cond_amp = tf.stack([tf.complex(tf.zeros_like(symm_out0_im, dtype=self.TF_FLOAT),
+                #                                         symm_out0_im),
+                #                              tf.complex(tf.zeros_like(symm_out1_im, dtype=self.TF_FLOAT),
+                #                                         symm_out1_im)], axis=-1)
+                # symm_im_log_amp = tf.reduce_sum(tf.multiply(symm_im_cond_amp,
+                #                                             tf.cast(symm_x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+                symm_im_log_amp = tf.reduce_sum(tf.multiply(symm_log_cond_amp_im_stacked,
+                                                            tf.cast(symm_x_reshaped, self.TF_FLOAT)), axis=[1,2])
+                symm_im_log_amp = tf.complex(tf.zeros_like(symm_im_log_amp), symm_im_log_amp)
+
+
+                symm_im_log_amp = tf.transpose(tf.reshape(symm_im_log_amp, [num_symm, -1]), [1,0])
+                symm_im_amp = tf.exp(symm_im_log_amp)
+                symm_im_amp = tf.reduce_sum(symm_im_amp, axis=[1])
+
+                final_symm_log_amp_re = tf.log(symm_prob) / 2.
+                final_symm_log_amp_im = tf.imag(tf.log(symm_im_amp))
+                final_symm_log_amp = tf.complex(final_symm_log_amp_re, final_symm_log_amp_im)
+                final_symm_log_amp = tf.reshape(final_symm_log_amp, [-1, 1])
+                final_symm_out = tf.exp(final_symm_log_amp)
+
+            self.registered=True
+
+            if self.using_complex:
+                return (out, log_amp, log_cond_amp, prob,
+                        final_symm_out, final_symm_log_amp, None, symm_prob)
+            else:
+                raise NotImplementedError
+                # return tf.real(out), None, log_cond_amp, prob
 
 
 #     def build_NADE_2d(self, x, activation):
