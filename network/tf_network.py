@@ -1542,12 +1542,12 @@ class tf_network:
                                  layer_collection=self.layer_collection,
                                  registered=self.registered)
 
-            px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'end', 'pixel_end',
+            px = pixel_block(px, 8*self.alpha, self.channels*2, 'end', 'pixel_end',
                              self.TF_FLOAT, activation=act,
                              layer_collection=self.layer_collection,
                              registered=self.registered)
 
-            fc3 = tf.reshape(px, [-1, self.LxLy, 2*self.channels])
+            fc3 = tf.reshape(px, [-1, self.LxLy, self.channels*2])
 
             # out0_re = fc3[:,:,0]
             # out1_re = fc3[:,:,1]
@@ -1621,10 +1621,10 @@ class tf_network:
                                     tf.image.rot90(1-x, k=2),
                                     tf.image.rot90(1-x, k=3)], axis=0)
 
-                symm_x_reshaped = tf.reshape(symm_x, [-1, self.LxLy, 2])
+                symm_x_reshaped = tf.reshape(symm_x, [-1, self.LxLy, self.channels])
 
                 symm_pixel_input = tf.cast(symm_x, dtype=self.TF_FLOAT)
-                px = pixel_block(symm_pixel_input, 2, 8*self.alpha, 'start', 'pixel_0',
+                px = pixel_block(symm_pixel_input, self.channels, 8*self.alpha, 'start', 'pixel_0',
                                  self.TF_FLOAT, activation=act,
                                  layer_collection=self.layer_collection,
                                  registered=self.registered)
@@ -1634,12 +1634,12 @@ class tf_network:
                                      layer_collection=self.layer_collection,
                                      registered=self.registered)
 
-                px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'end', 'pixel_end',
+                px = pixel_block(px, 8*self.alpha, self.channels*2, 'end', 'pixel_end',
                                  self.TF_FLOAT, activation=act,
                                  layer_collection=self.layer_collection,
                                  registered=self.registered)
 
-                symm_fc3 = tf.reshape(px, [-1, self.LxLy, 4])
+                symm_fc3 = tf.reshape(px, [-1, self.LxLy, self.channels*2])
 
                 # symm_out0_re = symm_fc3[:,:,0]
                 # symm_out1_re = symm_fc3[:,:,1]

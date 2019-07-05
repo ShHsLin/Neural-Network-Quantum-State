@@ -725,6 +725,7 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
         elif block_type == 'mid':
             assert in_channel % 2 == 0
             assert out_channel % 2 == 0
+            assert in_channel == out_channel
             vertical_branch = x[:,:,:,:in_channel//2]
             horizontal_branch = x[:,:,:,in_channel//2:]
             # Should add padding, top 2 rows
@@ -768,7 +769,7 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
             ver_padded_x = tf.pad(vertical_branch, [[0, 0], [filter_size-1, 0],
                                                     [filter_size//2, filter_size//2], [0, 0]],
                                   "CONSTANT")
-            vertical_branch = conv_layer2d(ver_padded_x, filter_size, in_channel//2, out_channel//2,
+            vertical_branch = conv_layer2d(ver_padded_x, filter_size, in_channel//2, in_channel//2,
                                            name+'_ver', padding='VALID', dtype=dtype,
                                            layer_collection=layer_collection,
                                            registered=registered)
@@ -787,7 +788,7 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
 
             # Should add padding, top 2 rows && left 2 columns
             hor_padded_x = tf.pad(horizontal_branch, [[0, 0], [filter_size-1, 0], [filter_size-1, 0], [0, 0]], "CONSTANT")
-            horizontal_branch = conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, 4,
+            horizontal_branch = conv_layer2d(hor_padded_x, filter_size, in_channel//2+in_channel//2, out_channel,
                                              name+'_hor', padding='VALID', dtype=dtype,
                                              layer_collection=layer_collection,
                                              registered=registered)

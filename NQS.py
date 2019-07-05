@@ -480,6 +480,7 @@ class NQS_1d(NQS_base):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
                                dtype=np.int8)
         self.num_site = inputShape[0]
+        self.channels = inputShape[1]
         self.batch_size = batch_size
         self.inputShape = inputShape
         self.init_config(sz0_sector=True)
@@ -1080,6 +1081,7 @@ class NQS_2d(NQS_base):
         self.inputShape = inputShape
         self.Lx = inputShape[0]
         self.Ly = inputShape[1]
+        self.channels = inputShape[2]
         self.LxLy = self.num_site = self.Lx*self.Ly
         if self.Lx != self.Ly:
             print("not a square lattice !!!")
@@ -1205,16 +1207,19 @@ class NQS_2d(NQS_base):
             for site_i in range(self.Lx):
                 for site_j in range(self.Ly):
                     cond_prob_amp = self.NNet.plain_get_cond_log_amp(self.config)
-                    cond_prob_amp = cond_prob_amp.reshape([self.batch_size, *self.inputShape])
-                    site_cond_prob_amp = cond_prob_amp[:, site_i, site_j, :]
-                    mask = np.log(np.random.random_sample((batch_size,))) < site_cond_prob_amp[:,0]*2
+                    # cond_prob_amp = cond_prob_amp.reshape([self.batch_size, *self.inputShape])
+                    # site_cond_prob_amp = cond_prob_amp[:, site_i, site_j, :]
+                    # mask = np.log(np.random.random_sample((batch_size,))) < site_cond_prob_amp[:,0]*2
 
-                    # cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch,...]
-                    # cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
-                    # site_prob = cond_prob[:, site_i, site_j, :]
+                    cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch,...]
+                    cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
+                    site_prob = cond_prob[:, site_i, site_j, :]
                     # mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
-                    self.config[mask, site_i, site_j, 0] = 1
-                    self.config[np.logical_not(mask), site_i, site_j, 1] = 1
+                    # self.config[mask, site_i, site_j, 0] = 1
+                    # self.config[np.logical_not(mask), site_i, site_j, 1] = 1
+                    for batch_idx in range(batch_size):
+                        self.config[batch_idx, site_i, site_j,
+                                    np.random.choice(self.channels, p=site_prob[batch_idx])] = 1
 
             return
         else:
@@ -1984,6 +1989,249 @@ class NQS_2d(NQS_base):
 
         return localE_arr
 
+
+    def local_E_2dJulian_batch_log(self, config_arr, t1=-0.1,
+                                   t2=-0.9, U=16., PBC=False):
+        '''
+        To compute the Energy of 2d Julian model with
+        the configuration given in config_array.
+
+        Input:
+            config_arr:
+                np.array of shape (num_config, Lx, Ly, local_dim)
+                dtype=np.int
+        Output:
+            localE_arr:
+                np.array of shape (num_config)
+                dtype=complex
+                regardless of using real/complex amplitude wavefunction.
+        '''
+        num_config, Lx, Ly, local_dim = config_arr.shape
+        old_log_amp = self.eval_log_amp_array(config_arr)
+        # old_log_amp shape (num_config,1)
+        localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
+        # old--> new    index   coeff
+        # (1 --> 0)     3       1
+        # (1 --> 1)     4       sqrt(2)
+        # (2 --> 0)     6       sqrt(2)
+        # (2 --> 1)     7       2
+        inter_coeff_map = np.zeros((9,))
+        inter_coeff_map[3] = 1
+        inter_coeff_map[4] = np.sqrt(2)
+        inter_coeff_map[6] = np.sqrt(2)
+        inter_coeff_map[7] = 2
+        inter_coeff_map = inter_coeff_map.reshape([3,3])
+
+
+        #######################
+        # HOP TO THE RIGHT   ##
+        #######################
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        interacting_coeff = np.zeros((Lx, Ly, num_config))
+        for i in range(Lx):
+            for j in range(Ly):
+                ## hopping from (i,j) to (i+1, j)
+                new_i = (i+1)%Lx
+                mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
+                mask2 = (config_arr[:, new_i, j, 2] != 1)  # (i+1,j) does not have two particles
+                final_mask = np.logical_and(mask1, mask2)
+
+                old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
+                new_site_idx = np.nonzero(config_arr[:, new_i, j, :])[1]
+
+                # change the config
+                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
+                config_flip_arr[i, j, final_mask, new_i, j, :2] = config_flip_arr[i, j, final_mask, new_i, j, 1:]
+                # write in the interacting_coeff
+                if i%2 == 0:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
+                else:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
+
+
+
+        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
+        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        # now of the shape, [num_config, Lx, Ly]
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        # this mask is identical to the final_mask in the loop above.
+        mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
+        mask_to_eval = np.logical_not(mask_to_eval)
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+
+        ## [TODO] remove the exp( masked ) part.
+        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+                          )
+
+        if PBC:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
+        else:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,:-1,:], amp_ratio[:,:-1,:])
+
+
+        #######################
+        # HOP TO THE LEFT    ##
+        #######################
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        interacting_coeff = np.zeros((Lx, Ly, num_config))
+        for i in range(Lx):
+            for j in range(Ly):
+                ## hopping from (i,j) to (i-1, j)
+                new_i = (i-1+Lx)%Lx
+                mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
+                mask2 = (config_arr[:, new_i, j, 2] != 1)  # (i-1,j) does not have two particles
+                final_mask = np.logical_and(mask1, mask2)
+
+                old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
+                new_site_idx = np.nonzero(config_arr[:, new_i, j, :])[1]
+
+                # change the config
+                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
+                config_flip_arr[i, j, final_mask, new_i, j, :2] = config_flip_arr[i, j, final_mask, new_i, j, 1:]
+                # write in the interacting_coeff
+                if i%2 == 0:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
+                else:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
+
+
+
+        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
+        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        # now of the shape, [num_config, Lx, Ly]
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        # this mask is identical to the final_mask in the loop above.
+        mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
+        mask_to_eval = np.logical_not(mask_to_eval)
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+
+        ## [TODO] remove the exp( masked ) part.
+        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+                          )
+
+        if PBC:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
+        else:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,1:,:], amp_ratio[:,1:,:])
+
+
+        #####################
+        # HOP TO THE UP   ##
+        #####################
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        interacting_coeff = np.zeros((Lx, Ly, num_config))
+        for i in range(Lx):
+            for j in range(Ly):
+                ## hopping from (i,j) to (i, j+1)
+                new_j = (j+1)%Ly
+                mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
+                mask2 = (config_arr[:, i, new_j, 2] != 1)  # (i,j+1) does not have two particles
+                final_mask = np.logical_and(mask1, mask2)
+
+                old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
+                new_site_idx = np.nonzero(config_arr[:, i, new_j, :])[1]
+
+                # change the config
+                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
+                config_flip_arr[i, j, final_mask, i, new_j, :2] = config_flip_arr[i, j, final_mask, i, new_j, 1:]
+                # write in the interacting_coeff
+                if i%2 == 0:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
+                else:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
+
+
+        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
+        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        # now of the shape, [num_config, Lx, Ly]
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        # this mask is identical to the final_mask in the loop above.
+        mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
+        mask_to_eval = np.logical_not(mask_to_eval)
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+
+        ## [TODO] remove the exp( masked ) part.
+        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+                          )
+
+        if PBC:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
+        else:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,:,:-1], amp_ratio[:,:,:-1])
+
+
+        #######################
+        # HOP TO THE DOWN    ##
+        #######################
+        #   g      h      i           j    k     l
+        #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
+        config_flip_arr = np.einsum('gh,ijkl->ghijkl', np.ones((Lx, Ly), dtype=np.int32), config_arr)
+        interacting_coeff = np.zeros((Lx, Ly, num_config))
+        for i in range(Lx):
+            for j in range(Ly):
+                ## hopping from (i,j) to (i, j-1)
+                new_j = (j-1+Ly)%Ly
+                mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
+                mask2 = (config_arr[:, i, new_j, 2] != 1)  # (i,j-1) does not have two particles
+                final_mask = np.logical_and(mask1, mask2)
+
+                old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
+                new_site_idx = np.nonzero(config_arr[:, i, new_j, :])[1]
+
+                # change the config
+                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
+                config_flip_arr[i, j, final_mask, i, new_j, :2] = config_flip_arr[i, j, final_mask, i, new_j, 1:]
+                # write in the interacting_coeff
+                if i%2 == 0:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
+                else:
+                    interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
+
+
+
+        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
+        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        # now of the shape, [num_config, Lx, Ly]
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        # this mask is identical to the final_mask in the loop above.
+        mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
+        mask_to_eval = np.logical_not(mask_to_eval)
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+
+        ## [TODO] remove the exp( masked ) part.
+        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+                          )
+
+        if PBC:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
+        else:
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,:,1:], amp_ratio[:,:,1:])
+
+
+        #################
+        #  h sigma^z_i  #
+        #################
+        # num_config x L
+        localE_arr += np.einsum('ijk->i', config_arr[:, :, :, 2] * U)
+
+        if np.isnan(localE_arr).any():
+            import pdb;pdb.set_trace()
+
+        return localE_arr
 
 ############################
 #  END OF DEFINITION NQS2d #
