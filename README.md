@@ -22,6 +22,9 @@ This work is inspired by the paper from,
 * C.P. Chou, et al. - [Matrix-Product based Projected Wave Functions Ansatz for Quantum Many-Body Ground States](https://arxiv.org/abs/1201.6121)
 * Olga Sikora, et al. - [Variational Monte Carlo simulations using tensor-product projected states](https://arxiv.org/abs/1407.4107)
 
+### Github Reference
+
+* [PixelCNN](https://github.com/israelg99/eva/blob/master/eva/util/mutil.py)
 
 ### How to run the Code
 
@@ -135,6 +138,8 @@ DMRG bond-dim40:
 L=40 AFH OBC: -4.3853682e-01   
 L=40 AFH PBC: -4.4366e-01    
    
+2d QMC
+AFH PBC: -   
 
 ### To do list
 

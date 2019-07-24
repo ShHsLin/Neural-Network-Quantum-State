@@ -64,6 +64,11 @@ if __name__ == "__main__":
         systemSize = (L, 2)
     elif dim == 2:
         systemSize = (L, L, 2)
+        if H == 'Julian':
+            systemSize = (L, L, 3)
+        else:
+            pass
+
     else:
         raise NotImplementedError
 

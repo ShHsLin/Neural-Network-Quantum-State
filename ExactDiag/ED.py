@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def gen_pair(row, V, PBC=True):
+def gen_pair(row, V, PBC=False):
     '''
     assume row is an in order array generate a cyclic pairs
     in the row array given with interaction strength V.
@@ -211,9 +211,15 @@ def measure_local_H(psi, H_list):
 
 def gen_H_2d_J1J2(Lx, Ly, J1=1, J2=0.):
     lattice = np.zeros((Lx, Ly), dtype=int)
+#     for i in range(Lx):
+#         for j in range(Ly):
+#             lattice[i, j] = int(j * Lx + (i+1))
+
     for i in range(Lx):
-        for j in range(Ly):
+        for j in range(0, Ly, 2):
             lattice[i, j] = int(j * Lx + (i+1))
+            lattice[-(i+1), j+1] = int( (j+1) * Lx + (i+1))
+
 
     print(lattice)
     pairs = []

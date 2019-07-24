@@ -16,7 +16,7 @@ class tf_network:
     def __init__(self, which_net, inputShape, optimizer, dim, sess=None,
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True,
-                 batch_size=None, using_symm=True):
+                 batch_size=None, using_symm=False):
         '''
         Arguments as follows:
         which_net:
