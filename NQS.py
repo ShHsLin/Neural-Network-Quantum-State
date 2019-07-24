@@ -146,18 +146,36 @@ class NQS_base():
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
+        axis_to_sum = range(len(configDim))
+        axis_to_sum = list(axis_to_sum)
+        sum_to_channel = np.sum(configArray, axis=tuple(axis_to_sum[:-1]))
+        print("sampled config statistic : ", sum_to_channel / np.prod(configDim[:-1]))
+        if self.channels == 3:
+            print("sampled config <N> : ", np.array([0,1,2.]).dot(sum_to_channel / np.prod(configDim[:-1])))
+        elif self.channels == 2:
+            print("sampled config <N> : ", np.array([0,1.]).dot(sum_to_channel / np.prod(configDim[:-1])))
+        else:
+            raise NotImplementedError
 
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(configArray[i:i+1])
-        Earray = self.get_local_E_batch(configArray)
+        Earray_return = self.get_local_E_batch(configArray)
+        if len(Earray_return) == 2:
+            Earray = Earray_return[0]
+            E0array = Earray_return[1]
+        else:
+            Earray = E0array = Earray_return
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
 
         Eavg = np.average(Earray)
         Evar = np.var(Earray)
+        E0avg = np.average(E0array)
+        E0var = np.var(E0array)
         print(self.get_self_amp_batch()[:5])
         print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
+        print("E0/N !!!!: ", E0avg / num_site, "  Var: ", E0var / (num_site**2) / num_sample)
 
         if not SR:
             if self.moving_E_avg != None:
@@ -1217,6 +1235,9 @@ class NQS_2d(NQS_base):
                     # mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
                     # self.config[mask, site_i, site_j, 0] = 1
                     # self.config[np.logical_not(mask), site_i, site_j, 1] = 1
+                    if np.isnan(site_prob).any():
+                        import pdb;pdb.set_trace()
+
                     for batch_idx in range(batch_size):
                         self.config[batch_idx, site_i, site_j,
                                     np.random.choice(self.channels, p=site_prob[batch_idx])] = 1
@@ -1698,11 +1719,17 @@ class NQS_2d(NQS_base):
         #     localE_arr += np.einsum('ijk,jki->i', (1-SzSz), amp_ratio) * J / 2
         # else:
         #     localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:,:-1], amp_ratio[:,:-1,:]) * J / 2
+        mu = 0.
+        num_particle = np.sum(config_arr, axis=(1,2)).dot([0,1])
+        # localE_arr += mu * (num_particle != Lx*Ly//2)
+        # localE_arr += mu * num_particle
+        print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
+
 
         if np.isnan(localE_arr).any():
             import pdb;pdb.set_trace()
 
-        return localE_arr
+        return localE_arr + 0. * (num_particle - Lx*Ly//2)**2, localE_arr
 
     def local_E_2dJ1J2_batch(self, config_arr):
         '''
@@ -1990,8 +2017,8 @@ class NQS_2d(NQS_base):
         return localE_arr
 
 
-    def local_E_2dJulian_batch_log(self, config_arr, t1=-0.1,
-                                   t2=-0.9, U=16., PBC=False):
+    def local_E_2dJulian_batch_log(self, config_arr, t1=-1.,
+                                   t2=-1., U=100., PBC=False):
         '''
         To compute the Energy of 2d Julian model with
         the configuration given in config_array.
@@ -2042,8 +2069,8 @@ class NQS_2d(NQS_base):
                 new_site_idx = np.nonzero(config_arr[:, new_i, j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
-                config_flip_arr[i, j, final_mask, new_i, j, :2] = config_flip_arr[i, j, final_mask, new_i, j, 1:]
+                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
+                config_flip_arr[i, j, final_mask, new_i, j, 1:] = config_flip_arr[i, j, final_mask, new_i, j, :2]
                 # write in the interacting_coeff
                 if i%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
@@ -2092,8 +2119,8 @@ class NQS_2d(NQS_base):
                 new_site_idx = np.nonzero(config_arr[:, new_i, j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
-                config_flip_arr[i, j, final_mask, new_i, j, :2] = config_flip_arr[i, j, final_mask, new_i, j, 1:]
+                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
+                config_flip_arr[i, j, final_mask, new_i, j, 1:] = config_flip_arr[i, j, final_mask, new_i, j, :2]
                 # write in the interacting_coeff
                 if i%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
@@ -2142,10 +2169,10 @@ class NQS_2d(NQS_base):
                 new_site_idx = np.nonzero(config_arr[:, i, new_j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
-                config_flip_arr[i, j, final_mask, i, new_j, :2] = config_flip_arr[i, j, final_mask, i, new_j, 1:]
+                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
+                config_flip_arr[i, j, final_mask, i, new_j, 1:] = config_flip_arr[i, j, final_mask, i, new_j, :2]
                 # write in the interacting_coeff
-                if i%2 == 0:
+                if j%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
                 else:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
@@ -2191,10 +2218,10 @@ class NQS_2d(NQS_base):
                 new_site_idx = np.nonzero(config_arr[:, i, new_j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, 1:] = config_flip_arr[i, j, final_mask, i, j, :2]
-                config_flip_arr[i, j, final_mask, i, new_j, :2] = config_flip_arr[i, j, final_mask, i, new_j, 1:]
+                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
+                config_flip_arr[i, j, final_mask, i, new_j, 1:] = config_flip_arr[i, j, final_mask, i, new_j, :2]
                 # write in the interacting_coeff
-                if i%2 == 0:
+                if j%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
                 else:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
@@ -2228,10 +2255,20 @@ class NQS_2d(NQS_base):
         # num_config x L
         localE_arr += np.einsum('ijk->i', config_arr[:, :, :, 2] * U)
 
+        ###################################
+        # mu if N not equal to Lx*Ly//2  #
+        ###################################
+        mu = 0.
+        num_particle = np.sum(config_arr, axis=(1,2)).dot([0,1,2])
+        # localE_arr += mu * (num_particle != Lx*Ly//2)
+        # localE_arr += mu * num_particle
+        print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
+
         if np.isnan(localE_arr).any():
             import pdb;pdb.set_trace()
 
-        return localE_arr
+        # return localE_arr
+        return localE_arr + 0.5 * (num_particle - Lx*Ly//2)**2, localE_arr
 
 ############################
 #  END OF DEFINITION NQS2d #
