@@ -92,6 +92,11 @@ def parse_args():
                         help='Determine the boundary condition;'
                         'True if PBC, False if OBC. Default: False(0)',
                         default=0, type=int)
+    parser.add_argument('--num_blocks', dest='num_blocks',
+                        help='Determine the number of block in pixelCNN sturcture;'
+                        'Default: 10',
+                        default=10, type=int)
+
 
     if len(sys.argv) == 1:
         pass

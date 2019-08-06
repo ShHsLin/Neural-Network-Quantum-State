@@ -42,6 +42,7 @@ if __name__ == "__main__":
     (act, SP, using_complex) = (args.act, bool(args.SP), bool(args.using_complex))
     (real_time, integration, pinv_rcond) = (
         bool(args.real_time), args.integration, args.pinv_rcond)
+    num_blocks = args.num_blocks
 
     if len(path) > 0 and path[-1] != '/':
         path = path + '/'
@@ -74,7 +75,7 @@ if __name__ == "__main__":
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
                      activation=act, using_complex=using_complex, single_precision=SP,
-                     batch_size=num_sample)
+                     batch_size=num_sample, num_blocks=num_blocks)
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
                        J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,

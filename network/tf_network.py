@@ -16,7 +16,7 @@ class tf_network:
     def __init__(self, which_net, inputShape, optimizer, dim, sess=None,
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True,
-                 batch_size=None, using_symm=False):
+                 batch_size=None, using_symm=False, num_blocks=10):
         '''
         Arguments as follows:
         which_net:
@@ -61,6 +61,7 @@ class tf_network:
         self.alpha = alpha
         self.activation = activation
         self.which_net = which_net
+        self.num_blocks = num_blocks
         self.using_complex = using_complex
         self.using_symm = using_symm
         self.keep_prob = tf.placeholder(self.TF_FLOAT)
@@ -112,7 +113,7 @@ class tf_network:
             self.layer_collection = None
             self.registered = False
 
-        all_out = self.build_network(which_net, self.x, self.activation)
+        all_out = self.build_network(which_net, self.x, self.activation, self.num_blocks)
         if len(all_out) == 2:
             self.amp, self.log_amp = all_out[:2]
         else:
@@ -411,7 +412,7 @@ class tf_network:
             single_x = self.x[i:i+1]
             if self.using_complex:
                 single_all_out = self.build_network(self.which_net, single_x,
-                                                    self.activation)
+                                                    self.activation, self.num_blocks)
                 single_amp, single_log_amp = single_all_out[:2]
                 try:
                     single_log_cond_amp, single_prob = single_all_out[2:4]
@@ -454,7 +455,7 @@ class tf_network:
                 ta = ta.write(i, tf.concat([tf.reshape(g,[-1]) for g in single_log_grads], axis=0 ))
             else:
                 single_all_out = self.build_network(self.which_net, single_x,
-                                                    self.activation)
+                                                    self.activation, self.num_blocks)
                 single_amp, single_log_amp = single_all_out[:2]
                 try:
                     single_log_cond_amp, single_prob = single_all_out[2:4]
@@ -1516,7 +1517,7 @@ class tf_network:
             return tf.real(out), None, log_cond_amp, prob
 
 
-    def build_pixelCNN_2d(self, x, activation, mode='2'):
+    def build_pixelCNN_2d(self, x, activation, num_blocks, mode='2'):
         if mode == '1':
             pixel_block = tf_.pixel_block
         elif mode == '2':
@@ -1536,7 +1537,7 @@ class tf_network:
                              self.TF_FLOAT, activation=act,
                              layer_collection=self.layer_collection,
                              registered=self.registered)
-            for i in range(1, 10):
+            for i in range(1, num_blocks):
                 px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
                                  self.TF_FLOAT, activation=act,
                                  layer_collection=self.layer_collection,
@@ -2032,7 +2033,7 @@ class tf_network:
         else:
             return out, None
 
-    def build_network_1d(self, which_net, x, activation):
+    def build_network_1d(self, which_net, x, activation, num_blocks):
         if which_net == "NN":
             return self.build_NN_1d(x)
         elif which_net == "ZNet":
@@ -2062,7 +2063,7 @@ class tf_network:
         else:
             raise NotImplementedError
 
-    def build_network_2d(self, which_net, x, activation):
+    def build_network_2d(self, which_net, x, activation, num_blocks):
         if which_net == "NN":
             return self.build_NN_2d(x, activation)
         if which_net == "NN_linear":
@@ -2072,7 +2073,7 @@ class tf_network:
         elif which_net == 'MADE':
             return self.build_MADE_2d(x, activation)
         elif which_net == 'pixelCNN':
-            return self.build_pixelCNN_2d(x, activation)
+            return self.build_pixelCNN_2d(x, activation, num_blocks)
         elif which_net == "ResNN3":
             return self.build_ResNN3_2d(x, activation)
         elif which_net == "RBM":
