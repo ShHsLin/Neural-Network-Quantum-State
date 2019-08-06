@@ -188,8 +188,9 @@ if __name__ == "__main__":
                 if lr > lr / np.sqrt(GjFj):
                     GradW = GradW / np.sqrt(GjFj)
             else:
-                if np.linalg.norm(GradW) > 100:
-                    GradW = GradW / np.linalg.norm(GradW) * 100
+                pass
+                # if np.linalg.norm(GradW) > 100:
+                #     GradW = GradW / np.linalg.norm(GradW) * 100
 
             # GradW = GradW/np.linalg.norm(GradW)*np.amax([(0.95**iteridx),0.1])
 
