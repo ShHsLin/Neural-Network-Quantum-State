@@ -277,6 +277,7 @@ if __name__ == "__main__":
         N.NNet.applyGrad(grad_list)
         # To save object ##
         if iteridx % 50 == 0:
+            # Saving WF
             if np.isnan(E_log[-1]):
                 print("nan in Energy, stop!")
                 break
@@ -287,6 +288,7 @@ if __name__ == "__main__":
         else:
             pass
 
+    # Saving E_list
     if SR:
         log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
                         (L, which_net, act, alpha, opt, lr, num_sample),
@@ -299,6 +301,7 @@ if __name__ == "__main__":
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()
+
 
     '''
     Task1

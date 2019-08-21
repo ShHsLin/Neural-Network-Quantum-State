@@ -684,7 +684,8 @@ def get_var_count(self):
 
 def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                        dtype, filter_size=3, activation=tf.nn.relu,
-                       layer_collection=None, registered=False):
+                       layer_collection=None, registered=False,
+                       residual_connection=True):
     '''
     for starting block, input: x, output: out with two branch concat in channel dimension
     for mid block,  input x with two branch concat in channel dimension
@@ -754,6 +755,8 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                              name+'_hor', padding='VALID', dtype=dtype,
                                              layer_collection=layer_collection,
                                              registered=registered)
+            if residual_connection:
+                horizontal_branch = horizontal_branch + x[:,:,:,in_channel//2:]
             # horizontal_branch = masked_conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, out_channel//2,
             #                                         'A2', name+'_hor', dtype=dtype, padding='VALID',
             #                                         layer_collection=layer_collection,
