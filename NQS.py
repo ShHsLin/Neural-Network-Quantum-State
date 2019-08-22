@@ -16,6 +16,7 @@ So easily to switch model
 
 class NQS_base():
     def __init__(self):
+        self.cov_list = None
         return
 
     def list_to_vec(self, T_list):
@@ -37,6 +38,25 @@ class NQS_base():
             T_ind += var_size
 
         return T_list
+
+    def Oarray_to_Olist(self, Oarray):
+        '''
+        We turn the Oarray of the shape (num_para, num_sample)
+        to a list of shape
+        [(size_para_1, num_sample), (size_para_2, num_sample), ...]
+        '''
+        num_para, num_sample = Oarray.shape
+        var_shape_list = self.NNet.var_shape_list
+        unaggregated_O_list = []
+        T_ind = 0
+        for var_shape in var_shape_list:
+            var_size = np.prod(var_shape)
+            unaggregated_O_list.append(Oarray[T_ind:T_ind + var_size, :].reshape([var_size, num_sample]))
+            T_ind += var_size
+
+        assert num_para == T_ind
+        return unaggregated_O_list
+
 
     def getSelfAmp(self):
         return float(self.NNet.get_amp(self.config))
@@ -354,8 +374,17 @@ class NQS_base():
 
             return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, Gj.dot(F0_vec)
 
-        else:
-            pass
+        else: #if SR; elif KFAC; else
+            if self.cov_list is None:
+                self.cov_list = []
+                for var_shape in self.NNet.var_shape_list:
+                    var_size = np.prod(var_shape)
+                    self.cov_list.append(np.eye(var_size, dtype=self.NP_FLOAT))
+
+                # Now we have the cov_list setted up as a list of identity matrices
+            else:
+                pass
+
 
         Oarray = self.NNet.run_unaggregated_gradient(configArray)
         end_c, end_t = time.clock(), time.time()
@@ -371,8 +400,61 @@ class NQS_base():
 
         # Osum = np.einsum('ij->i', Oarray)
         # EOsum = np.einsum('ij,j->i', Oarray, Earray)
-        Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # This <O^*>
+        Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # This < O^* > * num_sample
+        ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
         EOsum = Oarray.conjugate().dot(Earray)  # <O^*E>
+        ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
+
+        ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
+        #########               START                             ##########
+
+        unaggregated_O_list = self.Oarray_to_Olist(Oarray - np.outer(Osum/num_sample, np.ones(num_sample)))
+        ## The unaggregated_O has mean subtracted already
+        for idx, unaggregated_O in enumerate(unaggregated_O_list):
+            cov = unaggregated_O.conjugate().dot(unaggregated_O.T) / num_sample
+            cov = cov + np.eye(cov.shape[0]) * 1e-4
+            self.cov_list[idx] = self.cov_list[idx] * 0.9 + cov * 0.1
+
+        if self.moving_E_avg != None:
+            self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
+            print("moving_E_avg/N !!!!: ", self.moving_E_avg / num_site)
+            Earray_m_avg = Earray - self.moving_E_avg
+        else:
+            Earray_m_avg = Earray - Eavg
+
+        _Flist = self.NNet.get_E_grads(configArray, Earray_m_avg)
+
+        ## Adding Regularization ##
+        for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+            _Flist[idx] = _Flist[idx] / num_sample + W * self.reg
+
+        _Glist = []
+        for idx, cov in enumerate(self.cov_list):
+            _g, info = scipy.sparse.linalg.minres(cov.real, _Flist[idx].flatten())
+            if info != 0:
+                print(info)
+                import pdb;pdb.set_trace()
+            else:
+                _Glist.append(_g)
+
+        _Fj = np.concatenate([_f.flatten() for _f in _Flist])
+        _Gj = np.concatenate([_g.flatten() for _g in _Glist])
+        end_c, end_t = time.clock(), time.time()
+        print("monte carlo time ( compute inv OO from cov_list and get Gj ): ",
+              end_c - start_c, end_t - start_t)
+
+        _GjFj = np.linalg.norm(_Gj.dot(_Fj))
+        print("norm(G): ", np.linalg.norm(_Gj),
+              "norm(F):", np.linalg.norm(_Fj),
+              "G.dot(F):", _GjFj)
+        # import pdb;pdb.set_trace()
+        # return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, GjFj
+
+
+        ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
+        #########               END                               ##########
+        ####################################################################
+
 
         if not explicit_SR:
             pass
@@ -494,6 +576,9 @@ class NQS_base():
             Gj[self.re_idx_array] = -Gj[self.im_idx_array]
             Gj[self.im_idx_array] = tmp
 
+        import pdb;pdb.set_trace()
+        print(" TO debug FjFj, ", Fj.dot(_Fj)/np.linalg.norm(Fj)/np.linalg.norm(_Fj),
+              " TO debug GjGj, ", Gj.dot(_Gj)/np.linalg.norm(Gj)/np.linalg.norm(_Gj))
         return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, GjFj
 
 
@@ -551,6 +636,8 @@ class NQS_1d(NQS_base):
             # self.get_local_E_batch = self.local_E_J1J2_batch_log
         else:
             raise NotImplementedError
+
+        super(NQS_1d, self).__init__()
 
     def init_config(self, sz0_sector=True):
         if sz0_sector:
@@ -1157,6 +1244,8 @@ class NQS_2d(NQS_base):
             self.get_local_E_batch = self.local_E_2dJulian_batch_log
         else:
             raise NotImplementedError
+
+        super(NQS_2d, self).__init__()
 
     def init_config(self, sz0_sector=True):
         if sz0_sector:
