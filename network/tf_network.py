@@ -181,8 +181,8 @@ class tf_network:
         if optimizer == "KFAC":
             # self.layer_collection.register_categorical_predictive_distribution(tf.square(self.amp),
             #                                                                    targets=tf.square(self.amp))
-            # kfac_loss = LogProbLoss(self.amp)
-            kfac_loss = LogProbLoss(self.prob)
+            # kfac_loss = LogProbLoss(self.prob)
+            kfac_loss = LogProbLoss(self.amp)
             # kfac_loss = kfac.python.ops.loss_functions.LogProbLoss(tf.square(self.amp))
             self.layer_collection._register_loss_function(kfac_loss, self.amp, 'log_prob_loss')
             # using amp as P, to compute <O^*O> = <logp logp>
@@ -305,8 +305,16 @@ class tf_network:
         else:
             self.newgrads_kfac = [tf.placeholder(self.TF_FLOAT, g.get_shape()) for g in self.log_grads]
 
-        self.train_op = self.optimizer.apply_gradients(list(zip(self.newgrads,
-                                                                self.para_list)))
+
+        if optimizer == "KFAC":
+            self.Momoptimizer = tf_.select_optimizer('Mom', self.learning_rate,
+                                                     self.momentum, var_list=self.para_list,
+                                                     layer_collection=None)
+            self.train_op = self.Momoptimizer.apply_gradients(list(zip(self.newgrads,
+                                                                       self.para_list)))
+        else:
+            self.train_op = self.optimizer.apply_gradients(list(zip(self.newgrads,
+                                                                    self.para_list)))
 
         self.update_exp_stabilizer = self.exp_stabilizer.assign(self.exp_stabilizer +
                                                                 self.dx_exp_stabilizer)
@@ -329,6 +337,8 @@ class tf_network:
                                                                                        self.para_list)))
             self.fisher_multiply = self.optimizer._fisher_est.multiply(list(zip(self.newgrads_kfac,
                                                                                 self.para_list)))
+
+
 
         ### 
         # 1. get_amp; get_log_amp functions are done with forward pass of NN
@@ -1528,7 +1538,7 @@ class tf_network:
         ## single model, i.e. w.o. symmetry 
         ## using for sampling perpose only
         #######################################
-        self.registered = self.using_symm  # Not to register the sampling head
+        self.registered = self.registered or self.using_symm  # Not to register the sampling head
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x_reshaped = tf.reshape(x, [-1, self.LxLy, self.channels])
 
@@ -1605,6 +1615,7 @@ class tf_network:
 
 
         if not self.using_symm:
+            self.registered = True
             return out, log_amp, log_cond_amp, prob
         else:
             #######################################

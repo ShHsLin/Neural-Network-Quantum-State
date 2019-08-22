@@ -115,7 +115,7 @@ class NQS_base():
         corrlength = self.corrlength
         configDim = list(self.config.shape)
         configDim[0] = num_sample
-        configArray = np.zeros(configDim, dtype=np.int32)
+        configArray = np.zeros(configDim, dtype=np.int8)
 
         NAQS = True
         if NAQS:
@@ -250,10 +250,16 @@ class NQS_base():
 
             # Initiate KFAC
             self.NNet.apply_cov_update(configArray)
-            self.NNet.apply_inverse_update(configArray)
+            try:
+                self.NNet.apply_inverse_update(configArray)
+            except Exception as e:
+                print("not inverse upadte !!!")
+                print(e)
+
             end_c, end_t = time.clock(), time.time()
             print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
             Gj = self.list_to_vec([pair[0] for pair in self.NNet.apply_fisher_inverse(F_list, configArray)])
+            print("norm(G): ", np.linalg.norm(Gj))
             return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, Gj.dot(F0_vec)
             import pdb;pdb.set_trace()
 

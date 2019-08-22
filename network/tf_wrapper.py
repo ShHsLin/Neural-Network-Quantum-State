@@ -34,31 +34,31 @@ def select_optimizer(optimizer, learning_rate, momentum=0, var_list=None,
         return tf.train.AdadeltaOptimizer(learning_rate=learning_rate,
                                           epsilon=1e-6)
     elif optimizer == 'KFAC':
-        return kfac.KfacOptimizer(
-            learning_rate=learning_rate,
-            var_list=var_list,
-            cov_ema_decay=0.95,
-            damping=0.001,
-            layer_collection=layer_collection,
-            estimation_mode="empirical",
-            placement_strategy="round_robin",
-            # cov_devices=[device],
-            # inv_devices=[device],
-            momentum=0.9)
-        # return kfac.PeriodicInvCovUpdateKfacOpt(
-        #     invert_every=_INVERT_EVERY,
-        #     cov_update_every=_COV_UPDATE_EVERY,
+        # return kfac.KfacOptimizer(
         #     learning_rate=learning_rate,
+        #     var_list=var_list,
         #     cov_ema_decay=0.95,
         #     damping=0.001,
         #     layer_collection=layer_collection,
+        #     estimation_mode="empirical",
         #     placement_strategy="round_robin",
         #     # cov_devices=[device],
         #     # inv_devices=[device],
-        #     # trans_devices=[device],
-        #     var_list=var_list,
-        #     estimation_mode="empirical",
         #     momentum=0.9)
+        return kfac.PeriodicInvCovUpdateKfacOpt(
+            invert_every=_INVERT_EVERY,
+            cov_update_every=_COV_UPDATE_EVERY,
+            learning_rate=learning_rate,
+            cov_ema_decay=0.95,
+            damping=0.1,
+            layer_collection=layer_collection,
+            placement_strategy="round_robin",
+            # cov_devices=[device],
+            # inv_devices=[device],
+            # trans_devices=[device],
+            var_list=var_list,
+            estimation_mode="empirical",
+            momentum=0.9)
     else:
         raise
 
