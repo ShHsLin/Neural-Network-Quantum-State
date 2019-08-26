@@ -685,7 +685,7 @@ def get_var_count(self):
 def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                        dtype, filter_size=3, activation=tf.nn.relu,
                        layer_collection=None, registered=False,
-                       residual_connection=True):
+                       residual_connection=False):
     '''
     for starting block, input: x, output: out with two branch concat in channel dimension
     for mid block,  input x with two branch concat in channel dimension

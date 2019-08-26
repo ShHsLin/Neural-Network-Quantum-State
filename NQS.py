@@ -411,9 +411,11 @@ class NQS_base():
         unaggregated_O_list = self.Oarray_to_Olist(Oarray - np.outer(Osum/num_sample, np.ones(num_sample)))
         ## The unaggregated_O has mean subtracted already
         for idx, unaggregated_O in enumerate(unaggregated_O_list):
-            cov = unaggregated_O.conjugate().dot(unaggregated_O.T) / num_sample
-            cov = cov + np.eye(cov.shape[0]) * 1e-4
-            self.cov_list[idx] = self.cov_list[idx] * 0.9 + cov * 0.1
+            cov = (unaggregated_O.conjugate().dot(unaggregated_O.T) ).real / num_sample
+            cov += np.eye(cov.shape[0]) * 1e-4
+            # self.cov_list[idx] = self.cov_list[idx] * 0.9 + cov * 0.1
+            self.cov_list[idx] *= 0.9
+            self.cov_list[idx] += cov * 0.1
 
         if self.moving_E_avg != None:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
@@ -448,7 +450,7 @@ class NQS_base():
               "norm(F):", np.linalg.norm(_Fj),
               "G.dot(F):", _GjFj)
         # import pdb;pdb.set_trace()
-        # return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, GjFj
+        return _Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, _GjFj
 
 
         ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
