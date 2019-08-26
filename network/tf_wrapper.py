@@ -33,6 +33,9 @@ def select_optimizer(optimizer, learning_rate, momentum=0, var_list=None,
     elif optimizer == 'Adadelta':
         return tf.train.AdadeltaOptimizer(learning_rate=learning_rate,
                                           epsilon=1e-6)
+    elif optimizer == 'GGT':
+        return tf.contrib.opt.GGTOptimizer(learning_rate=learning_rate,
+                                           window=10)
     elif optimizer == 'KFAC':
         # return kfac.KfacOptimizer(
         #     learning_rate=learning_rate,
