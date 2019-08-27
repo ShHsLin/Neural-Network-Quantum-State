@@ -379,7 +379,11 @@ class NQS_base():
                 self.cov_list = []
                 for var_shape in self.NNet.var_shape_list:
                     var_size = np.prod(var_shape)
-                    self.cov_list.append(np.eye(var_size, dtype=self.NP_FLOAT))
+                    if var_size < 512:
+                        self.cov_list.append(np.eye(var_size, dtype=self.NP_FLOAT))
+                        # self.cov_list.append(np.zeros([var_size, var_size], dtype=self.NP_FLOAT))
+                    else:
+                        self.cov_list.append(None)
 
                 # Now we have the cov_list setted up as a list of identity matrices
             else:
@@ -410,12 +414,58 @@ class NQS_base():
 
         unaggregated_O_list = self.Oarray_to_Olist(Oarray - np.outer(Osum/num_sample, np.ones(num_sample)))
         ## The unaggregated_O has mean subtracted already
+        decay_rate = 0.8
+        k_size = 64
+        stablize_eps = 1e-6  # at the level of eigenvalue, i.e. singular value ^ 2
         for idx, unaggregated_O in enumerate(unaggregated_O_list):
-            cov = (unaggregated_O.conjugate().dot(unaggregated_O.T) ).real / num_sample
-            cov += np.eye(cov.shape[0]) * 1e-4
-            # self.cov_list[idx] = self.cov_list[idx] * 0.9 + cov * 0.1
-            self.cov_list[idx] *= 0.9
-            self.cov_list[idx] += cov * 0.1
+            var_size = unaggregated_O.shape[0]
+            if var_size < 512:
+                ## Forming cov, inv_cov explicitly
+                cov = (unaggregated_O.conjugate().dot(unaggregated_O.T) ).real / num_sample
+                cov += np.eye(cov.shape[0]) * stablize_eps
+                self.cov_list[idx] = self.cov_list[idx] * decay_rate + cov * (1-decay_rate)
+            else:
+                if var_size < 8192:
+                    cov = (unaggregated_O.real.dot(unaggregated_O.real.T) ) / num_sample
+                    cov += (unaggregated_O.imag.dot(unaggregated_O.imag.T)) / num_sample
+                    # cov_U, cov_S, cov_Vd = scipy.sparse.linalg.svds(cov, k=k_size)
+                    if self.cov_list[idx] is not None:
+                        old_cov_S, old_cov_U = self.cov_list[idx][:]
+                        cov = cov * (1-decay_rate) + old_cov_U.dot(np.diag(old_cov_S).dot(old_cov_U.T)) * decay_rate
+                        cov_S, cov_U = scipy.sparse.linalg.eigsh(cov, k=k_size)
+                        self.cov_list[idx] = [cov_S, cov_U]
+                    else:
+                        cov_S, cov_U = scipy.sparse.linalg.eigsh(cov, k=k_size)
+                        self.cov_list[idx] = [cov_S, cov_U]
+
+                else:  # var_size > 8192
+                    def implicit_cov(_v):
+                        real_part = unaggregated_O.real
+                        imag_part = unaggregated_O.imag
+                        finalv = real_part.dot(real_part.T.dot(_v) / num_sample)
+                        finalv += imag_part.dot(imag_part.T.dot(_v) / num_sample)
+                        return finalv  + _v * stablize_eps
+
+                    implicit_cov_op = LinearOperator((var_size, var_size), matvec=implicit_cov, rmatvec=implicit_cov)
+                    cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_op, k=k_size)
+
+                    if self.cov_list[idx] is not None:
+                        old_cov_S, old_cov_U = self.cov_list[idx][:]
+                        def implicit_cov_all(_v):
+                            finalv = cov_U.dot(np.diag(cov_S).dot(cov_U.T.dot(_v))) * (1-decay_rate)
+                            finalv += old_cov_U.dot(np.diag(old_cov_S).dot(old_cov_U.T.dot(_v))) * (decay_rate)
+                            return finalv
+
+                        implicit_cov_all_op = LinearOperator((var_size, var_size), matvec=implicit_cov_all,
+                                                             rmatvec=implicit_cov_all)
+                        cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_all_op, k=k_size)
+                        self.cov_list[idx] = [cov_S, cov_U]
+                    else:
+                        self.cov_list[idx] = [cov_S, cov_U]
+
+
+        # End for update cov_list
+        end_c, end_t = time.clock(), time.time(); print("monte carlo time ( update cov_list ): ", end_c - start_c, end_t - start_t)
 
         if self.moving_E_avg != None:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
@@ -426,18 +476,36 @@ class NQS_base():
 
         _Flist = self.NNet.get_E_grads(configArray, Earray_m_avg)
 
+
+        end_c, end_t = time.clock(), time.time(); print("monte carlo time ( get E_grads ): ", end_c - start_c, end_t - start_t)
+
         ## Adding Regularization ##
         for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
             _Flist[idx] = _Flist[idx] / num_sample + W * self.reg
 
         _Glist = []
         for idx, cov in enumerate(self.cov_list):
-            _g, info = scipy.sparse.linalg.minres(cov.real, _Flist[idx].flatten())
-            if info != 0:
-                print(info)
-                import pdb;pdb.set_trace()
+            if type(cov) != list:
+                # inv_cov = np.linalg.pinv(cov, self.pinv_rcond)
+                # _g = inv_cov.dot(_Flist[idx].flatten())
+                # _Glist.append(_g)
+
+                _g, info = scipy.sparse.linalg.minres(cov, _Flist[idx].flatten())
+                if info != 0:
+                    print(info)
+                    import pdb;pdb.set_trace()
+                else:
+                    _Glist.append(_g)
             else:
+                cov_S, cov_U = cov[:]
+                # print(cov_S)
+                # _g = cov_U.dot(np.diag(1./cov_S).dot(cov_U.T.dot(_Flist[idx].flatten())))
+                _g = cov_U.dot(np.diag(cov_S/(cov_S**2 + stablize_eps)).dot(cov_U.T.dot(_Flist[idx].flatten())))
                 _Glist.append(_g)
+
+
+        end_c, end_t = time.clock(), time.time(); print("monte carlo time ( inverse cov_list get G ): ", end_c - start_c, end_t - start_t)
+
 
         _Fj = np.concatenate([_f.flatten() for _f in _Flist])
         _Gj = np.concatenate([_g.flatten() for _g in _Glist])
