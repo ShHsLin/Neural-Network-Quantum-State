@@ -1400,8 +1400,10 @@ class NQS_2d(NQS_base):
                     # mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
                     # self.config[mask, site_i, site_j, 0] = 1
                     # self.config[np.logical_not(mask), site_i, site_j, 1] = 1
-                    if np.isnan(site_prob).any():
-                        import pdb;pdb.set_trace()
+
+                    # if np.isnan(site_prob).any():
+                    #     import pdb;pdb.set_trace()
+                    assert( not np.isnan(site_prob).any() )
 
                     for batch_idx in range(batch_size):
                         self.config[batch_idx, site_i, site_j,
@@ -1890,9 +1892,10 @@ class NQS_2d(NQS_base):
         # localE_arr += mu * num_particle
         print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
 
+        # if np.isnan(localE_arr).any():
+        #     import pdb;pdb.set_trace()
 
-        if np.isnan(localE_arr).any():
-            import pdb;pdb.set_trace()
+        assert( not np.isnan(localE_arr).any() )
 
         return localE_arr + 0. * (num_particle - Lx*Ly//2)**2, localE_arr
 

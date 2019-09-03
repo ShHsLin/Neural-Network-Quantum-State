@@ -358,8 +358,10 @@ class tf_network:
             self.get_E_grads = self.plain_get_E_grads
 
 
+        ####################################################################################
         # Initializing All the variables and operation, all operation and variables should 
         # be defined before here.!!!!
+        ####################################################################################
         config = tf.ConfigProto()
         config.gpu_options.allow_growth=True
         config.allow_soft_placement=True

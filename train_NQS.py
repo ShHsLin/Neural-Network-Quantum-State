@@ -301,6 +301,7 @@ if __name__ == "__main__":
         else:
             pass
 
+
     # Saving E_list
     if SR:
         log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
@@ -314,6 +315,12 @@ if __name__ == "__main__":
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()
+
+
+    print(" The whole training finish; now remove tmp file and "
+          " Store the result in csv file")
+    os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
+              (L, which_net, act, alpha, opt, lr, num_sample))
 
 
     '''
