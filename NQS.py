@@ -137,7 +137,7 @@ class NQS_base():
         configDim[0] = num_sample
         configArray = np.zeros(configDim, dtype=np.int8)
 
-        NAQS = False
+        NAQS = True
         if NAQS:
             for i in range(1, 1+int(num_sample//self.batch_size)):
                 self.forward_sampling(sym_sec=None)
