@@ -416,7 +416,7 @@ class NQS_base():
         ## The unaggregated_O has mean subtracted already
         decay_rate = 0.8
         k_size = 64
-        stablize_eps = 1e-6  # at the level of eigenvalue, i.e. singular value ^ 2
+        stablize_eps = 1e-4  # at the level of eigenvalue, i.e. singular value ^ 2
         for idx, unaggregated_O in enumerate(unaggregated_O_list):
             var_size = unaggregated_O.shape[0]
             if var_size < 512:
