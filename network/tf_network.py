@@ -1068,14 +1068,14 @@ class tf_network:
             LxLy = Lx * Ly
             x = tf.reshape(x[:, :, :, 0], [-1, LxLy])
             x = tf.cast(x, dtype=self.TF_FLOAT)
-            fc1_re = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_re')
-            fc1_im = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_im')
+            fc1_re = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_re', dtype=self.TF_FLOAT)
+            fc1_im = tf_.fc_layer(x, LxLy, LxLy * self.alpha, 'fc1_im', dtype=self.TF_FLOAT)
             fc1 = tf.complex(fc1_re, fc1_im)
             fc2 = tf_.softplus2(fc1)
             # fc2 = tf_.complex_relu(fc1)
 
-            v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re')
-            v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im')
+            v_bias_re = tf_.fc_layer(x, LxLy, 1, 'v_bias_re', dtype=self.TF_FLOAT)
+            v_bias_im = tf_.fc_layer(x, LxLy, 1, 'v_bias_im', dtype=self.TF_FLOAT)
             log_prob = tf.reduce_sum(fc2, axis=1, keepdims=True)
             log_prob = tf.add(log_prob, tf.complex(v_bias_re, v_bias_im))
             out = tf.exp(log_prob)
@@ -1530,6 +1530,7 @@ class tf_network:
 
 
     def build_pixelCNN_2d(self, x, activation, num_blocks, mode='2'):
+        assert(self.using_complex)
         if mode == '1':
             pixel_block = tf_.pixel_block
         elif mode == '2':

@@ -79,11 +79,11 @@ if __name__ == "__main__":
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
                        J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time, pinv_rcond=pinv_rcond)
+                       real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
     elif dim == 2:
         N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
                        J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time, pinv_rcond=pinv_rcond)
+                       real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
     else:
         print("DIM error")
         raise NotImplementedError

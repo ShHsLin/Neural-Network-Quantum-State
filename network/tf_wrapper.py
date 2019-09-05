@@ -615,7 +615,7 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
         u = tf.random_uniform([in_size, out_size], minval=0, maxval=1.)
         sigma = np.sqrt(2./in_size)
         w_mag = sigma * tf.sqrt(-2. * tf.log(1.-u))
-        theta = tf.random_uniform([in_size, out_size], minval=0, maxval=2.*np.pi)
+        theta = tf.random_uniform([in_size, out_size], minval=0, maxval=2.*np.pi, dtype=part_dtype)
         init_w_re = w_mag * tf.cos(theta)
         init_w_im = w_mag * tf.sin(theta)
         real_weights = get_var(init_w_re, name + "real_weights", dtype=part_dtype)
@@ -636,7 +636,7 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
         # Xavier init
         # initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
         # He (MSAR) init
-        initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size)))
+        initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size)), dtype=dtype)
         weights = get_var(initial_value, name + "weights", dtype=dtype)
 
         if biases:

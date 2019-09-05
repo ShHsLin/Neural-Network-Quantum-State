@@ -137,7 +137,7 @@ class NQS_base():
         configDim[0] = num_sample
         configArray = np.zeros(configDim, dtype=np.int8)
 
-        NAQS = True
+        NAQS = False
         if NAQS:
             for i in range(1, 1+int(num_sample//self.batch_size)):
                 self.forward_sampling(sym_sec=None)
@@ -655,7 +655,7 @@ class NQS_base():
 class NQS_1d(NQS_base):
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
                  using_complex=False, single_precision=True, real_time=False,
-                 pinv_rcond=1e-6):
+                 pinv_rcond=1e-6, PBC=False):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
                                dtype=np.int8)
         self.num_site = inputShape[0]
@@ -681,6 +681,7 @@ class NQS_1d(NQS_base):
             self.NP_FLOAT = np.float64
             self.NP_COMPLEX = np.complex128
 
+        self.PBC = PBC
         self.real_time = real_time
         self.pinv_rcond = pinv_rcond
         np_arange = np.arange(self.net_num_para)
@@ -1011,13 +1012,15 @@ class NQS_1d(NQS_base):
         Sz_j = (Sz_j-0.5)
         return Sz_j
 
-    def Ising_local_expectation(self, config_arr, PBC=False):
+    def Ising_local_expectation(self, config_arr):
         '''
         H = -J sz_i sz_j + g sx_i - h sz_i
         '''
         J = 0.4
         g = 0.9045
         h = 0.7090
+        PBC = self.PBC
+
         num_config, L, inputShape1 = config_arr.shape
         localE_arr = np.zeros(L, dtype=self.NP_COMPLEX)
         oldAmp = self.eval_amp_array(config_arr)
@@ -1154,7 +1157,7 @@ class NQS_1d(NQS_base):
         localE_arr += -np.einsum('ij,ji->i', (SzSz-1), flip_Amp_arr) * J2 / oldAmp / 2
         return localE_arr
 
-    def local_E_Ising_batch(self, config_arr, PBC=False):
+    def local_E_Ising_batch(self, config_arr):
         '''
         https://arxiv.org/pdf/1503.04508.pdf
         H = -J sx_i sx_j - g sz_i - h sx_i
@@ -1165,6 +1168,7 @@ class NQS_1d(NQS_base):
         J = 0.4 # self.J
         g = 0.9045 # self.g
         h = 0.7090 # self.h
+        PBC = self.PBC
         '''
         Base on the fact that, in one-hot representation
         sigma^z siamg^z Interaction
@@ -1248,7 +1252,7 @@ class NQS_1d(NQS_base):
 class NQS_2d(NQS_base):
     def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
                  using_complex=False, single_precision=True, real_time=False,
-                 pinv_rcond=1e-6):
+                 pinv_rcond=1e-6, PBC=False):
         '''
         config = [batch_size, Lx, Ly, local_dim]
         config represent the product state basis of the model
@@ -1286,6 +1290,7 @@ class NQS_2d(NQS_base):
             self.NP_FLOAT = np.float64
             self.NP_COMPLEX = np.complex128
 
+        self.PBC = PBC
         self.real_time = real_time
         self.pinv_rcond = pinv_rcond
         np_arange = np.arange(self.NNet.im_para_array.size)
@@ -1449,7 +1454,6 @@ class NQS_2d(NQS_base):
         '''
         ## Should add implementation with log amplitude
         ## which would be more stable for numerical reason.
-        raise NotImplementedError
         batch_size = self.batch_size
         old_log_amp = self.get_self_log_amp_batch()
         # old_amp = self.get_self_amp_batch()
@@ -1494,7 +1498,7 @@ class NQS_2d(NQS_base):
         acceptance_ratio = np.sum(final_mask)/batch_size
         return acceptance_ratio
 
-    def local_E_Ising_batch(self, config_arr, PBC=False):
+    def local_E_Ising_batch(self, config_arr):
         '''
         To compute the Energz of 2d Transverse Field Ising model with
         the configuration given in config_array.
@@ -1522,6 +1526,7 @@ class NQS_2d(NQS_base):
         J=1.
         g=2.
         h=0.
+        PBC = self.PBC
 
         num_config, Lx, Ly, local_dim = config_arr.shape
         oldAmp = self.eval_amp_array(config_arr)
@@ -1581,7 +1586,7 @@ class NQS_2d(NQS_base):
 
         return localE_arr
 
-    def local_E_Ising_batch_log(self, config_arr, PBC=False):
+    def local_E_Ising_batch_log(self, config_arr):
         '''
         See explanation in local_E_Ising_batch.
         The difference here is we compute exp(log_amp1-log_amp2),
@@ -1599,6 +1604,7 @@ class NQS_2d(NQS_base):
         J=1.
         g=3.5
         h=0.
+        PBC = self.PBC
 
         num_config, Lx, Ly, local_dim = config_arr.shape
         old_log_amp = self.eval_log_amp_array(config_arr)
@@ -1661,7 +1667,7 @@ class NQS_2d(NQS_base):
 
         return localE_arr
 
-    def local_E_2dAFH_batch(self, config_arr, J=1, PBC=False):
+    def local_E_2dAFH_batch(self, config_arr, J=1):
         '''
         To compute the Energz of 2d Heisenberg model with
         the configuration given in config_array.
@@ -1683,6 +1689,7 @@ class NQS_2d(NQS_base):
                 dtype=float or complex
                 dtype depends on whether we are using complex amplitude wavefunction.
         '''
+        PBC = self.PBC
         num_config, Lx, Ly, local_dim = config_arr.shape
         oldAmp = self.eval_amp_array(config_arr)
         localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
@@ -1752,7 +1759,7 @@ class NQS_2d(NQS_base):
 
         return localE_arr
 
-    def local_E_2dAFH_batch_log(self, config_arr, J=1, PBC=False):
+    def local_E_2dAFH_batch_log(self, config_arr, J=1):
         '''
         To compute the Energy of 2d Heisenberg model with
         the configuration given in config_array.
@@ -1779,6 +1786,7 @@ class NQS_2d(NQS_base):
             value of nan at that point.
 
         '''
+        PBC = self.PBC
         num_config, Lx, Ly, local_dim = config_arr.shape
         old_log_amp = self.eval_log_amp_array(config_arr)
         # old_log_amp shape (num_config,1)
@@ -1903,7 +1911,7 @@ class NQS_2d(NQS_base):
 
         return localE_arr + 0. * (num_particle - Lx*Ly//2)**2, localE_arr
 
-    def local_E_2dJ1J2_batch(self, config_arr, PBC=False):
+    def local_E_2dJ1J2_batch(self, config_arr):
         '''
         To compute the Energz of 2d J1J2 model with
         the configuration given in config_array.
@@ -1924,6 +1932,7 @@ class NQS_2d(NQS_base):
         '''
         J1 = 1.
         J2 = self.J2
+        PBC = self.PBC
 
         num_config, Lx, Ly, local_dim = config_arr.shape
         oldAmp = self.eval_amp_array(config_arr)
@@ -2067,7 +2076,7 @@ class NQS_2d(NQS_base):
 
         return localE_arr
 
-    def local_E_2dJ1J2_batch_log(self, config_arr, PBC=False):
+    def local_E_2dJ1J2_batch_log(self, config_arr):
         '''
         See explanation in local_E_2dJ1J2_batch.
         The difference here is we compute exp(log_amp1-log_amp2),
@@ -2094,6 +2103,7 @@ class NQS_2d(NQS_base):
         '''
         J1 = 1.
         J2 = self.J2
+        PBC = self.PBC
 
         num_config, Lx, Ly, local_dim = config_arr.shape
         old_log_amp = self.eval_log_amp_array(config_arr)
@@ -2328,7 +2338,7 @@ class NQS_2d(NQS_base):
 
 
     def local_E_2dJulian_batch_log(self, config_arr, t1=-1.,
-                                   t2=-1., U=100., PBC=False):
+                                   t2=-1., U=100.):
         '''
         To compute the Energy of 2d Julian model with
         the configuration given in config_array.
@@ -2343,6 +2353,8 @@ class NQS_2d(NQS_base):
                 dtype=complex
                 regardless of using real/complex amplitude wavefunction.
         '''
+        PBC = self.PBC
+
         num_config, Lx, Ly, local_dim = config_arr.shape
         old_log_amp = self.eval_log_amp_array(config_arr)
         # old_log_amp shape (num_config,1)
