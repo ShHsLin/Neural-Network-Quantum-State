@@ -1529,12 +1529,14 @@ class tf_network:
             return tf.real(out), None, log_cond_amp, prob
 
 
-    def build_pixelCNN_2d(self, x, activation, num_blocks, mode='2'):
+    def build_pixelCNN_2d(self, x, activation, num_blocks, residual_connection, mode, BN):
         assert(self.using_complex)
         if mode == '1':
             pixel_block = tf_.pixel_block
         elif mode == '2':
             pixel_block = tf_.pixel_block_sharir
+        elif mode == '3':
+            pixel_block = tf_.pixel_block_resnext
 
         act = tf_.select_activation(activation)
         #######################################
@@ -1549,17 +1551,26 @@ class tf_network:
             px = pixel_block(pixel_input, self.channels, 8*self.alpha, 'start', 'pixel_0',
                              self.TF_FLOAT, activation=act,
                              layer_collection=self.layer_collection,
-                             registered=self.registered)
+                             registered=self.registered,
+                             residual_connection=residual_connection,
+                             BN=BN,
+                            )
             for i in range(1, num_blocks):
                 px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
                                  self.TF_FLOAT, activation=act,
                                  layer_collection=self.layer_collection,
-                                 registered=self.registered)
+                                 registered=self.registered,
+                                 residual_connection=residual_connection,
+                                 BN=BN,
+                                )
 
             px = pixel_block(px, 8*self.alpha, self.channels*2, 'end', 'pixel_end',
                              self.TF_FLOAT, activation=act,
                              layer_collection=self.layer_collection,
-                             registered=self.registered)
+                             registered=self.registered,
+                             residual_connection=residual_connection,
+                             BN=BN,
+                            )
 
             fc3 = tf.reshape(px, [-1, self.LxLy, self.channels*2])
 
@@ -1642,17 +1653,26 @@ class tf_network:
                 px = pixel_block(symm_pixel_input, self.channels, 8*self.alpha, 'start', 'pixel_0',
                                  self.TF_FLOAT, activation=act,
                                  layer_collection=self.layer_collection,
-                                 registered=self.registered)
+                                 registered=self.registered,
+                                 residual_connection=residual_connection,
+                                 BN=BN,
+                                )
                 for i in range(1, 10):
                     px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
                                      self.TF_FLOAT, activation=act,
                                      layer_collection=self.layer_collection,
-                                     registered=self.registered)
+                                     registered=self.registered,
+                                     residual_connection=residual_connection,
+                                     BN=BN,
+                                    )
 
                 px = pixel_block(px, 8*self.alpha, self.channels*2, 'end', 'pixel_end',
                                  self.TF_FLOAT, activation=act,
                                  layer_collection=self.layer_collection,
-                                 registered=self.registered)
+                                 registered=self.registered,
+                                 residual_connection=residual_connection,
+                                 BN=BN,
+                                )
 
                 symm_fc3 = tf.reshape(px, [-1, self.LxLy, self.channels*2])
 
@@ -2087,7 +2107,17 @@ class tf_network:
         elif which_net == 'MADE':
             return self.build_MADE_2d(x, activation)
         elif which_net == 'pixelCNN':
-            return self.build_pixelCNN_2d(x, activation, num_blocks)
+            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=False,
+                                          mode='2', BN=False)
+        elif which_net == 'pixelCNN-BN':
+            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=False,
+                                          mode='2', BN=True)
+        elif which_net == 'pixelCNN-Res':
+            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=True,
+                                          mode='2', BN=False)
+        elif which_net == 'pixelCNN-Res-BN':
+            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=True,
+                                          mode='2', BN=True)
         elif which_net == "ResNN3":
             return self.build_ResNN3_2d(x, activation)
         elif which_net == "RBM":

@@ -688,7 +688,7 @@ def get_var_count(self):
 def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                        dtype, filter_size=3, activation=tf.nn.relu,
                        layer_collection=None, registered=False,
-                       residual_connection=False):
+                       residual_connection=False, BN=False):
     '''
     for starting block, input: x, output: out with two branch concat in channel dimension
     for mid block,  input x with two branch concat in channel dimension
@@ -710,6 +710,9 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                            name+'_ver', dtype=dtype, padding='VALID',
                                            layer_collection=layer_collection,
                                            registered=registered)
+            if BN:
+                vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
+
             vertical_branch = activation(vertical_branch)
 
             ## N H W C
@@ -723,6 +726,9 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                                     'A2', name+'_hor', dtype=dtype, padding='VALID',
                                                     layer_collection=layer_collection,
                                                     registered=registered)
+            if BN:
+                horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
+
             horizontal_branch = activation(horizontal_branch)
             out = tf.concat([vertical_branch, horizontal_branch], 3)
 
@@ -740,6 +746,9 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                            name+'_ver', padding='VALID', dtype=dtype,
                                            layer_collection=layer_collection,
                                            registered=registered)
+            if BN:
+                vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
+
             vertical_branch = activation(vertical_branch)
 
             ## Wrong CONCATE WAY 
@@ -758,13 +767,18 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                              name+'_hor', padding='VALID', dtype=dtype,
                                              layer_collection=layer_collection,
                                              registered=registered)
+            if BN:
+                horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
+
             if residual_connection:
                 horizontal_branch = horizontal_branch + x[:,:,:,in_channel//2:]
+
             # horizontal_branch = masked_conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, out_channel//2,
             #                                         'A2', name+'_hor', dtype=dtype, padding='VALID',
             #                                         layer_collection=layer_collection,
             #                                         registered=registered)
 
+            horizontal_branch = activation(horizontal_branch)
             out = tf.concat([vertical_branch, horizontal_branch], 3)
         elif block_type == 'end':
             assert in_channel % 2 == 0
@@ -779,6 +793,9 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                            name+'_ver', padding='VALID', dtype=dtype,
                                            layer_collection=layer_collection,
                                            registered=registered)
+            if BN:
+                vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
+
             vertical_branch = activation(vertical_branch)
 
             ## Wrong CONCATE WAY 
@@ -802,6 +819,8 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
             #                                         'A2', name+'_hor', dtype=dtype, padding='VALID',
             #                                         layer_collection=layer_collection,
             #                                         registered=registered)
+            if BN:
+                horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
 
             out = horizontal_branch
         else:
