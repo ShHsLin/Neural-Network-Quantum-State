@@ -86,8 +86,13 @@ def select_activation(activation):
         return tf.nn.selu
     elif activation == 'lncosh':
         return logcosh
+    elif activation == 'linear':
+        return linear
     else:
         raise NotImplementedError
+
+def linear(x):
+    return x
 
 def logcosh(x):
     return tf.math.log(tf.math.cosh(x))
@@ -710,10 +715,14 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                            name+'_ver', dtype=dtype, padding='VALID',
                                            layer_collection=layer_collection,
                                            registered=registered)
-            if BN:
-                vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
 
-            vertical_branch = activation(vertical_branch)
+            ## If the activation below applies here, then
+            ## it is applied before the down_shift concatanation step
+            ## This might not be what we want
+            # if BN:
+            #     vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
+            #
+            # vertical_branch = activation(vertical_branch)
 
             ## N H W C
             down_shift_v_branch = tf.pad(vertical_branch[:,:-1,:,:], [[0,0], [1,0], [0,0], [0,0]],
@@ -726,12 +735,15 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                                     'A2', name+'_hor', dtype=dtype, padding='VALID',
                                                     layer_collection=layer_collection,
                                                     registered=registered)
-            if BN:
-                horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
-
-            horizontal_branch = activation(horizontal_branch)
+            # if BN:
+            #     horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
+            #
+            # horizontal_branch = activation(horizontal_branch)
             out = tf.concat([vertical_branch, horizontal_branch], 3)
+            if BN:
+                out = batch_norm(out, phase=True, scope='bn_out')
 
+            out = activation(out)
         elif block_type == 'mid':
             assert in_channel % 2 == 0
             assert out_channel % 2 == 0
@@ -746,12 +758,16 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                            name+'_ver', padding='VALID', dtype=dtype,
                                            layer_collection=layer_collection,
                                            registered=registered)
-            if BN:
-                vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
 
-            vertical_branch = activation(vertical_branch)
+            ## If the activation below applies here, then
+            ## it is applied before the down_shift concatanation step
+            ## This might not be what we want
+            # if BN:
+            #     vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
+            #
+            # vertical_branch = activation(vertical_branch)
 
-            ## Wrong CONCATE WAY 
+            # Wrong CONCATE WAY
             # horizontal_branch = tf.concat([horizontal_branch[:,0:1,:,:],
             #                                horizontal_branch[:,1:,:,:] + vertical_branch[:,:-1,:,:]],
             #                               axis=1)
@@ -767,18 +783,22 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                              name+'_hor', padding='VALID', dtype=dtype,
                                              layer_collection=layer_collection,
                                              registered=registered)
-            if BN:
-                horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
 
-            if residual_connection:
-                horizontal_branch = horizontal_branch + x[:,:,:,in_channel//2:]
 
             # horizontal_branch = masked_conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, out_channel//2,
             #                                         'A2', name+'_hor', dtype=dtype, padding='VALID',
             #                                         layer_collection=layer_collection,
             #                                         registered=registered)
 
+            if BN:
+                vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
+                horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
+
+            vertical_branch = activation(vertical_branch)
             horizontal_branch = activation(horizontal_branch)
+            if residual_connection:
+                horizontal_branch = horizontal_branch + x[:,:,:,in_channel//2:]
+
             out = tf.concat([vertical_branch, horizontal_branch], 3)
         elif block_type == 'end':
             assert in_channel % 2 == 0
@@ -793,10 +813,12 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
                                            name+'_ver', padding='VALID', dtype=dtype,
                                            layer_collection=layer_collection,
                                            registered=registered)
-            if BN:
-                vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
 
-            vertical_branch = activation(vertical_branch)
+            ## If the activation below applies here, then
+            ## it is applied before the down_shift concatanation step
+            ## This might not be what we want
+            # vertical_branch = activation(vertical_branch)
+
 
             ## Wrong CONCATE WAY 
             # horizontal_branch = tf.concat([horizontal_branch[:,0:1,:,:],
@@ -819,8 +841,9 @@ def pixel_block_sharir(x, in_channel, out_channel, block_type, name,
             #                                         'A2', name+'_hor', dtype=dtype, padding='VALID',
             #                                         layer_collection=layer_collection,
             #                                         registered=registered)
-            if BN:
-                horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
+
+            # if BN:
+            #     horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
 
             out = horizontal_branch
         else:
