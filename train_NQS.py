@@ -151,7 +151,7 @@ if __name__ == "__main__":
     start_t, start_c = time.time(), time.clock()
     # N.update_stabilizer()
     if which_net not in ['pixelCNN', 'NADE', 'pixelCNN-Res',
-                         'pixelCNN-Res-BN', 'pixelCNN-BN']:
+                         'pixelCNN-Res-BN', 'pixelCNN-BN', 'pixelCNN-Agg']:
         if batch_size > 1:
             for i in range(1000):
                 N.new_config_batch()

@@ -1513,24 +1513,29 @@ class tf_network:
             ############################################################
             ### Constructed a path without involving complex number ####
             ############################################################
-            re_cond_amp = tf.stack([2*out0_re, 2*out0_im], axis=-1)
-            log_prob = tf.reduce_sum(tf.multiply(re_cond_amp, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+            re_cond_amp = tf.stack([2 * out0_re, 2 * out0_im], axis=-1)
+            log_prob = tf.reduce_sum(tf.multiply(
+                re_cond_amp, tf.cast(x_reshaped, self.TF_FLOAT)),
+                                     axis=[1, 2])
             prob = tf.exp(log_prob)
 
-            log_amp = tf.reduce_sum(tf.multiply(log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+            log_amp = tf.reduce_sum(tf.multiply(
+                log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)),
+                                    axis=[1, 2])
 
             out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
-        self.registered=True
+        self.registered = True
         if self.using_complex:
             return out, log_amp, log_cond_amp, prob
         else:
             return tf.real(out), None, log_cond_amp, prob
 
-
-    def build_pixelCNN_2d(self, x, activation, num_blocks, residual_connection, mode, BN):
-        assert(self.using_complex)
+    def build_pixelCNN_2d(self, x, activation, num_blocks, mode,
+                          residual_connection=False,
+                          BN=False, split_block=False):
+        assert (self.using_complex)
         if mode == '1':
             pixel_block = tf_.pixel_block
         elif mode == '2':
@@ -1540,7 +1545,7 @@ class tf_network:
 
         act = tf_.select_activation(activation)
         #######################################
-        ## single model, i.e. w.o. symmetry 
+        ## single model, i.e. w.o. symmetry
         ## using for sampling perpose only
         #######################################
         self.registered = self.registered or self.using_symm  # Not to register the sampling head
@@ -1548,31 +1553,52 @@ class tf_network:
             x_reshaped = tf.reshape(x, [-1, self.LxLy, self.channels])
 
             pixel_input = tf.cast(x, dtype=self.TF_FLOAT)
-            px = pixel_block(pixel_input, self.channels, 8*self.alpha, 'start', 'pixel_0',
-                             self.TF_FLOAT, activation=act,
-                             layer_collection=self.layer_collection,
-                             registered=self.registered,
-                             residual_connection=residual_connection,
-                             BN=BN,
-                            )
+            px = pixel_block(
+                pixel_input,
+                self.channels,
+                8 * self.alpha,
+                'start',
+                'pixel_0',
+                self.TF_FLOAT,
+                activation=act,
+                layer_collection=self.layer_collection,
+                registered=self.registered,
+                residual_connection=residual_connection,
+                BN=BN,
+                split_block=split_block,
+            )
             for i in range(1, num_blocks):
-                px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
-                                 self.TF_FLOAT, activation=act,
-                                 layer_collection=self.layer_collection,
-                                 registered=self.registered,
-                                 residual_connection=residual_connection,
-                                 BN=BN,
-                                )
+                px = pixel_block(
+                    px,
+                    8 * self.alpha,
+                    8 * self.alpha,
+                    'mid',
+                    'pixel_' + str(i),
+                    self.TF_FLOAT,
+                    activation=act,
+                    layer_collection=self.layer_collection,
+                    registered=self.registered,
+                    residual_connection=residual_connection,
+                    BN=BN,
+                    split_block=split_block,
+                )
 
-            px = pixel_block(px, 8*self.alpha, self.channels*2, 'end', 'pixel_end',
-                             self.TF_FLOAT, activation=act,
-                             layer_collection=self.layer_collection,
-                             registered=self.registered,
-                             residual_connection=residual_connection,
-                             BN=BN,
-                            )
+            px = pixel_block(
+                px,
+                8 * self.alpha,
+                self.channels * 2,
+                'end',
+                'pixel_end',
+                self.TF_FLOAT,
+                activation=act,
+                layer_collection=self.layer_collection,
+                registered=self.registered,
+                residual_connection=residual_connection,
+                BN=BN,
+                split_block=split_block,
+            )
 
-            fc3 = tf.reshape(px, [-1, self.LxLy, self.channels*2])
+            fc3 = tf.reshape(px, [-1, self.LxLy, self.channels * 2])
 
             # out0_re = fc3[:,:,0]
             # out1_re = fc3[:,:,1]
@@ -1594,8 +1620,8 @@ class tf_network:
             log_cond_amp_re_list = []
             log_cond_amp_im_list = []
             for i in range(self.channels):
-                log_cond_amp_re_list.append(fc3[:,:,i])
-                log_cond_amp_im_list.append(fc3[:,:,self.channels+i])
+                log_cond_amp_re_list.append(fc3[:, :, i])
+                log_cond_amp_im_list.append(fc3[:, :, self.channels + i])
 
             log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
             max_re = tf.math.reduce_max(log_cond_amp_re_stacked, axis=-1)
@@ -1603,14 +1629,16 @@ class tf_network:
                 log_cond_amp_re_list[i] = log_cond_amp_re_list[i] - max_re
 
             log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
-            log_l2_norm = tf.log(tf.math.reduce_sum(tf.exp(2*log_cond_amp_re_stacked),
-                                                    axis=[-1])) / 2.
+            log_l2_norm = tf.log(
+                tf.math.reduce_sum(tf.exp(2 * log_cond_amp_re_stacked),
+                                   axis=[-1])) / 2.
             for i in range(self.channels):
                 log_cond_amp_re_list[i] = log_cond_amp_re_list[i] - log_l2_norm
 
             log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
             log_cond_amp_im_stacked = tf.stack(log_cond_amp_im_list, axis=-1)
-            log_cond_amp = tf.complex(log_cond_amp_re_stacked, log_cond_amp_im_stacked)
+            log_cond_amp = tf.complex(log_cond_amp_re_stacked,
+                                      log_cond_amp_im_stacked)
             # now a complex tensor of shape [batch_size, LxLy, num_channels]
 
             ############################################################
@@ -1619,14 +1647,17 @@ class tf_network:
             # re_cond_prob = tf.stack([2*out0_re, 2*out1_re], axis=-1)
             re_cond_prob = log_cond_amp_re_stacked * 2.
 
-            log_prob = tf.reduce_sum(tf.multiply(re_cond_prob, tf.cast(x_reshaped, self.TF_FLOAT)), axis=[1,2])
+            log_prob = tf.reduce_sum(tf.multiply(
+                re_cond_prob, tf.cast(x_reshaped, self.TF_FLOAT)),
+                                     axis=[1, 2])
             prob = tf.exp(log_prob)
 
-            log_amp = tf.reduce_sum(tf.multiply(log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)), axis=[1,2])
+            log_amp = tf.reduce_sum(tf.multiply(
+                log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)),
+                                    axis=[1, 2])
 
             out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
-
 
         if not self.using_symm:
             self.registered = True
@@ -1635,46 +1666,71 @@ class tf_network:
             #######################################
             ## mixture model, i.e. w. symmetry  ###
             #######################################
-            self.registered=False
+            self.registered = False
             with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
                 num_symm = 8
-                symm_x = tf.concat([tf.image.rot90(x, k=0),
-                                    tf.image.rot90(x, k=1),
-                                    tf.image.rot90(x, k=2),
-                                    tf.image.rot90(x, k=3),
-                                    tf.image.rot90(1-x, k=0),
-                                    tf.image.rot90(1-x, k=1),
-                                    tf.image.rot90(1-x, k=2),
-                                    tf.image.rot90(1-x, k=3)], axis=0)
+                symm_x = tf.concat([
+                    tf.image.rot90(x, k=0),
+                    tf.image.rot90(x, k=1),
+                    tf.image.rot90(x, k=2),
+                    tf.image.rot90(x, k=3),
+                    tf.image.rot90(1 - x, k=0),
+                    tf.image.rot90(1 - x, k=1),
+                    tf.image.rot90(1 - x, k=2),
+                    tf.image.rot90(1 - x, k=3)
+                ],
+                                   axis=0)
 
-                symm_x_reshaped = tf.reshape(symm_x, [-1, self.LxLy, self.channels])
+                symm_x_reshaped = tf.reshape(symm_x,
+                                             [-1, self.LxLy, self.channels])
 
                 symm_pixel_input = tf.cast(symm_x, dtype=self.TF_FLOAT)
-                px = pixel_block(symm_pixel_input, self.channels, 8*self.alpha, 'start', 'pixel_0',
-                                 self.TF_FLOAT, activation=act,
-                                 layer_collection=self.layer_collection,
-                                 registered=self.registered,
-                                 residual_connection=residual_connection,
-                                 BN=BN,
-                                )
+                px = pixel_block(
+                    symm_pixel_input,
+                    self.channels,
+                    8 * self.alpha,
+                    'start',
+                    'pixel_0',
+                    self.TF_FLOAT,
+                    activation=act,
+                    layer_collection=self.layer_collection,
+                    registered=self.registered,
+                    residual_connection=residual_connection,
+                    BN=BN,
+                    split_block=split_block,
+                )
                 for i in range(1, 10):
-                    px = pixel_block(px, 8*self.alpha, 8*self.alpha, 'mid', 'pixel_'+str(i),
-                                     self.TF_FLOAT, activation=act,
-                                     layer_collection=self.layer_collection,
-                                     registered=self.registered,
-                                     residual_connection=residual_connection,
-                                     BN=BN,
-                                    )
+                    px = pixel_block(
+                        px,
+                        8 * self.alpha,
+                        8 * self.alpha,
+                        'mid',
+                        'pixel_' + str(i),
+                        self.TF_FLOAT,
+                        activation=act,
+                        layer_collection=self.layer_collection,
+                        registered=self.registered,
+                        residual_connection=residual_connection,
+                        BN=BN,
+                        split_block=split_block,
+                    )
 
-                px = pixel_block(px, 8*self.alpha, self.channels*2, 'end', 'pixel_end',
-                                 self.TF_FLOAT, activation=act,
-                                 layer_collection=self.layer_collection,
-                                 registered=self.registered,
-                                 residual_connection=residual_connection,
-                                 BN=BN,
-                                )
+                px = pixel_block(
+                    px,
+                    8 * self.alpha,
+                    self.channels * 2,
+                    'end',
+                    'pixel_end',
+                    self.TF_FLOAT,
+                    activation=act,
+                    layer_collection=self.layer_collection,
+                    registered=self.registered,
+                    residual_connection=residual_connection,
+                    BN=BN,
+                    split_block=split_block,
+                )
 
-                symm_fc3 = tf.reshape(px, [-1, self.LxLy, self.channels*2])
+                symm_fc3 = tf.reshape(px, [-1, self.LxLy, self.channels * 2])
 
                 # symm_out0_re = symm_fc3[:,:,0]
                 # symm_out1_re = symm_fc3[:,:,1]
@@ -2107,17 +2163,41 @@ class tf_network:
         elif which_net == 'MADE':
             return self.build_MADE_2d(x, activation)
         elif which_net == 'pixelCNN':
-            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=False,
-                                          mode='2', BN=False)
+            return self.build_pixelCNN_2d(x,
+                                          activation,
+                                          num_blocks,
+                                          residual_connection=False,
+                                          mode='2',
+                                          BN=False)
         elif which_net == 'pixelCNN-BN':
-            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=False,
-                                          mode='2', BN=True)
+            return self.build_pixelCNN_2d(x,
+                                          activation,
+                                          num_blocks,
+                                          residual_connection=False,
+                                          mode='2',
+                                          BN=True)
         elif which_net == 'pixelCNN-Res':
-            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=True,
-                                          mode='2', BN=False)
+            return self.build_pixelCNN_2d(x,
+                                          activation,
+                                          num_blocks,
+                                          residual_connection=True,
+                                          mode='2',
+                                          BN=False)
         elif which_net == 'pixelCNN-Res-BN':
-            return self.build_pixelCNN_2d(x, activation, num_blocks, residual_connection=True,
-                                          mode='2', BN=True)
+            return self.build_pixelCNN_2d(x,
+                                          activation,
+                                          num_blocks,
+                                          residual_connection=True,
+                                          mode='2',
+                                          BN=True)
+        elif which_net == 'pixelCNN-Agg':
+            return self.build_pixelCNN_2d(x,
+                                          activation,
+                                          num_blocks,
+                                          residual_connection=False,
+                                          mode='2',
+                                          BN=False,
+                                          split_block=True)
         elif which_net == "ResNN3":
             return self.build_ResNN3_2d(x, activation)
         elif which_net == "RBM":
