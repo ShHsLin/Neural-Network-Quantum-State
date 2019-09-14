@@ -1011,6 +1011,7 @@ def pixel_block_sharir(x,
                     activation=activation,
                     padding='VALID',
                     mask_type='A2',
+                    residual=False,
                     layer_collection=layer_collection,
                     registered=registered)
 
@@ -1055,6 +1056,8 @@ def pixel_block_sharir(x,
                                              activation=activation,
                                              padding='VALID',
                                              mask_type=None,
+                                             residual=True,
+                                             x_before_pad=vertical_branch,
                                              layer_collection=layer_collection,
                                              registered=registered)
 
@@ -1105,6 +1108,8 @@ def pixel_block_sharir(x,
                     activation=activation,
                     padding='VALID',
                     mask_type=None,
+                    residual=True,
+                    x_before_pad=horizontal_branch,
                     layer_collection=layer_collection,
                     registered=registered)
 
@@ -1159,6 +1164,8 @@ def pixel_block_sharir(x,
                                              activation=activation,
                                              padding='VALID',
                                              mask_type=None,
+                                             residual=True,
+                                             x_before_pad=vertical_branch,
                                              layer_collection=layer_collection,
                                              registered=registered)
 
@@ -1331,6 +1338,8 @@ def split_conv(x,
                activation=tf.nn.relu,
                padding='VALID',
                mask_type=None,
+               residual=True,
+               x_before_pad=None,
                layer_collection=None,
                registered=None):
     '''
@@ -1358,6 +1367,20 @@ def split_conv(x,
             layers_split.append(splits)
 
         out = tf.math.add_n(layers_split)
+        if residual == True:
+            assert x_before_pad is not None
+            if in_channel == out_channel:
+                out = out + x_before_pad
+            else:
+                shortcut = conv_layer2d(x_before_pad, 1, in_channel,
+                                        out_channel,
+                                        'split_shortcut',
+                                        padding=padding,
+                                        dtype=dtype,
+                                        layer_collection=layer_collection,
+                                        registered=registered)
+                out = out + shortcut
+
         return out
 
 
