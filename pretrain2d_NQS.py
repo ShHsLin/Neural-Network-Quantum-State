@@ -93,8 +93,19 @@ if __name__ == "__main__":
             batch_mask = np.random.choice(len(Y), batch_size, p=p)
 
             if i % 5000 == 0:
-                y = sess.run(Net.amp, feed_dict={Net.x: X})
+                # y = sess.run(Net.amp, feed_dict={Net.x: X})
+                y = Net.get_amp(X)
                 print(('y norm : ', np.linalg.norm(y)))
+                y_list = []
+                for i in range(60):
+                    yi = Net.get_amp(X[i*1000:(i+1)*1000])
+                    y_list.append(yi)
+
+                y_list.append(Net.get_amp(X[60000:]))
+                y2 = np.concatenate(y_list)
+                print(('y2 norm : ', np.linalg.norm(y2)))
+                print(('diff in y-y2', np.linalg.norm(y-y2)))
+
                 c = Y.flatten().dot(y.flatten())/np.linalg.norm(Y)/np.linalg.norm(y)
                 print(c)
                 total_cos_accu.append(c)

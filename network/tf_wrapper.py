@@ -938,7 +938,7 @@ def pixel_block_sharir(x,
                        layer_collection=None,
                        registered=False,
                        residual_connection=False,
-                       BN=False,
+                       BN=False, bn_phase=None,
                        split_block=False):
     '''
     for starting block, input: x, output: out with two branch concat in channel dimension
@@ -971,8 +971,6 @@ def pixel_block_sharir(x,
             ## If the activation below applies here, then
             ## it is applied before the down_shift concatanation step
             ## This might not be what we want
-            # if BN:
-            #     vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
             #
             # vertical_branch = activation(vertical_branch)
 
@@ -1015,13 +1013,9 @@ def pixel_block_sharir(x,
                     layer_collection=layer_collection,
                     registered=registered)
 
-            # if BN:
-            #     horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
-            #
-            # horizontal_branch = activation(horizontal_branch)
             out = tf.concat([vertical_branch, horizontal_branch], 3)
             if BN:
-                out = batch_norm(out, phase=True, scope='bn_out')
+                out = batch_norm(out, phase=bn_phase, scope='bn_out')
 
             out = activation(out)
         elif block_type == 'mid':
@@ -1064,8 +1058,6 @@ def pixel_block_sharir(x,
             ## If the activation below applies here, then
             ## it is applied before the down_shift concatanation step
             ## This might not be what we want
-            # if BN:
-            #     vertical_branch = batch_norm(vertical_branch, phase=True, scope='bn_ver')
             #
             # vertical_branch = activation(vertical_branch)
 
@@ -1120,10 +1112,10 @@ def pixel_block_sharir(x,
 
             if BN:
                 vertical_branch = batch_norm(vertical_branch,
-                                             phase=True,
+                                             phase=bn_phase,
                                              scope='bn_ver')
                 horizontal_branch = batch_norm(horizontal_branch,
-                                               phase=True,
+                                               phase=bn_phase,
                                                scope='bn_hor')
 
             vertical_branch = activation(vertical_branch)
@@ -1206,8 +1198,6 @@ def pixel_block_sharir(x,
             #                                         layer_collection=layer_collection,
             #                                         registered=registered)
 
-            # if BN:
-            #     horizontal_branch = batch_norm(horizontal_branch, phase=True, scope='bn_hor')
 
             out = horizontal_branch
         else:

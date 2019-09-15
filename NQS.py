@@ -166,6 +166,8 @@ class NQS_base():
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
+
+        ## collect some statistics
         axis_to_sum = range(len(configDim))
         axis_to_sum = list(axis_to_sum)
         sum_to_channel = np.sum(configArray, axis=tuple(axis_to_sum[:-1]))

@@ -49,7 +49,7 @@ class tf_network:
         self.exp_stabilizer = tf.Variable(0., name="exp_stabilizer", dtype=self.TF_FLOAT)
         self.global_step = tf.Variable(0, name="global_step")
         # dropout = 0.75  # Dropout, probability to keep units
-        self.bn_is_training = True
+        self.bn_is_training = tf.placeholder(tf.bool)
         self.max_bp_batch_size = 512
         self.max_fp_batch_size = 5120
         self.batch_size = batch_size
@@ -386,16 +386,16 @@ class tf_network:
         return new_X
 
     def plain_get_amp(self, X0):
-        return self.sess.run(self.amp, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.amp, feed_dict={self.x: X0, self.bn_is_training: False})
 
     def plain_get_log_amp(self, X0):
-        return self.sess.run(self.log_amp, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.log_amp, feed_dict={self.x: X0, self.bn_is_training: False})
 
     def plain_get_log_grads(self, X0):
-        return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.bn_is_training: False})
 
     def plain_get_cond_log_amp(self, X0):
-        return self.sess.run(self.log_cond_amp, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.log_cond_amp, feed_dict={self.x: X0, self.bn_is_training: False})
 
     def build_unaggregated_gradient(self):
         '''
@@ -487,7 +487,7 @@ class tf_network:
         return final_unaggregated_grad
 
     def run_unaggregated_gradient(self, X0):
-        return self.sess.run(self.unaggregated_gradient, feed_dict={self.x: X0})
+        return self.sess.run(self.unaggregated_gradient, feed_dict={self.x: X0, self.bn_is_training: False})
 
     def plain_get_E_grads(self, X0, E_loc_array):
         # Implementation below fail for unknown reason
@@ -524,11 +524,13 @@ class tf_network:
             for idx in range(num_data // max_bp_size):
                 G_list = self.sess.run(self.E_grads,
                                        feed_dict={self.x: X0[max_bp_size*idx : max_bp_size*(idx+1)],
+                                                  self.bn_is_training: True,
                                                   self.E_loc_m_avg: E_loc_array[max_bp_size*idx : max_bp_size*(idx+1)]})
                 grad_array += np.concatenate([g.flatten() for g in G_list])
 
             G_list = self.sess.run(self.E_grads,
                                    feed_dict={self.x: X0[max_bp_size*(num_data//max_bp_size):],
+                                              self.bn_is_training: True,
                                               self.E_loc_m_avg: E_loc_array[max_bp_size*(num_data//max_bp_size):]})
             grad_array += np.concatenate([g.flatten() for g in G_list])
             G_list = []
@@ -541,15 +543,19 @@ class tf_network:
             return G_list
         else:
             return self.sess.run(self.E_grads,
-                                 feed_dict={self.x: X0, self.E_loc_m_avg: E_loc_array})
+                                 feed_dict={self.x: X0,
+                                            self.bn_is_training: True,
+                                            self.E_loc_m_avg: E_loc_array})
 
     def pre_get_amp(self, X0):
         X0 = self.enrich_features(X0)
-        return self.sess.run(self.amp, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.amp, feed_dict={self.x: X0,
+                                                  self.bn_is_training: False,})
 
     def pre_get_log_grads(self, X0):
         X0 = self.enrich_features(X0)
-        return self.sess.run(self.log_grads, feed_dict={self.x: X0, self.keep_prob: 1.})
+        return self.sess.run(self.log_grads, feed_dict={self.x: X0,
+                                                        self.bn_is_training: False,})
 
     def pre_get_E_grads(self, X0, E_loc_array):
         X0 = self.enrich_features(X0)
@@ -1564,7 +1570,7 @@ class tf_network:
                 layer_collection=self.layer_collection,
                 registered=self.registered,
                 residual_connection=residual_connection,
-                BN=BN,
+                BN=BN, bn_phase=self.bn_is_training,
                 split_block=split_block,
             )
             for i in range(1, num_blocks):
@@ -1579,7 +1585,7 @@ class tf_network:
                     layer_collection=self.layer_collection,
                     registered=self.registered,
                     residual_connection=residual_connection,
-                    BN=BN,
+                    BN=BN, bn_phase=self.bn_is_training,
                     split_block=split_block,
                 )
 
@@ -1594,7 +1600,7 @@ class tf_network:
                 layer_collection=self.layer_collection,
                 registered=self.registered,
                 residual_connection=residual_connection,
-                BN=BN,
+                BN=BN, bn_phase=self.bn_is_training,
                 split_block=split_block,
             )
 
@@ -1696,7 +1702,7 @@ class tf_network:
                     layer_collection=self.layer_collection,
                     registered=self.registered,
                     residual_connection=residual_connection,
-                    BN=BN,
+                    BN=BN, bn_phase=self.bn_is_training,
                     split_block=split_block,
                 )
                 for i in range(1, 10):
@@ -1711,7 +1717,7 @@ class tf_network:
                         layer_collection=self.layer_collection,
                         registered=self.registered,
                         residual_connection=residual_connection,
-                        BN=BN,
+                        BN=BN, bn_phase=self.bn_is_training,
                         split_block=split_block,
                     )
 
@@ -1726,7 +1732,7 @@ class tf_network:
                     layer_collection=self.layer_collection,
                     registered=self.registered,
                     residual_connection=residual_connection,
-                    BN=BN,
+                    BN=BN, bn_phase=self.bn_is_training,
                     split_block=split_block,
                 )
 
