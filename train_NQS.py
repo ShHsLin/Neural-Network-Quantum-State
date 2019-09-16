@@ -293,6 +293,20 @@ if __name__ == "__main__":
                                 'w')
                 np.savetxt(log_file, E_log, '%.6e', delimiter=',')
                 log_file.close()
+
+                cov_s_list = []
+                for cov in N.cov_list:
+                    if type(cov) == list:
+                        cov_s_list.append(cov[0])
+                    else:
+                        pass
+
+                log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_cov.csv' %
+                                (L, which_net, act, alpha, opt, lr, num_sample),
+                                'a')
+                np.savetxt(log_file, np.concatenate(cov_s_list), '%.6e', delimiter=',')
+                log_file.close()
+
             else:
                 log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
                                 (L, which_net, act, alpha, opt, lr, num_sample),
@@ -310,18 +324,22 @@ if __name__ == "__main__":
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()
+        print(" The whole training finish; now remove tmp file and "
+              " Store the result in csv file")
+        os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_tmp.csv' %
+                  (L, which_net, act, alpha, opt, lr, num_sample))
     else:
         log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' %
                         (L, which_net, act, alpha, opt, lr, num_sample),
                         'a')
         np.savetxt(log_file, E_log, '%.6e', delimiter=',')
         log_file.close()
+        print(" The whole training finish; now remove tmp file and "
+              " Store the result in csv file")
+        os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
+                  (L, which_net, act, alpha, opt, lr, num_sample))
 
 
-    print(" The whole training finish; now remove tmp file and "
-          " Store the result in csv file")
-    os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
-              (L, which_net, act, alpha, opt, lr, num_sample))
 
 
     '''

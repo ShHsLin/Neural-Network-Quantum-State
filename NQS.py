@@ -416,9 +416,11 @@ class NQS_base():
 
         unaggregated_O_list = self.Oarray_to_Olist(Oarray - np.outer(Osum/num_sample, np.ones(num_sample)))
         ## The unaggregated_O has mean subtracted already
-        decay_rate = 0.8
-        k_size = 64
+        decay_rate = 0.85
+        new_k_size = 32
+        save_k_size = 64
         stablize_eps = 1e-4  # at the level of eigenvalue, i.e. singular value ^ 2
+        max_var_size = 8192
         for idx, unaggregated_O in enumerate(unaggregated_O_list):
             var_size = unaggregated_O.shape[0]
             if var_size < 512:
@@ -427,17 +429,22 @@ class NQS_base():
                 cov += np.eye(cov.shape[0]) * stablize_eps
                 self.cov_list[idx] = self.cov_list[idx] * decay_rate + cov * (1-decay_rate)
             else:
-                if var_size < 8192:
+                if var_size < max_var_size:
                     cov = (unaggregated_O.real.dot(unaggregated_O.real.T) ) / num_sample
                     cov += (unaggregated_O.imag.dot(unaggregated_O.imag.T)) / num_sample
                     # cov_U, cov_S, cov_Vd = scipy.sparse.linalg.svds(cov, k=k_size)
                     if self.cov_list[idx] is not None:
                         old_cov_S, old_cov_U = self.cov_list[idx][:]
                         cov = cov * (1-decay_rate) + old_cov_U.dot(np.diag(old_cov_S).dot(old_cov_U.T)) * decay_rate
-                        cov_S, cov_U = scipy.sparse.linalg.eigsh(cov, k=k_size)
+                        try:
+                            cov_S, cov_U = scipy.sparse.linalg.eigsh(cov, k=save_k_size)
+                        except:
+                            cov_S, cov_U = np.linalg.eigsh(cov)
+                            # cov_S, cov_U = scipy.sparse.linalg.eigsh(cov, k=save_k_size//2)
+
                         self.cov_list[idx] = [cov_S, cov_U]
                     else:
-                        cov_S, cov_U = scipy.sparse.linalg.eigsh(cov, k=k_size)
+                        cov_S, cov_U = scipy.sparse.linalg.eigsh(cov, k=new_k_size)
                         self.cov_list[idx] = [cov_S, cov_U]
 
                 else:  # var_size > 8192
@@ -449,7 +456,11 @@ class NQS_base():
                         return finalv  + _v * stablize_eps
 
                     implicit_cov_op = LinearOperator((var_size, var_size), matvec=implicit_cov, rmatvec=implicit_cov)
-                    cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_op, k=k_size)
+                    try:
+                        cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_op, k=new_k_size)
+                    except:
+                        print("fail converge in eigsh")
+                        cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_op, k=new_k_size//2)
 
                     if self.cov_list[idx] is not None:
                         old_cov_S, old_cov_U = self.cov_list[idx][:]
@@ -460,7 +471,11 @@ class NQS_base():
 
                         implicit_cov_all_op = LinearOperator((var_size, var_size), matvec=implicit_cov_all,
                                                              rmatvec=implicit_cov_all)
-                        cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_all_op, k=k_size)
+                        try:
+                            cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_all_op, k=save_k_size)
+                        except:
+                            cov_S, cov_U = scipy.sparse.linalg.eigsh(implicit_cov_all_op, k=old_cov_S.size+8)
+
                         self.cov_list[idx] = [cov_S, cov_U]
                     else:
                         self.cov_list[idx] = [cov_S, cov_U]
@@ -502,6 +517,7 @@ class NQS_base():
                 cov_S, cov_U = cov[:]
                 # print(cov_S)
                 # _g = cov_U.dot(np.diag(1./cov_S).dot(cov_U.T.dot(_Flist[idx].flatten())))
+                cov_S[cov_S<0]=0
                 _g = cov_U.dot(np.diag(cov_S/(cov_S**2 + stablize_eps)).dot(cov_U.T.dot(_Flist[idx].flatten())))
                 _Glist.append(_g)
 
