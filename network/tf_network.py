@@ -291,6 +291,7 @@ class tf_network:
 
         # Method 2: Unaggregated Gradient with while_loop
         self.unaggregated_gradient = self.build_unaggregated_gradient()
+        self.variance_log_gradient = self.build_variance_log_gradient()
 
         # Do some operation on grads.
         # We apply CG/MINRES to obtain natural gradient.
@@ -486,8 +487,18 @@ class tf_network:
         final_unaggregated_grad = tf.transpose(final_unaggregated_grad.stack())
         return final_unaggregated_grad
 
+    def build_variance_log_gradient(self):
+        tf_O_array = self.unaggregated_gradient
+        exp_sq_log_grad = tf.real(tf.reduce_sum(tf.math.conj(tf_O_array) * tf_O_array, axis=1))
+        exp_log_grad = tf.reduce_sum(tf_O_array, axis=1)
+        sq_exp_log_grad = tf.real(tf.math.conj(exp_log_grad) * exp_log_grad)
+        return exp_sq_log_grad - sq_exp_log_grad
+
     def run_unaggregated_gradient(self, X0):
         return self.sess.run(self.unaggregated_gradient, feed_dict={self.x: X0, self.bn_is_training: False})
+
+    def run_variance_log_gradient(self, X0):
+        return self.sess.run(self.variance_log_gradient, feed_dict={self.x: X0, self.bn_is_training: False})
 
     def plain_get_E_grads(self, X0, E_loc_array):
         # Implementation below fail for unknown reason
