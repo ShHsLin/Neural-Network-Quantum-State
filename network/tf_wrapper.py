@@ -2,6 +2,7 @@ import tensorflow as tf
 from functools import reduce
 import numpy as np
 from . import mask
+from . import layers
 
 # The following argument is for setting up kfac optimizer
 import sys
@@ -492,6 +493,7 @@ def conv_layer2d(bottom,
                  padding='SAME',
                  biases=True,
                  dtype=tf.float64,
+                 weight_normalization=False,
                  layer_collection=None,
                  registered=False):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -501,7 +503,15 @@ def conv_layer2d(bottom,
                                            biases=biases,
                                            dtype=dtype)
         stride_list = [1, stride_size, stride_size, 1]
-        conv = tf.nn.conv2d(bottom, filt, stride_list, padding=padding)
+        if not weight_normalization:
+            conv = tf.nn.conv2d(bottom, filt, stride_list, padding=padding)
+        else:
+            g = tf.get_variable('g', dtype=dtype,
+                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0,1,2]),
+                                trainable=True)
+            repara_filt = tf.reshape(g,[1,1,1,out_channels]) * tf.nn.l2_normalize(filt,[0,1,2])
+            conv = tf.nn.conv2d(bottom, repara_filt, stride_list, padding=padding)
+
 
         if biases:
             conv = tf.nn.bias_add(conv, conv_biases)
@@ -526,6 +536,7 @@ def masked_conv_layer2d(bottom,
                         padding='SAME',
                         biases=True,
                         dtype=tf.float64,
+                        weight_normalization=False,
                         layer_collection=None,
                         registered=False):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -539,10 +550,21 @@ def masked_conv_layer2d(bottom,
                                            biases=biases,
                                            dtype=dtype)
         stride_list = [1, stride_size, stride_size, 1]
-        conv = tf.nn.conv2d(bottom,
-                            filt * tf_mask,
-                            stride_list,
-                            padding=padding)
+        if not weight_normalization:
+            conv = tf.nn.conv2d(bottom,
+                                filt * tf_mask,
+                                stride_list,
+                                padding=padding)
+        else:
+            g = tf.get_variable('g', dtype=dtype,
+                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0,1,2]),
+                                trainable=True)
+            repara_filt = tf.reshape(g,[1,1,1,out_channels]) * tf.nn.l2_normalize(filt*tf_mask,[0,1,2])
+            conv = tf.nn.conv2d(bottom,
+                                repara_filt,
+                                stride_list,
+                                padding=padding)
+
 
         if biases:
             conv = tf.nn.bias_add(conv, conv_biases)
@@ -938,6 +960,7 @@ def pixel_block_sharir(x,
                        layer_collection=None,
                        registered=False,
                        residual_connection=False,
+                       weight_normalization=False,
                        BN=False, bn_phase=None,
                        split_block=False):
     '''
@@ -965,6 +988,7 @@ def pixel_block_sharir(x,
                                            name + '_ver',
                                            dtype=dtype,
                                            padding='VALID',
+                                           weight_normalization=weight_normalization,
                                            layer_collection=layer_collection,
                                            registered=registered)
 
@@ -996,6 +1020,7 @@ def pixel_block_sharir(x,
                     name + '_hor',
                     dtype=dtype,
                     padding='VALID',
+                    weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
                     registered=registered)
             else:
@@ -1010,6 +1035,7 @@ def pixel_block_sharir(x,
                     padding='VALID',
                     mask_type='A2',
                     residual=False,
+                    weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
                     registered=registered)
 
@@ -1038,6 +1064,7 @@ def pixel_block_sharir(x,
                     name + '_ver',
                     padding='VALID',
                     dtype=dtype,
+                    weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
                     registered=registered)
             else:
@@ -1052,6 +1079,7 @@ def pixel_block_sharir(x,
                                              mask_type=None,
                                              residual=True,
                                              x_before_pad=vertical_branch,
+                                             weight_normalization=weight_normalization,
                                              layer_collection=layer_collection,
                                              registered=registered)
 
@@ -1087,6 +1115,7 @@ def pixel_block_sharir(x,
                     name + '_hor',
                     padding='VALID',
                     dtype=dtype,
+                    weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
                     registered=registered)
             else:
@@ -1102,6 +1131,7 @@ def pixel_block_sharir(x,
                     mask_type=None,
                     residual=True,
                     x_before_pad=horizontal_branch,
+                    weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
                     registered=registered)
 
@@ -1144,6 +1174,7 @@ def pixel_block_sharir(x,
                     name + '_ver',
                     padding='VALID',
                     dtype=dtype,
+                    weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
                     registered=registered)
             else:
@@ -1158,6 +1189,7 @@ def pixel_block_sharir(x,
                                              mask_type=None,
                                              residual=True,
                                              x_before_pad=vertical_branch,
+                                             weight_normalization=weight_normalization,
                                              layer_collection=layer_collection,
                                              registered=registered)
 
@@ -1191,6 +1223,7 @@ def pixel_block_sharir(x,
                                              name + '_hor',
                                              padding='VALID',
                                              dtype=dtype,
+                                             weight_normalization=weight_normalization,
                                              layer_collection=layer_collection,
                                              registered=registered)
             # horizontal_branch = masked_conv_layer2d(hor_padded_x, filter_size, in_channel//2+out_channel//2, 4,
@@ -1330,6 +1363,7 @@ def split_conv(x,
                mask_type=None,
                residual=True,
                x_before_pad=None,
+               weight_normalization=False,
                layer_collection=None,
                registered=None):
     '''
@@ -1352,6 +1386,7 @@ def split_conv(x,
                                 bottleneck_channel=4,
                                 dtype=dtype,
                                 mask_type=mask_type,
+                                weight_normalization=weight_normalization,
                                 layer_collection=layer_collection,
                                 registered=registered)
             layers_split.append(splits)
@@ -1367,6 +1402,7 @@ def split_conv(x,
                                         'split_shortcut',
                                         padding=padding,
                                         dtype=dtype,
+                                        weight_normalization=weight_normalization,
                                         layer_collection=layer_collection,
                                         registered=registered)
                 out = out + shortcut
@@ -1384,6 +1420,7 @@ def bottleneck(x,
                padding='VALID',
                bottleneck_channel=None,
                mask_type=None,
+               weight_normalization=False,
                layer_collection=None,
                registered=None):
     '''
@@ -1410,6 +1447,7 @@ def bottleneck(x,
                          name + '_conv1',
                          padding=padding,
                          dtype=dtype,
+                         weight_normalization=weight_normalization,
                          layer_collection=layer_collection,
                          registered=registered)
         x = activation(x)
@@ -1421,6 +1459,7 @@ def bottleneck(x,
                              name + '_conv2',
                              padding=padding,
                              dtype=dtype,
+                             weight_normalization=weight_normalization,
                              layer_collection=layer_collection,
                              registered=registered)
         else:
@@ -1432,6 +1471,7 @@ def bottleneck(x,
                                     name + '_mask_conv2',
                                     dtype=dtype,
                                     padding='VALID',
+                                    weight_normalization=weight_normalization,
                                     layer_collection=layer_collection,
                                     registered=registered)
 
@@ -1443,6 +1483,7 @@ def bottleneck(x,
                          name + '_conv3',
                          padding=padding,
                          dtype=dtype,
+                         weight_normalization=weight_normalization,
                          layer_collection=layer_collection,
                          registered=registered)
     return x

@@ -1551,7 +1551,10 @@ class tf_network:
 
     def build_pixelCNN_2d(self, x, activation, num_blocks, mode,
                           residual_connection=False,
-                          BN=False, split_block=False):
+                          BN=False,
+                          split_block=False,
+                          weight_normalization=False,
+                         ):
         assert (self.using_complex)
         if mode == '1':
             pixel_block = tf_.pixel_block
@@ -1581,6 +1584,7 @@ class tf_network:
                 layer_collection=self.layer_collection,
                 registered=self.registered,
                 residual_connection=residual_connection,
+                weight_normalization=weight_normalization,
                 BN=BN, bn_phase=self.bn_is_training,
                 split_block=split_block,
             )
@@ -1596,6 +1600,7 @@ class tf_network:
                     layer_collection=self.layer_collection,
                     registered=self.registered,
                     residual_connection=residual_connection,
+                    weight_normalization=weight_normalization,
                     BN=BN, bn_phase=self.bn_is_training,
                     split_block=split_block,
                 )
@@ -1611,6 +1616,7 @@ class tf_network:
                 layer_collection=self.layer_collection,
                 registered=self.registered,
                 residual_connection=residual_connection,
+                weight_normalization=weight_normalization,
                 BN=BN, bn_phase=self.bn_is_training,
                 split_block=split_block,
             )
@@ -1685,16 +1691,16 @@ class tf_network:
             #######################################
             self.registered = False
             with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
-                num_symm = 8
+                num_symm = 4
                 symm_x = tf.concat([
                     tf.image.rot90(x, k=0),
                     tf.image.rot90(x, k=1),
                     tf.image.rot90(x, k=2),
                     tf.image.rot90(x, k=3),
-                    tf.image.rot90(1 - x, k=0),
-                    tf.image.rot90(1 - x, k=1),
-                    tf.image.rot90(1 - x, k=2),
-                    tf.image.rot90(1 - x, k=3)
+#                     tf.image.rot90(1 - x, k=0),
+#                     tf.image.rot90(1 - x, k=1),
+#                     tf.image.rot90(1 - x, k=2),
+#                     tf.image.rot90(1 - x, k=3)
                 ],
                                    axis=0)
 
@@ -1713,6 +1719,7 @@ class tf_network:
                     layer_collection=self.layer_collection,
                     registered=self.registered,
                     residual_connection=residual_connection,
+                    weight_normalization=weight_normalization,
                     BN=BN, bn_phase=self.bn_is_training,
                     split_block=split_block,
                 )
@@ -1728,6 +1735,7 @@ class tf_network:
                         layer_collection=self.layer_collection,
                         registered=self.registered,
                         residual_connection=residual_connection,
+                        weight_normalization=weight_normalization,
                         BN=BN, bn_phase=self.bn_is_training,
                         split_block=split_block,
                     )
@@ -1743,6 +1751,7 @@ class tf_network:
                     layer_collection=self.layer_collection,
                     registered=self.registered,
                     residual_connection=residual_connection,
+                    weight_normalization=weight_normalization,
                     BN=BN, bn_phase=self.bn_is_training,
                     split_block=split_block,
                 )
@@ -2183,30 +2192,45 @@ class tf_network:
             return self.build_pixelCNN_2d(x,
                                           activation,
                                           num_blocks,
-                                          residual_connection=False,
                                           mode='2',
-                                          BN=False)
+                                         )
         elif which_net == 'pixelCNN-BN':
             return self.build_pixelCNN_2d(x,
                                           activation,
                                           num_blocks,
-                                          residual_connection=False,
                                           mode='2',
-                                          BN=True)
+                                          BN=True,
+                                         )
         elif which_net == 'pixelCNN-Res':
             return self.build_pixelCNN_2d(x,
                                           activation,
                                           num_blocks,
                                           residual_connection=True,
                                           mode='2',
-                                          BN=False)
+                                         )
         elif which_net == 'pixelCNN-Res-BN':
             return self.build_pixelCNN_2d(x,
                                           activation,
                                           num_blocks,
                                           residual_connection=True,
                                           mode='2',
-                                          BN=True)
+                                          BN=True,
+                                         )
+        elif which_net == 'pixelCNN-WN':
+            return self.build_pixelCNN_2d(x,
+                                          activation,
+                                          num_blocks,
+                                          mode='2',
+                                          weight_normalization=True,
+                                         )
+        elif which_net == 'pixelCNN-Res-WN':
+            return self.build_pixelCNN_2d(x,
+                                          activation,
+                                          num_blocks,
+                                          residual_connection=True,
+                                          mode='2',
+                                          weight_normalization=True,
+                                         )
         elif which_net == 'pixelCNN-Agg':
             return self.build_pixelCNN_2d(x,
                                           activation,
