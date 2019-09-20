@@ -489,8 +489,8 @@ class tf_network:
 
     def build_variance_log_gradient(self):
         tf_O_array = self.unaggregated_gradient
-        exp_sq_log_grad = tf.real(tf.reduce_sum(tf.math.conj(tf_O_array) * tf_O_array, axis=1))
-        exp_log_grad = tf.reduce_sum(tf_O_array, axis=1)
+        exp_sq_log_grad = tf.real(tf.reduce_mean(tf.math.conj(tf_O_array) * tf_O_array, axis=1))
+        exp_log_grad = tf.reduce_mean(tf_O_array, axis=1)
         sq_exp_log_grad = tf.real(tf.math.conj(exp_log_grad) * exp_log_grad)
         return exp_sq_log_grad - sq_exp_log_grad
 

@@ -146,12 +146,18 @@ if __name__ == "__main__":
         saver = tf.train.Saver(N.NNet.model_var_list)
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
 
+
+        diag_QFI_path = path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' % (L, which_net, act, alpha, opt, lr, num_sample)
+        if os.path.isfile(diag_QFI_path):
+            N.diag_QFI = np.load(path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' %
+                                 (L, which_net, act, alpha, opt, lr, num_sample),
+                                 N.diag_QFI)
+
     # Thermalization
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
     # N.update_stabilizer()
-    if which_net not in ['pixelCNN', 'NADE', 'pixelCNN-Res',
-                         'pixelCNN-Res-BN', 'pixelCNN-BN', 'pixelCNN-Agg']:
+    if 'pixelCNN' not in which_net:
         if batch_size > 1:
             for i in range(1000):
                 N.new_config_batch()
@@ -184,10 +190,13 @@ if __name__ == "__main__":
                                       KFAC=KFAC)
 
         if not real_time:
-            if SR:
+            if GjFj is not None:
                 # Trust region method:
+                # GradW = GradW / np.sqrt(iteridx)
                 if lr > lr / np.sqrt(GjFj):
                     GradW = GradW / np.sqrt(GjFj)
+                # TR_lr = np.amin([1e-1, 1e-3/np.sqrt(GjFj)])
+                # GradW = GradW * TR_lr / lr
             else:
                 pass
                 # if np.linalg.norm(GradW) > 100:

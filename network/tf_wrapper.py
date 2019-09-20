@@ -1034,7 +1034,7 @@ def pixel_block_sharir(x,
                     activation=activation,
                     padding='VALID',
                     mask_type='A2',
-                    residual=False,
+                    residual=False, bn_phase=bn_phase,
                     weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
                     registered=registered)
@@ -1078,6 +1078,7 @@ def pixel_block_sharir(x,
                                              padding='VALID',
                                              mask_type=None,
                                              residual=True,
+                                             bn_phase=bn_phase,
                                              x_before_pad=vertical_branch,
                                              weight_normalization=weight_normalization,
                                              layer_collection=layer_collection,
@@ -1130,6 +1131,7 @@ def pixel_block_sharir(x,
                     padding='VALID',
                     mask_type=None,
                     residual=True,
+                    bn_phase=bn_phase,
                     x_before_pad=horizontal_branch,
                     weight_normalization=weight_normalization,
                     layer_collection=layer_collection,
@@ -1188,6 +1190,7 @@ def pixel_block_sharir(x,
                                              padding='VALID',
                                              mask_type=None,
                                              residual=True,
+                                             bn_phase=bn_phase,
                                              x_before_pad=vertical_branch,
                                              weight_normalization=weight_normalization,
                                              layer_collection=layer_collection,
@@ -1362,6 +1365,7 @@ def split_conv(x,
                padding='VALID',
                mask_type=None,
                residual=True,
+               bn_phase=None,
                x_before_pad=None,
                weight_normalization=False,
                layer_collection=None,
@@ -1386,6 +1390,7 @@ def split_conv(x,
                                 bottleneck_channel=4,
                                 dtype=dtype,
                                 mask_type=mask_type,
+                                bn_phase=bn_phase,
                                 weight_normalization=weight_normalization,
                                 layer_collection=layer_collection,
                                 registered=registered)
@@ -1420,6 +1425,7 @@ def bottleneck(x,
                padding='VALID',
                bottleneck_channel=None,
                mask_type=None,
+               bn_phase=None,
                weight_normalization=False,
                layer_collection=None,
                registered=None):
@@ -1450,6 +1456,7 @@ def bottleneck(x,
                          weight_normalization=weight_normalization,
                          layer_collection=layer_collection,
                          registered=registered)
+        x = batch_norm(x, phase=bn_phase, scope=name+'_bn1')
         x = activation(x)
         if mask_type is None:
             x = conv_layer2d(x,
@@ -1475,6 +1482,7 @@ def bottleneck(x,
                                     layer_collection=layer_collection,
                                     registered=registered)
 
+        x = batch_norm(x, phase=bn_phase, scope=name+'_bn2')
         x = activation(x)
         x = conv_layer2d(x,
                          1,
@@ -1486,6 +1494,8 @@ def bottleneck(x,
                          weight_normalization=weight_normalization,
                          layer_collection=layer_collection,
                          registered=registered)
+
+        x = batch_norm(x, phase=bn_phase, scope=name+'_bn3')
     return x
 
 
