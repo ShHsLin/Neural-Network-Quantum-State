@@ -17,6 +17,7 @@ So easily to switch model
 class NQS_base():
     def __init__(self):
         self.cov_list = None
+        self.diag_QFI = None
         return
 
     def list_to_vec(self, T_list):
@@ -214,11 +215,32 @@ class NQS_base():
             for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
                 Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
-            Gj = np.concatenate([g.flatten() for g in Glist])
+
             end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( back propagation to get E_grads ): ",
                   end_c - start_c, end_t - start_t)
-            print("norm(G): ", np.linalg.norm(Gj))
+
+            if self.diag_QFI is None:
+                self.diag_QFI = np.zeros((numPara,))
+
+            _Fj = np.concatenate([g.flatten() for g in Glist])
+            var_F = 0.9 * self.diag_QFI + 0.1 * self.NNet.run_variance_log_gradient(configArray)
+            self.diag_QFI = var_F
+            print("diag_QFI : ", self.diag_QFI[:10])
+            _Gj = np.multiply((var_F / (var_F ** 2 + 1e-4)), _Fj)
+            _GjFj = _Gj.dot(_Fj)
+
+            end_c, end_t = time.clock(), time.time()
+            print("monte carlo time ( back propagation to get diag SR ): ",
+                  end_c - start_c, end_t - start_t)
+
+            print("norm(G): ", np.linalg.norm(_Gj),
+                  "norm(F):", np.linalg.norm(_Fj),
+                  "G.dot(F):", _GjFj)
+            # import pdb;pdb.set_trace()
+            return _Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, _GjFj
+
+
             #
             # TO FIND BUG IN COMPLEX DERIVATIVE
             # COMPARING TO PLAIN GRADIENT

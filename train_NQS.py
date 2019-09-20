@@ -124,6 +124,12 @@ if __name__ == "__main__":
         else:
             print("No checkpoint found, at %s " % ckpt_path)
 
+        diag_QFI_path = path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' % (L, which_net, act, alpha, opt, lr, num_sample)
+        if os.path.isfile(diag_QFI_path):
+            N.diag_QFI = np.load(path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' %
+                                 (L, which_net, act, alpha, opt, lr, num_sample),
+                                 N.diag_QFI)
+
     except Exception as e:
         print(e)
         print("import weights only, not include stabilier, may cause numerical instability")
@@ -322,6 +328,9 @@ if __name__ == "__main__":
                                 'w')
                 np.savetxt(log_file, E_log, '%.6e', delimiter=',')
                 log_file.close()
+                np.save(path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' %
+                        (L, which_net, act, alpha, opt, lr, num_sample),
+                        N.diag_QFI)
         else:
             pass
 
