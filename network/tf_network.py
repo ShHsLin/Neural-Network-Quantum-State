@@ -1549,6 +1549,110 @@ class tf_network:
         else:
             return tf.real(out), None, log_cond_amp, prob
 
+    def build_pixelCNNv2_2d(self, x, activation, num_blocks,
+                            weight_normalization=True):
+        assert (self.using_complex)
+        pixel_block_sharir_v2 = tf_.pixel_block_sharir_v2
+        pixel_resiual_block = tf_.pixel_resiual_block
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x_reshaped = tf.reshape(x, [-1, self.LxLy, self.channels])
+
+            pixel_input = tf.cast(x, dtype=self.TF_FLOAT)
+            px = pixel_block_sharir_v2(x=pixel_input,
+                                       in_channel=self.channels,
+                                       out_channel=8 * self.alpha,
+                                       block_type='start',
+                                       name='pixel_0',
+                                       dtype=self.TF_FLOAT,
+                                       activation=act,
+                                       layer_collection=self.layer_collection,
+                                       registered=self.registered,
+                                       weight_normalization=weight_normalization,
+                                      )
+            for idx in range(num_blocks//2):
+                px = pixel_resiual_block(px, 'res_block'+str(idx), self.TF_FLOAT, filter_size=3,
+                                         activation=act, num_of_layers=2,
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered,
+                                         weight_normalization=weight_normalization)
+
+            px = pixel_block_sharir_v2(x=px,
+                                       in_channel=8 * self.alpha,
+                                       out_channel=8 * self.alpha,
+                                       block_type='mid',
+                                       name='pixel_end',
+                                       dtype=self.TF_FLOAT,
+                                       activation=act,
+                                       layer_collection=self.layer_collection,
+                                       registered=self.registered,
+                                       weight_normalization=weight_normalization,
+                                      )
+            hor_x = px[:,:,:,4 * self.alpha:]
+            px = tf_.conv_layer2d(hor_x,
+                                  1,
+                                  4 * self.alpha,
+                                  self.channels * 2,
+                                  'end_conv',
+                                  dtype=self.TF_FLOAT,
+                                  padding='VALID',
+                                  weight_normalization=weight_normalization,
+                                  layer_collection=self.layer_collection,
+                                  registered=self.registered)
+
+
+            conv_out = tf.reshape(px, [-1, self.LxLy, self.channels * 2])
+            log_cond_amp_re_list = []
+            log_cond_amp_im_list = []
+            for i in range(self.channels):
+                log_cond_amp_re_list.append(conv_out[:, :, i])
+                log_cond_amp_im_list.append(conv_out[:, :, self.channels + i])
+
+            log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
+            max_re = tf.math.reduce_max(log_cond_amp_re_stacked, axis=-1)
+            for i in range(self.channels):
+                log_cond_amp_re_list[i] = log_cond_amp_re_list[i] - max_re
+
+            log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
+            log_l2_norm = tf.log(
+                tf.math.reduce_sum(tf.exp(2 * log_cond_amp_re_stacked),
+                                   axis=[-1])) / 2.
+            for i in range(self.channels):
+                log_cond_amp_re_list[i] = log_cond_amp_re_list[i] - log_l2_norm
+
+            log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
+            log_cond_amp_im_stacked = tf.stack(log_cond_amp_im_list, axis=-1)
+            log_cond_amp = tf.complex(log_cond_amp_re_stacked,
+                                      log_cond_amp_im_stacked)
+            # now a complex tensor of shape [batch_size, LxLy, num_channels]
+
+            ############################################################
+            ### Constructed a path without involving complex number ####
+            ############################################################
+            # re_cond_prob = tf.stack([2*out0_re, 2*out1_re], axis=-1)
+            re_cond_prob = log_cond_amp_re_stacked * 2.
+
+            log_prob = tf.reduce_sum(tf.multiply(
+                re_cond_prob, tf.cast(x_reshaped, self.TF_FLOAT)),
+                                     axis=[1, 2])
+            prob = tf.exp(log_prob)
+
+            log_amp = tf.reduce_sum(tf.multiply(
+                log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)),
+                                    axis=[1, 2])
+
+            out = tf.exp(log_amp)
+            out = tf.reshape(out, [-1, 1])
+
+        if not self.using_symm:
+            self.registered = True
+            return out, log_amp, log_cond_amp, prob
+        else:
+            raise
+
+
+
+
     def build_pixelCNN_2d(self, x, activation, num_blocks, mode,
                           residual_connection=False,
                           BN=False,
@@ -2194,6 +2298,11 @@ class tf_network:
                                           num_blocks,
                                           mode='2',
                                          )
+        elif which_net == 'pixelCNNv2':
+            return self.build_pixelCNNv2_2d(x,
+                                            activation,
+                                            num_blocks,
+                                           )
         elif which_net == 'pixelCNN-BN':
             return self.build_pixelCNN_2d(x,
                                           activation,
