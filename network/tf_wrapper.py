@@ -1241,6 +1241,237 @@ def pixel_block_sharir(x,
 
         return out
 
+def pixel_resiual_block(x, block_name, dtype, filter_size, activation, num_of_layers=2,
+                        layer_collection=None, registered=False, weight_normalization=False):
+    x_shape = x.get_shape().as_list()
+    x_input = x
+    num_channel = x_shape[3]
+    for idx in range(num_of_layers - 1):
+        x = pixel_block_sharir_v2(x, num_channel, num_channel, 'mid', block_name+'-'+str(idx),
+                                  dtype=dtype, filter_size=filter_size,
+                                  activation=activation,
+                                  layer_collection=layer_collection,
+                                  registered=registered,
+                                  weight_normalization=weight_normalization,
+                                 )
+        activation(x)
+
+    x = pixel_block_sharir_v2(x, num_channel, num_channel, 'mid', block_name+'-'+str(num_of_layers-1),
+                              dtype=dtype, filter_size=filter_size,
+                              activation=activation,
+                              layer_collection=layer_collection,
+                              registered=registered,
+                              weight_normalization=weight_normalization,
+                             )
+    x = x + x_input
+    activation(x)
+    return x
+
+def pixel_block_sharir_v2(x,
+                          in_channel,
+                          out_channel,
+                          block_type,
+                          name,
+                          dtype,
+                          filter_size=3,
+                          activation=tf.nn.relu,
+                          layer_collection=None,
+                          registered=False,
+                          weight_normalization=False):
+    '''
+    for starting block, input: x, output: out with two branch concat in channel dimension
+    for mid block,  input x with two branch concat in channel dimension
+                    output with two branch concat in channel dimension.
+    for end block,  input x with two branch concat in channel dimension
+                    output with 4 channel, representing spin up spin down amp = exp(r+i\theta)
+    '''
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+        ## Starting block
+        if block_type == 'start':
+            assert out_channel % 4 == 0
+            vertical_branch = x
+            horizontal_branch = x
+
+            ver_padded_x = tf.pad(
+                vertical_branch,
+                [[0, 0], [filter_size - 1, 0],
+                 [filter_size // 2, filter_size // 2], [0, 0]], "CONSTANT")
+            vertical_branch = conv_layer2d(ver_padded_x,
+                                           filter_size,
+                                           in_channel,
+                                           out_channel // 2,
+                                           name + '_ver',
+                                           dtype=dtype,
+                                           padding='VALID',
+                                           weight_normalization=weight_normalization,
+                                           layer_collection=layer_collection,
+                                           registered=registered)
+            ## Leaving the vertical_branch being pre-act
+
+            y = activation(vertical_branch)
+            ## N H W C
+            down_shift_v_branch = tf.pad(y[:, :-1, :, :],
+                                         [[0, 0], [1, 0], [0, 0], [0, 0]],
+                                         "CONSTANT")
+            down_shift_v_branch = conv_layer2d(down_shift_v_branch,
+                                               1,
+                                               out_channel // 2,
+                                               out_channel // 4,
+                                               name + '_ver_2_concat',
+                                               dtype=dtype,
+                                               padding='VALID',
+                                               weight_normalization=weight_normalization,
+                                               layer_collection=layer_collection,
+                                               registered=registered)
+            down_shift_v_branch = activation(down_shift_v_branch)
+
+
+            hor_padded_x = tf.pad(
+                horizontal_branch,
+                [[0, 0], [filter_size - 1, 0], [filter_size - 1, 0], [0, 0]],
+                "CONSTANT")
+            horizontal_branch = masked_conv_layer2d(hor_padded_x,
+                                                    filter_size,
+                                                    in_channel,
+                                                    out_channel // 2,
+                                                    'A2',
+                                                    name + '_hor',
+                                                    dtype=dtype,
+                                                    padding='VALID',
+                                                    weight_normalization=weight_normalization,
+                                                    layer_collection=layer_collection,
+                                                    registered=registered)
+            horizontal_branch = activation(horizontal_branch)
+            horizontal_branch = conv_layer2d(horizontal_branch,
+                                             1,
+                                             out_channel // 2,
+                                             out_channel // 4,
+                                             name + '_hor_2_concat',
+                                             dtype=dtype,
+                                             padding='VALID',
+                                             weight_normalization=weight_normalization,
+                                             layer_collection=layer_collection,
+                                             registered=registered)
+            horizontal_branch = activation(horizontal_branch)
+
+
+            horizontal_branch = tf.concat(
+                [down_shift_v_branch, horizontal_branch], axis=3)
+
+            # Should add padding, top 2 rows && left 2 columns
+            hor_padded_x = tf.pad(
+                horizontal_branch,
+                [[0, 0], [filter_size - 1, 0], [filter_size - 1, 0], [0, 0]],
+                "CONSTANT")
+            horizontal_branch = conv_layer2d(hor_padded_x,
+                                             filter_size,
+                                             out_channel // 2,
+                                             out_channel // 2,
+                                             name + '_hor2',
+                                             dtype=dtype,
+                                             padding='VALID',
+                                             weight_normalization=weight_normalization,
+                                             layer_collection=layer_collection,
+                                             registered=registered)
+
+            out = tf.concat([vertical_branch, horizontal_branch], 3)
+        elif block_type == 'mid':
+            assert in_channel % 2 == 0
+            assert out_channel % 2 == 0
+            assert in_channel == out_channel
+            vertical_branch = x[:, :, :, :in_channel // 2]
+            horizontal_branch = x[:, :, :, in_channel // 2:]
+            # Should add padding, top 2 rows
+
+            ver_padded_x = tf.pad(
+                vertical_branch,
+                [[0, 0], [filter_size - 1, 0],
+                 [filter_size // 2, filter_size // 2], [0, 0]], "CONSTANT")
+            vertical_branch = conv_layer2d(ver_padded_x,
+                                           filter_size,
+                                           in_channel // 2,
+                                           out_channel // 2,
+                                           name + '_ver',
+                                           dtype=dtype,
+                                           padding='VALID',
+                                           weight_normalization=weight_normalization,
+                                           layer_collection=layer_collection,
+                                           registered=registered)
+            ## Leaving the vertical_branch being pre-act
+
+            y = activation(vertical_branch)
+            ## N H W C
+            down_shift_v_branch = tf.pad(y[:, :-1, :, :],
+                                         [[0, 0], [1, 0], [0, 0], [0, 0]],
+                                         "CONSTANT")
+            down_shift_v_branch = conv_layer2d(down_shift_v_branch,
+                                               1,
+                                               out_channel // 2,
+                                               out_channel // 4,
+                                               name + '_ver_2_concat',
+                                               dtype=dtype,
+                                               padding='VALID',
+                                               weight_normalization=weight_normalization,
+                                               layer_collection=layer_collection,
+                                               registered=registered)
+            down_shift_v_branch = activation(down_shift_v_branch)
+
+
+            hor_padded_x = tf.pad(
+                horizontal_branch,
+                [[0, 0], [filter_size - 1, 0], [filter_size - 1, 0], [0, 0]],
+                "CONSTANT")
+            horizontal_branch = conv_layer2d(hor_padded_x,
+                                             filter_size,
+                                             in_channel // 2,
+                                             out_channel // 2,
+                                             name + '_hor',
+                                             dtype=dtype,
+                                             padding='VALID',
+                                             weight_normalization=weight_normalization,
+                                             layer_collection=layer_collection,
+                                             registered=registered)
+
+            horizontal_branch = activation(horizontal_branch)
+            horizontal_branch = conv_layer2d(horizontal_branch,
+                                             1,
+                                             out_channel // 2,
+                                             out_channel // 4,
+                                             name + '_hor_2_concat',
+                                             dtype=dtype,
+                                             padding='VALID',
+                                             weight_normalization=weight_normalization,
+                                             layer_collection=layer_collection,
+                                             registered=registered)
+            horizontal_branch = activation(horizontal_branch)
+
+
+            horizontal_branch = tf.concat(
+                [down_shift_v_branch, horizontal_branch], axis=3)
+
+            # Should add padding, top 2 rows && left 2 columns
+            hor_padded_x = tf.pad(
+                horizontal_branch,
+                [[0, 0], [filter_size - 1, 0], [filter_size - 1, 0], [0, 0]],
+                "CONSTANT")
+            horizontal_branch = conv_layer2d(hor_padded_x,
+                                             filter_size,
+                                             out_channel // 2,
+                                             out_channel // 2,
+                                             name + '_hor2',
+                                             dtype=dtype,
+                                             padding='VALID',
+                                             weight_normalization=weight_normalization,
+                                             layer_collection=layer_collection,
+                                             registered=registered)
+
+            out = tf.concat([vertical_branch, horizontal_branch], 3)
+        else:
+            raise NotImplementedError
+
+        return out
+
+
 
 def pixel_block(x,
                 in_channel,
