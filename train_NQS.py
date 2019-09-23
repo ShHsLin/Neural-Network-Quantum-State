@@ -107,7 +107,8 @@ if __name__ == "__main__":
     var_shape_list = N.NNet.var_shape_list
     var_list = tf.global_variables()
     try:
-        saver = tf.train.Saver(N.NNet.model_var_list)
+        # saver = tf.train.Saver(N.NNet.model_var_list)
+        saver = tf.train.Saver()
 
         # ckpt_path = path + 'wavefunction/Pretrain/%s/L%d/' % (which_net, L)
         ckpt_path = path + \
@@ -143,7 +144,8 @@ if __name__ == "__main__":
         else:
             print("No checkpoint found, at %s " % ckpt_path)
 
-        saver = tf.train.Saver(N.NNet.model_var_list)
+        # saver = tf.train.Saver(N.NNet.model_var_list)
+        saver = tf.train.Saver()
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
 
 
@@ -297,10 +299,10 @@ if __name__ == "__main__":
                            (opt, num_sample))
             # Saving E_list
             if SR:
-                log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_tmp.csv' %
+                log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
                                 (L, which_net, act, alpha, opt, lr, num_sample),
-                                'w')
-                np.savetxt(log_file, E_log, '%.6e', delimiter=',')
+                                'a')
+                np.savetxt(log_file, E_log[iteridx-50:iteridx], '%.6e', delimiter=',')
                 log_file.close()
 
                 cov_s_list = []
@@ -317,36 +319,36 @@ if __name__ == "__main__":
                 log_file.close()
 
             else:
-                log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
+                log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' %
                                 (L, which_net, act, alpha, opt, lr, num_sample),
-                                'w')
-                np.savetxt(log_file, E_log, '%.6e', delimiter=',')
+                                'a')
+                np.savetxt(log_file, E_log[iteridx-50:iteridx], '%.6e', delimiter=',')
                 log_file.close()
         else:
             pass
 
 
-    # Saving E_list
-    if SR:
-        log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
-                        (L, which_net, act, alpha, opt, lr, num_sample),
-                        'a')
-        np.savetxt(log_file, E_log, '%.6e', delimiter=',')
-        log_file.close()
-        print(" The whole training finish; now remove tmp file and "
-              " Store the result in csv file")
-        os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_tmp.csv' %
-                  (L, which_net, act, alpha, opt, lr, num_sample))
-    else:
-        log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' %
-                        (L, which_net, act, alpha, opt, lr, num_sample),
-                        'a')
-        np.savetxt(log_file, E_log, '%.6e', delimiter=',')
-        log_file.close()
-        print(" The whole training finish; now remove tmp file and "
-              " Store the result in csv file")
-        os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
-                  (L, which_net, act, alpha, opt, lr, num_sample))
+    # # Saving E_list
+    # if SR:
+    #     log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
+    #                     (L, which_net, act, alpha, opt, lr, num_sample),
+    #                     'a')
+    #     np.savetxt(log_file, E_log, '%.6e', delimiter=',')
+    #     log_file.close()
+    #     print(" The whole training finish; now remove tmp file and "
+    #           " Store the result in csv file")
+    #     os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_tmp.csv' %
+    #               (L, which_net, act, alpha, opt, lr, num_sample))
+    # else:
+    #     log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' %
+    #                     (L, which_net, act, alpha, opt, lr, num_sample),
+    #                     'a')
+    #     np.savetxt(log_file, E_log, '%.6e', delimiter=',')
+    #     log_file.close()
+    #     print(" The whole training finish; now remove tmp file and "
+    #           " Store the result in csv file")
+    #     os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
+    #               (L, which_net, act, alpha, opt, lr, num_sample))
 
 
 

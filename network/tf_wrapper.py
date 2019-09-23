@@ -830,7 +830,7 @@ def get_conv_var2d(filter_size,
         initial_value = tf.truncated_normal(
             [filter_size, filter_size, in_channels, out_channels],
             0.,
-            np.sqrt(2. / (filter_size * filter_size * in_channels)),
+            np.sqrt(2. / (filter_size * filter_size * in_channels) * 0.5),
             dtype=dtype)
         # np.sqrt(2. / (filter_size*filter_size*(in_channels+out_channels))))
         # Xavier init
