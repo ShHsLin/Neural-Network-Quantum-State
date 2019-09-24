@@ -130,7 +130,7 @@ class NQS_base():
         Osum = np.zeros((numPara), dtype=NP_DTYPE)
         Earray = np.zeros((num_sample), dtype=NP_DTYPE)
         EOsum = np.zeros((numPara), dtype=NP_DTYPE)
-        Oarray = np.zeros((numPara, num_sample), dtype=NP_DTYPE)
+        # Oarray = np.zeros((numPara, num_sample), dtype=NP_DTYPE)
 
         start_c, start_t = time.clock(), time.time()
         corrlength = self.corrlength
@@ -704,7 +704,7 @@ class NQS_1d(NQS_base):
         self.inputShape = inputShape
         self.init_config(sz0_sector=True)
         self.corrlength = inputShape[0]
-        self.max_batch_size = 5000
+        self.max_batch_size = 1024
         if self.batch_size > self.max_batch_size:
             print("batch_size > max_batch_size, memory error may occur")
 
@@ -1313,7 +1313,7 @@ class NQS_2d(NQS_base):
 
         self.init_config(sz0_sector=True)
         self.corrlength = self.LxLy
-        self.max_batch_size = 5000
+        self.max_batch_size = 1024
         if self.batch_size > self.max_batch_size:
             print("batch_size > max_batch_size, memory error may occur")
 
@@ -1442,17 +1442,17 @@ class NQS_2d(NQS_base):
                     cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch,...]
                     cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
                     site_prob = cond_prob[:, site_i, site_j, :]
-                    # mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
-                    # self.config[mask, site_i, site_j, 0] = 1
-                    # self.config[np.logical_not(mask), site_i, site_j, 1] = 1
+                    if self.channels == 2:
+                        mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
+                        self.config[mask, site_i, site_j, 0] = 1
+                        self.config[np.logical_not(mask), site_i, site_j, 1] = 1
+                    else:
+                        for batch_idx in range(batch_size):
+                            self.config[batch_idx, site_i, site_j,
+                                        np.random.choice(self.channels, p=site_prob[batch_idx])] = 1
 
-                    # if np.isnan(site_prob).any():
-                    #     import pdb;pdb.set_trace()
                     assert( not np.isnan(site_prob).any() )
 
-                    for batch_idx in range(batch_size):
-                        self.config[batch_idx, site_i, site_j,
-                                    np.random.choice(self.channels, p=site_prob[batch_idx])] = 1
 
             return
         else:

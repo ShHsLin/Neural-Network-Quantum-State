@@ -51,7 +51,11 @@ class tf_network:
         # dropout = 0.75  # Dropout, probability to keep units
         self.bn_is_training = tf.placeholder(tf.bool)
         self.max_bp_batch_size = 512
-        self.max_fp_batch_size = 5120
+        ## [TODO]
+        ## We put no restriction in the forward batchsize here,
+        ## The restriction is put in the quantum state NQS evaluation function.
+        ## To not exceed the size.
+        # self.max_fp_batch_size = self.max_bp_batch_size * 10
         self.batch_size = batch_size
 
 
