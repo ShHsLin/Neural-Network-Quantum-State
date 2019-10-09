@@ -96,6 +96,11 @@ def parse_args():
                         help='Determine the number of block in pixelCNN sturcture;'
                         'Default: 10',
                         default=10, type=int)
+    parser.add_argument('--multi_gpus', dest='multi_gpus',
+                        help='Using multiple gpus or not'
+                        'Default: False',
+                        default=0, type=int)
+
 
 
     if len(sys.argv) == 1:
