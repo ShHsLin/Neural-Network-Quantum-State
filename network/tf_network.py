@@ -1777,6 +1777,44 @@ class tf_network:
 
             fc3 = tf.reshape(px, [-1, self.LxLy, self.channels * 2])
 
+            conserved_Sz = True
+            if conserved_Sz:
+                assert self.channels == 2
+                np_mask = mask.gen_fc_mask(self.ordering,
+                                           mask_type='A',
+                                           dtype=self.NP_FLOAT,
+                                           in_hidden=1,
+                                           out_hidden=1)
+                tf_mask = tf.constant(np_mask, dtype=self.TF_FLOAT)
+                # x_reshaped = tf.reshape(x, [-1, self.LxLy, self.channels])
+                num_c0 = tf.matmul(tf.cast(x_reshaped[:, :, 0], self.TF_FLOAT),
+                                   tf_mask)
+                # p_c0 = 1 if LxLy / 2 - 0.001 - num_c0 > 0
+                p_c0 = tf.math.sign(-num_c0 - 0.001 + self.LxLy // 2 )
+                p_c0 = tf.nn.relu(p_c0) + 1e-36
+                num_c1 = tf.matmul(tf.cast(x_reshaped[:, :, 1], self.TF_FLOAT),
+                                   tf_mask)
+                p_c1 = tf.math.sign(-num_c1 - 0.001 + self.LxLy // 2 )
+                p_c1 = tf.nn.relu(p_c1) + 1e-36
+                ## We add small value epsilon ~= 1e-36 to the probability
+                ## to avoid the numerical undefined value p * log p, when
+                ## p --> 0
+                ## THE IS IMPORTANT FOR THE CODE TO WORK !!!
+                ##
+                log_p_c0 = tf.log(p_c0)
+                log_p_c1 = tf.log(p_c1)
+                log_p_symm_constrain = tf.stack([log_p_c0, log_p_c1], axis=-1)
+                ## Although this is the constrain on probability
+                ## since, we only consider the case of having 1 or 0 in probability
+                ## this corresponds to probability amplitude having 0 and -inf
+                ## in the real part.
+                ## Therefore, we directly add this value to the real part, before normalizing it.
+                ##
+                fc3 = tf.concat([log_p_symm_constrain + fc3[:,:,:self.channels],
+                                 fc3[:,:,self.channels:]], axis=-1)
+
+
+
             # out0_re = fc3[:,:,0]
             # out1_re = fc3[:,:,1]
             # out0_im = fc3[:,:,2]
