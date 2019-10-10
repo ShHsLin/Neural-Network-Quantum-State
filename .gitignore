@@ -7,5 +7,6 @@
 *.npy
 *.csv
 *.out
+*nfs*
 wavefunction/
 log/
