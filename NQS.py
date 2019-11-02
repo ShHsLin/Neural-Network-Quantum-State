@@ -114,7 +114,9 @@ class NQS_base():
             for idx in range(array_shape[0] // max_size):
                 log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.get_log_amp(configArray[max_size * idx : max_size * (idx + 1)]).flatten()
 
-            log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.get_log_amp(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+            if array_shape[0] % max_size != 0:
+                log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.get_log_amp(configArray[max_size * (array_shape[0]//max_size) : ]).flatten()
+
             return log_amp_array
 
     def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True):

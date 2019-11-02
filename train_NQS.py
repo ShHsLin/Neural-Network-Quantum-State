@@ -175,9 +175,15 @@ if __name__ == "__main__":
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
     GradW = None
     # N.moving_E_avg = E_avg * l
+    do_warm_up = False
+    warm_up = np.ones(10000)  # np.ones(num_iter)
+    warm_up[:2000] = np.arange(0.1,1,0.9/2000)
 
     for iteridx in range(1, num_iter + 1):
         print(iteridx)
+        if do_warm_up:
+            N.NNet.sess.run(N.NNet.learning_rate.assign(lr*warm_up[iteridx-1]))
+
         # N.update_stabilizer()
 
         # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))

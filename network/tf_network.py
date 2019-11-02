@@ -589,10 +589,11 @@ class tf_network:
                                                   self.E_loc_m_avg: E_loc_array[max_bp_size*idx : max_bp_size*(idx+1)]})
                 grad_array += np.concatenate([g.flatten() for g in G_list])
 
-            G_list = self.sess.run(self.E_grads,
-                                   feed_dict={self.x: X0[max_bp_size*(num_data//max_bp_size):],
-                                              self.bn_is_training: True,
-                                              self.E_loc_m_avg: E_loc_array[max_bp_size*(num_data//max_bp_size):]})
+            if num_data % max_bp_size != 0:
+                G_list = self.sess.run(self.E_grads,
+                                       feed_dict={self.x: X0[max_bp_size*(num_data//max_bp_size):],
+                                                  self.bn_is_training: True,
+                                                  self.E_loc_m_avg: E_loc_array[max_bp_size*(num_data//max_bp_size):]})
             grad_array += np.concatenate([g.flatten() for g in G_list])
             G_list = []
             grad_ind = 0
@@ -1915,7 +1916,7 @@ class tf_network:
                     BN=BN, bn_phase=self.bn_is_training,
                     split_block=split_block,
                 )
-                for i in range(1, 10):
+                for i in range(1, num_blocks):
                     px = pixel_block(
                         px,
                         8 * self.alpha,
