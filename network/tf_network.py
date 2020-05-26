@@ -59,7 +59,9 @@ class tf_network:
     def __init__(self, which_net, inputShape, optimizer, dim, sess=None,
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True,
-                 batch_size=None, using_symm=False, num_blocks=10, multi_gpus=False):
+                 batch_size=None, using_symm=False, num_blocks=10, multi_gpus=False,
+                 conserved_Sz=True
+                ):
         '''
         Arguments as follows:
         which_net:
@@ -111,6 +113,7 @@ class tf_network:
         self.num_blocks = num_blocks
         self.using_complex = using_complex
         self.using_symm = using_symm
+        self.conserved_Sz = conserved_Sz
         self.keep_prob = tf.placeholder(self.TF_FLOAT)
         self.dx_exp_stabilizer = tf.placeholder(self.TF_FLOAT)
         self.multi_gpus = multi_gpus
@@ -1783,8 +1786,7 @@ class tf_network:
             tf_bias = tf.constant(np_bias, dtype=self.TF_FLOAT)
             fc3 = tf.math.add(fc3, tf_bias)
 
-            conserved_Sz = True
-            if conserved_Sz:
+            if self.conserved_Sz:
                 # assert self.channels == 2
                 # num_c0 = tf.matmul(tf.cast(x_reshaped[:, :, 0], self.TF_FLOAT),
                 #                    tf_mask)

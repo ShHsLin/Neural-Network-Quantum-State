@@ -119,7 +119,9 @@ class NQS_base():
 
             return log_amp_array
 
-    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True):
+    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True,
+            verbose=False,
+           ):
         numPara = self.net_num_para
         num_site = self.num_site
         # OOsum = np.zeros((numPara, numPara))
@@ -163,23 +165,26 @@ class NQS_base():
                     else:
                         pass
 
-                print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
+                if verbose:
+                    print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
 
 
         end_c, end_t = time.clock(), time.time()
-        print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
+        if verbose:
+            print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
 
         ## collect some statistics
         axis_to_sum = range(len(configDim))
         axis_to_sum = list(axis_to_sum)
         sum_to_channel = np.sum(configArray, axis=tuple(axis_to_sum[:-1]))
-        print("sampled config statistic : ", sum_to_channel / np.prod(configDim[:-1]))
-        if self.channels == 3:
-            print("sampled config <N> : ", np.array([0,1,2.]).dot(sum_to_channel / np.prod(configDim[:-1])))
-        elif self.channels == 2:
-            print("sampled config <N> : ", np.array([0,1.]).dot(sum_to_channel / np.prod(configDim[:-1])))
-        else:
-            raise NotImplementedError
+        if verbose:
+            print("sampled config statistic : ", sum_to_channel / np.prod(configDim[:-1]))
+            if self.channels == 3:
+                print("sampled config <N> : ", np.array([0,1,2.]).dot(sum_to_channel / np.prod(configDim[:-1])))
+            elif self.channels == 2:
+                print("sampled config <N> : ", np.array([0,1.]).dot(sum_to_channel / np.prod(configDim[:-1])))
+            else:
+                raise NotImplementedError
 
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(configArray[i:i+1])
@@ -191,15 +196,21 @@ class NQS_base():
             Earray = E0array = Earray_return
 
         end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
+        if verbose:
+            print("monte carlo time ( localE ): ", end_c - start_c, end_t - start_t)
 
         Eavg = np.average(Earray)
         Evar = np.var(Earray)
         E0avg = np.average(E0array)
         E0var = np.var(E0array)
-        print(self.get_self_amp_batch()[:5])
-        print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
-        print("E0/N !!!!: ", E0avg / num_site, "  Var: ", E0var / (num_site**2) / num_sample)
+
+        amp_batch = self.get_self_amp_batch()
+        max_amp = amp_batch[np.argmax(np.abs(amp_batch))]
+
+        if verbose:
+            print(amp_batch[:5])
+            print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
+            print("E0/N !!!!: ", E0avg / num_site, "  Var: ", E0var / (num_site**2) / num_sample)
 
         if not SR:
             if self.moving_E_avg != None:
@@ -218,9 +229,11 @@ class NQS_base():
 
             Gj = np.concatenate([g.flatten() for g in Glist])
             end_c, end_t = time.clock(), time.time()
-            print("monte carlo time ( back propagation to get E_grads ): ",
-                  end_c - start_c, end_t - start_t)
-            print("norm(G): ", np.linalg.norm(Gj))
+            if verbose:
+                print("monte carlo time ( back propagation to get E_grads ): ",
+                      end_c - start_c, end_t - start_t)
+                print("norm(G): ", np.linalg.norm(Gj))
+
             #
             # TO FIND BUG IN COMPLEX DERIVATIVE
             # COMPARING TO PLAIN GRADIENT
@@ -240,7 +253,7 @@ class NQS_base():
             # plt.legend()
             # plt.show()
             # import pdb;pdb.set_trace()
-            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, None
+            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, None, max_amp
         elif KFAC:  # SR + KFAC
             if self.moving_E_avg != None:
                 self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
@@ -1922,7 +1935,9 @@ class NQS_2d(NQS_base):
         num_particle = np.sum(config_arr, axis=(1,2)).dot([0,1])
         # localE_arr += mu * (num_particle != Lx*Ly//2)
         # localE_arr += mu * num_particle
-        print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
+
+        # print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
+        assert( np.isclose(np.sum(num_particle == Lx*Ly//2)/num_config, 1.) )
 
         # if np.isnan(localE_arr).any():
         #     import pdb;pdb.set_trace()

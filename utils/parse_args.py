@@ -100,7 +100,14 @@ def parse_args():
                         help='Using multiple gpus or not'
                         'Default: False',
                         default=0, type=int)
-
+    parser.add_argument('--conserved_Sz', dest='conserved_Sz',
+                        help='whether having charge conservation'
+                        'Default: True',
+                        default=1, type=int)
+    parser.add_argument('--warm_up', dest='warm_up',
+                        help='whether to using warm up'
+                        'Default: False',
+                        default=0, type=int)
 
 
     if len(sys.argv) == 1:

@@ -1,5 +1,5 @@
 # from memory_profiler import profile
-import os
+import os, sys
 import time
 import scipy.sparse.linalg
 from scipy.sparse.linalg import LinearOperator
@@ -8,6 +8,22 @@ import tensorflow as tf
 from utils.parse_args import parse_args
 from network.tf_network import tf_network
 import NQS
+
+
+def progress(count, total, Eavg, Evar, G_norm=None, max_amp=None, head=False):
+    if head:
+        print("-"*16 + " bar " + "-"*11 + " percent ,      < E >       ,     var < E > ,   | G |,  max_amp")
+    else:
+        bar_len = 30
+        filled_len = int(round(bar_len * count / float(total)))
+
+        percents = round(100.0 * count / float(total), 1)
+        bar = '>' * filled_len + '-' * (bar_len - filled_len)
+
+        sys.stdout.write('\r[%s] %s%s , %g+%g j, %g , %g , %g+%g j' % (bar, percents, '%', Eavg.real,
+                                                                       Eavg.imag, Evar, G_norm,
+                                                                       max_amp.real, max_amp.imag))
+        sys.stdout.flush()  # As suggested by Rom Ruben (see: http://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console/27871113#comment50529068_27871113)
 
 
 def dw_to_glist(GradW, var_shape_list):
@@ -43,6 +59,7 @@ if __name__ == "__main__":
     (real_time, integration, pinv_rcond) = (
         bool(args.real_time), args.integration, args.pinv_rcond)
     num_blocks, multi_gpus = args.num_blocks, args.multi_gpus
+    conserved_Sz, warm_up = bool(args.conserved_Sz), bool(args.warm_up)
 
     if len(path) > 0 and path[-1] != '/':
         path = path + '/'
@@ -75,7 +92,9 @@ if __name__ == "__main__":
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
                      activation=act, using_complex=using_complex, single_precision=SP,
-                     batch_size=num_sample, num_blocks=num_blocks, multi_gpus=multi_gpus)
+                     batch_size=num_sample, num_blocks=num_blocks, multi_gpus=multi_gpus,
+                     conserved_Sz=conserved_Sz
+                    )
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
                        J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
@@ -175,14 +194,14 @@ if __name__ == "__main__":
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
     GradW = None
     # N.moving_E_avg = E_avg * l
-    do_warm_up = False
-    warm_up = np.ones(10000)  # np.ones(num_iter)
-    warm_up[:2000] = np.arange(0.1,1,0.9/2000)
 
+    warm_up_array = np.ones(10000)  # np.ones(num_iter)
+    warm_up_array[:2000] = np.arange(0.1,1,0.9/2000)
+
+    progress(0, num_iter, 0, 0, head=True)
     for iteridx in range(1, num_iter + 1):
-        print(iteridx)
-        if do_warm_up:
-            N.NNet.sess.run(N.NNet.learning_rate.assign(lr*warm_up[iteridx-1]))
+        if warm_up:
+            N.NNet.sess.run(N.NNet.learning_rate.assign(lr*warm_up_array[iteridx-1]))
 
         # N.update_stabilizer()
 
@@ -193,9 +212,11 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
 
-        GradW, E, E_var, GjFj = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                                      SR=SR, Gj=GradW, explicit_SR=explicit_SR,
-                                      KFAC=KFAC)
+        GradW, E, E_var, GjFj, max_amp = N.VMC(num_sample=num_sample, iteridx=iteridx,
+                                               SR=SR, Gj=GradW, explicit_SR=explicit_SR,
+                                               KFAC=KFAC)
+
+        progress(iteridx, num_iter, E, E_var, np.linalg.norm(GradW), max_amp)
 
         if not real_time:
             if GjFj is not None:
