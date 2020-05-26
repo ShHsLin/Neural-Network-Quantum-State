@@ -1862,7 +1862,7 @@ class tf_network:
                 #                                   -36,
                 #                                   36
                 #                                  ),
-                #                  fc3[:,:,self.channels:]*0], axis=-1)
+                #                  fc3[:,:,self.channels:]], axis=-1)
 
 
 
