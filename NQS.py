@@ -2357,8 +2357,8 @@ class NQS_2d(NQS_base):
         return localE_arr
 
 
-    def local_E_2dJulian_batch_log(self, config_arr, t1=-1.,
-                                   t2=-1., U=100.):
+    def local_E_2dJulian_batch_log(self, config_arr, t1=-0.1,
+                                   t2=-0.9, U=32.):
         '''
         To compute the Energy of 2d Julian model with
         the configuration given in config_array.
@@ -2379,19 +2379,23 @@ class NQS_2d(NQS_base):
         old_log_amp = self.eval_log_amp_array(config_arr)
         # old_log_amp shape (num_config,1)
         localE_arr = np.zeros((num_config), dtype=self.NP_COMPLEX)
-        # old--> new    index   coeff
-        # (1 --> 0)     3       1
-        # (1 --> 1)     4       sqrt(2)
-        # (2 --> 0)     6       sqrt(2)
-        # (2 --> 1)     7       2
+        # # old--> new    index   coeff
+        # # (1 --> 0)     3       1
+        # # (1 --> 1)     4       sqrt(2)
+        # # (2 --> 0)     6       sqrt(2)
+        # # (2 --> 1)     7       2
         inter_coeff_map = np.zeros((9,))
         inter_coeff_map[3] = 1
         inter_coeff_map[4] = np.sqrt(2)
         inter_coeff_map[6] = np.sqrt(2)
         inter_coeff_map[7] = 2
         inter_coeff_map = inter_coeff_map.reshape([3,3])
+        # inter_coeff_map = np.zeros((4,))
+        # inter_coeff_map[2] = 1.
+        # inter_coeff_map = inter_coeff_map.reshape([2, 2])
 
 
+        max_num_p = 2
         #######################
         # HOP TO THE RIGHT   ##
         #######################
@@ -2404,15 +2408,19 @@ class NQS_2d(NQS_base):
                 ## hopping from (i,j) to (i+1, j)
                 new_i = (i+1)%Lx
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
-                mask2 = (config_arr[:, new_i, j, 2] != 1)  # (i+1,j) does not have two particles
+                mask2 = (config_arr[:, new_i, j, max_num_p] != 1)  # (i+1,j) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
 
                 old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
                 new_site_idx = np.nonzero(config_arr[:, new_i, j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
-                config_flip_arr[i, j, final_mask, new_i, j, 1:] = config_flip_arr[i, j, final_mask, new_i, j, :2]
+                tmp_config = config_flip_arr[i, j, final_mask, i, j, 1:].copy()
+                config_flip_arr[i, j, final_mask, i, j, 1:] *= 0
+                config_flip_arr[i, j, final_mask, i, j, :max_num_p] = tmp_config
+                tmp_config = config_flip_arr[i, j, final_mask, new_i, j, :max_num_p].copy()
+                config_flip_arr[i, j, final_mask, new_i, j, :max_num_p] *= 0
+                config_flip_arr[i, j, final_mask, new_i, j, 1:] = tmp_config
                 # write in the interacting_coeff
                 if i%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
@@ -2432,9 +2440,14 @@ class NQS_2d(NQS_base):
         flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         ## [TODO] remove the exp( masked ) part.
-        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
-                          )
+        amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
+        mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
+        amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                        )
+        # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+        #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+        #                   )
 
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
@@ -2454,15 +2467,19 @@ class NQS_2d(NQS_base):
                 ## hopping from (i,j) to (i-1, j)
                 new_i = (i-1+Lx)%Lx
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
-                mask2 = (config_arr[:, new_i, j, 2] != 1)  # (i-1,j) does not have two particles
+                mask2 = (config_arr[:, new_i, j, max_num_p] != 1)  # (i-1,j) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
 
                 old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
                 new_site_idx = np.nonzero(config_arr[:, new_i, j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
-                config_flip_arr[i, j, final_mask, new_i, j, 1:] = config_flip_arr[i, j, final_mask, new_i, j, :2]
+                tmp_config = config_flip_arr[i, j, final_mask, i, j, 1:].copy()
+                config_flip_arr[i, j, final_mask, i, j, 1:] *= 0
+                config_flip_arr[i, j, final_mask, i, j, :max_num_p] = tmp_config
+                tmp_config = config_flip_arr[i, j, final_mask, new_i, j, :max_num_p].copy()
+                config_flip_arr[i, j, final_mask, new_i, j, :max_num_p] *= 0
+                config_flip_arr[i, j, final_mask, new_i, j, 1:] = tmp_config
                 # write in the interacting_coeff
                 if i%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
@@ -2482,9 +2499,14 @@ class NQS_2d(NQS_base):
         flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         ## [TODO] remove the exp( masked ) part.
-        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
-                          )
+        amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
+        mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
+        amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                        )
+        # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+        #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+        #                   )
 
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
@@ -2504,15 +2526,19 @@ class NQS_2d(NQS_base):
                 ## hopping from (i,j) to (i, j+1)
                 new_j = (j+1)%Ly
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
-                mask2 = (config_arr[:, i, new_j, 2] != 1)  # (i,j+1) does not have two particles
+                mask2 = (config_arr[:, i, new_j, max_num_p] != 1)  # (i,j+1) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
 
                 old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
                 new_site_idx = np.nonzero(config_arr[:, i, new_j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
-                config_flip_arr[i, j, final_mask, i, new_j, 1:] = config_flip_arr[i, j, final_mask, i, new_j, :2]
+                tmp_config = config_flip_arr[i, j, final_mask, i, j, 1:].copy()
+                config_flip_arr[i, j, final_mask, i, j, 1:] *= 0
+                config_flip_arr[i, j, final_mask, i, j, :max_num_p] = tmp_config
+                tmp_config = config_flip_arr[i, j, final_mask, i, new_j, :max_num_p].copy()
+                config_flip_arr[i, j, final_mask, i, new_j, :max_num_p] *= 0
+                config_flip_arr[i, j, final_mask, i, new_j, 1:] = tmp_config
                 # write in the interacting_coeff
                 if j%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
@@ -2531,9 +2557,14 @@ class NQS_2d(NQS_base):
         flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         ## [TODO] remove the exp( masked ) part.
-        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
-                          )
+        amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
+        mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
+        amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                        )
+        # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+        #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+        #                   )
 
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
@@ -2553,15 +2584,19 @@ class NQS_2d(NQS_base):
                 ## hopping from (i,j) to (i, j-1)
                 new_j = (j-1+Ly)%Ly
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
-                mask2 = (config_arr[:, i, new_j, 2] != 1)  # (i,j-1) does not have two particles
+                mask2 = (config_arr[:, i, new_j, max_num_p] != 1)  # (i,j-1) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
 
                 old_site_idx = np.nonzero(config_arr[:, i, j, :])[1]
                 new_site_idx = np.nonzero(config_arr[:, i, new_j, :])[1]
 
                 # change the config
-                config_flip_arr[i, j, final_mask, i, j, :2] = config_flip_arr[i, j, final_mask, i, j, 1:]
-                config_flip_arr[i, j, final_mask, i, new_j, 1:] = config_flip_arr[i, j, final_mask, i, new_j, :2]
+                tmp_config = config_flip_arr[i, j, final_mask, i, j, 1:].copy()
+                config_flip_arr[i, j, final_mask, i, j, 1:] *= 0
+                config_flip_arr[i, j, final_mask, i, j, :max_num_p] = tmp_config
+                tmp_config = config_flip_arr[i, j, final_mask, i, new_j, :max_num_p].copy()
+                config_flip_arr[i, j, final_mask, i, new_j, :max_num_p] *= 0
+                config_flip_arr[i, j, final_mask, i, new_j, 1:] = tmp_config
                 # write in the interacting_coeff
                 if j%2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
@@ -2581,27 +2616,31 @@ class NQS_2d(NQS_base):
         flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         ## [TODO] remove the exp( masked ) part.
-        amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                           np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
-                          )
+        amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
+        mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
+        amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                        )
+        # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
+        #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
+        #                   )
 
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
         else:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,:,1:], amp_ratio[:,:,1:])
 
-
         #################
         #  h sigma^z_i  #
         #################
         # num_config x L
-        localE_arr += np.einsum('ijk->i', config_arr[:, :, :, 2] * U)
+        localE_arr += np.einsum('ijk->i', config_arr[:, :, :, max_num_p] * U)
 
         ###################################
         # mu if N not equal to Lx*Ly//2  #
         ###################################
         mu = 0.
-        num_particle = np.sum(config_arr, axis=(1,2)).dot([0,1,2])
+        num_particle = np.sum(config_arr, axis=(1,2)).dot(np.arange(max_num_p+1))
         # localE_arr += mu * (num_particle != Lx*Ly//2)
         # localE_arr += mu * num_particle
         print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
@@ -2609,8 +2648,8 @@ class NQS_2d(NQS_base):
         if np.isnan(localE_arr).any():
             import pdb;pdb.set_trace()
 
-        # return localE_arr
-        return localE_arr + 0.5 * (num_particle - Lx*Ly//2)**2, localE_arr
+        return localE_arr, localE_arr
+        # return localE_arr + 0.5 * (num_particle - Lx*Ly//2)**2, localE_arr
 
 ############################
 #  END OF DEFINITION NQS2d #

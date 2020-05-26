@@ -1778,9 +1778,44 @@ class tf_network:
 
             fc3 = tf.reshape(px, [-1, self.LxLy, self.channels * 2])
 
+            np_bias = np.zeros([self.LxLy, self.channels * 2])
+            np_bias[:, self.channels-1] = 0.
+            tf_bias = tf.constant(np_bias, dtype=self.TF_FLOAT)
+            fc3 = tf.math.add(fc3, tf_bias)
+
             conserved_Sz = True
             if conserved_Sz:
-                assert self.channels == 2
+                # assert self.channels == 2
+                # num_c0 = tf.matmul(tf.cast(x_reshaped[:, :, 0], self.TF_FLOAT),
+                #                    tf_mask)
+                # num_c1 = tf.matmul(tf.cast(x_reshaped[:, :, 1], self.TF_FLOAT),
+                #                    tf_mask)
+
+                # # p_c0 = 1 if LxLy / 2 - 0.001 - num_c0 > 0
+                # p_c0 = tf.math.sign(-num_c0 - 0.001 + self.LxLy // 2 )
+                # p_c0 = tf.nn.relu(p_c0) + 1e-36
+                # p_c1 = tf.math.sign(-num_c1 - 0.001 + self.LxLy // 2 )
+                # p_c1 = tf.nn.relu(p_c1) + 1e-36
+                # ## We add small value epsilon ~= 1e-36 to the probability
+                # ## to avoid the numerical undefined value p * log p, when
+                # ## p --> 0
+                # ## THE IS IMPORTANT FOR THE CODE TO WORK !!!
+                # ##
+                # log_p_c0 = tf.log(p_c0)
+                # log_p_c1 = tf.log(p_c1)
+                # log_p_symm_constrain = tf.stack([log_p_c0, log_p_c1], axis=-1)
+                # ## Although this is the constrain on probability
+                # ## since, we only consider the case of having 1 or 0 in probability
+                # ## this corresponds to probability amplitude having 0 and -inf
+                # ## in the real part.
+                # ## Therefore, we directly add this value to the real part, before normalizing it.
+                # ##
+                # fc3 = tf.concat([log_p_symm_constrain + fc3[:,:,:self.channels],
+                #                  fc3[:,:,self.channels:]], axis=-1)
+
+
+                ## Target charge = Q_tar
+                Q_tar = self.LxLy // 2
                 np_mask = mask.gen_fc_mask(self.ordering,
                                            mask_type='A',
                                            dtype=self.NP_FLOAT,
@@ -1788,31 +1823,46 @@ class tf_network:
                                            out_hidden=1)
                 tf_mask = tf.constant(np_mask, dtype=self.TF_FLOAT)
                 # x_reshaped = tf.reshape(x, [-1, self.LxLy, self.channels])
-                num_c0 = tf.matmul(tf.cast(x_reshaped[:, :, 0], self.TF_FLOAT),
-                                   tf_mask)
-                # p_c0 = 1 if LxLy / 2 - 0.001 - num_c0 > 0
-                p_c0 = tf.math.sign(-num_c0 - 0.001 + self.LxLy // 2 )
-                p_c0 = tf.nn.relu(p_c0) + 1e-36
-                num_c1 = tf.matmul(tf.cast(x_reshaped[:, :, 1], self.TF_FLOAT),
-                                   tf_mask)
-                p_c1 = tf.math.sign(-num_c1 - 0.001 + self.LxLy // 2 )
-                p_c1 = tf.nn.relu(p_c1) + 1e-36
-                ## We add small value epsilon ~= 1e-36 to the probability
-                ## to avoid the numerical undefined value p * log p, when
-                ## p --> 0
-                ## THE IS IMPORTANT FOR THE CODE TO WORK !!!
-                ##
-                log_p_c0 = tf.log(p_c0)
-                log_p_c1 = tf.log(p_c1)
-                log_p_symm_constrain = tf.stack([log_p_c0, log_p_c1], axis=-1)
-                ## Although this is the constrain on probability
-                ## since, we only consider the case of having 1 or 0 in probability
-                ## this corresponds to probability amplitude having 0 and -inf
-                ## in the real part.
-                ## Therefore, we directly add this value to the real part, before normalizing it.
-                ##
+                n_particle_list = []
+                for channel in range(self.channels):
+                    n_particle_list.append(tf.matmul(tf.cast(x_reshaped[:, :, channel],
+                                                             self.TF_FLOAT),
+                                                     tf_mask))
+
+                total_particle = n_particle_list[0] * 0
+                for channel in range(1, self.channels):
+                    total_particle += n_particle_list[channel] * channel
+
+                indicator_list = []
+                for channel in range(self.channels):
+                    # \mathbf{1}_{y_{i-1} + m <= Q}
+                    # Q - y_{i-1} - m + 0.001 > 0
+                    cond1 = tf.math.sign(Q_tar - total_particle - channel + 0.001)
+                    cond1 = tf.nn.relu(cond1) # + 1e-18
+                    # \mathbf{1}_{y_{i-1} + m >= Mi + Q - MN}
+                    # y_{i-1} + m - M*i - Q + M*N >= 0
+                    # y_{i-1} + m - M*i - Q + M*N + 0.001 > 0
+                    cond2 = tf.math.sign(total_particle + channel - (self.channels-1) *
+                                         tf.range(1,self.LxLy+1, dtype=tf.float32) - Q_tar +
+                                         (self.channels-1) * self.LxLy + 0.001)
+                    cond2 = tf.nn.relu(cond2) # + 1e-18
+                    indicator_list.append(cond1*cond2)
+
+                log_indicator_list = []
+                for channel in range(self.channels):
+                    log_indicator_list.append(tf.log(indicator_list[channel]))
+
+                log_p_symm_constrain = tf.stack(log_indicator_list, axis=-1)
+                # fc3 = tf.concat([log_p_symm_constrain + fc3[:,:,:self.channels],
+                max_re = tf.math.reduce_max(fc3[:,:,:self.channels], axis=-1)
+                b_max_re = tf.stack([max_re, max_re, max_re], axis=-1)
                 fc3 = tf.concat([log_p_symm_constrain + fc3[:,:,:self.channels],
                                  fc3[:,:,self.channels:]], axis=-1)
+                # fc3 = tf.concat([tf.clip_by_value(log_p_symm_constrain + fc3[:,:,:self.channels] - b_max_re,
+                #                                   -36,
+                #                                   36
+                #                                  ),
+                #                  fc3[:,:,self.channels:]*0], axis=-1)
 
 
 
@@ -1852,6 +1902,8 @@ class tf_network:
                 log_cond_amp_re_list[i] = log_cond_amp_re_list[i] - log_l2_norm
 
             log_cond_amp_re_stacked = tf.stack(log_cond_amp_re_list, axis=-1)
+            log_cond_amp_re_stacked = tf.clip_by_value(log_cond_amp_re_stacked,
+                    -1000, 1000)
             log_cond_amp_im_stacked = tf.stack(log_cond_amp_im_list, axis=-1)
             log_cond_amp = tf.complex(log_cond_amp_re_stacked,
                                       log_cond_amp_im_stacked)
@@ -1890,10 +1942,10 @@ class tf_network:
                     tf.image.rot90(x, k=1),
                     tf.image.rot90(x, k=2),
                     tf.image.rot90(x, k=3),
-#                     tf.image.rot90(1 - x, k=0),
-#                     tf.image.rot90(1 - x, k=1),
-#                     tf.image.rot90(1 - x, k=2),
-#                     tf.image.rot90(1 - x, k=3)
+                    # tf.image.rot90(1 - x, k=0),
+                    # tf.image.rot90(1 - x, k=1),
+                    # tf.image.rot90(1 - x, k=2),
+                    # tf.image.rot90(1 - x, k=3)
                 ],
                                    axis=0)
 
@@ -1982,6 +2034,9 @@ class tf_network:
                     symm_log_cond_amp_re_list[i] = symm_log_cond_amp_re_list[i] - symm_max_re
 
                 symm_log_cond_amp_re_stacked = tf.stack(symm_log_cond_amp_re_list, axis=-1)
+                symm_log_cond_amp_re_stacked = tf.clip_by_value(symm_log_cond_amp_re_stacked,
+                        -1000, 1000)
+
                 symm_log_l2_norm = tf.log(tf.math.reduce_sum(tf.exp(2*symm_log_cond_amp_re_stacked),
                                                              axis=[-1])) / 2.
                 for i in range(self.channels):
