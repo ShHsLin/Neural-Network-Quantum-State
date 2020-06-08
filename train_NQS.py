@@ -58,8 +58,6 @@ if __name__ == "__main__":
     (act, SP, using_complex) = (args.act, bool(args.SP), bool(args.using_complex))
     (real_time, integration, pinv_rcond) = (
         bool(args.real_time), args.integration, args.pinv_rcond)
-    num_blocks, multi_gpus = args.num_blocks, args.multi_gpus
-    conserved_Sz, warm_up = bool(args.conserved_Sz), bool(args.warm_up)
 
     if len(path) > 0 and path[-1] != '/':
         path = path + '/'
@@ -72,6 +70,15 @@ if __name__ == "__main__":
     opt, batch_size, H, dim, num_iter = (args.opt, args.batch_size,
                                          args.H, args.dim, args.num_iter)
     PBC = args.PBC
+
+    num_blocks, multi_gpus = args.num_blocks, args.multi_gpus
+    conserved_Sz, warm_up, Q_tar = bool(args.conserved_Sz), bool(args.warm_up), args.Q_tar
+    conserved_SU2, chem_pot = bool(args.conserved_SU2), args.chem_pot
+    if not conserved_Sz:
+        assert Q_tar is None
+    else:
+        assert Q_tar is not None
+
 
     if opt == "KFAC":
         KFAC = True
@@ -93,7 +100,8 @@ if __name__ == "__main__":
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
                      activation=act, using_complex=using_complex, single_precision=SP,
                      batch_size=num_sample, num_blocks=num_blocks, multi_gpus=multi_gpus,
-                     conserved_Sz=conserved_Sz
+                     conserved_Sz=conserved_Sz, Q_tar=Q_tar,
+                     conserved_SU2=conserved_SU2, chem_pot=chem_pot
                     )
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,

@@ -104,10 +104,27 @@ def parse_args():
                         help='whether having charge conservation'
                         'Default: True',
                         default=1, type=int)
+    parser.add_argument('--conserved_SU2', dest='conserved_SU2',
+                        help='whether having SU2 conservation'
+                        'Default: False',
+                        default=0, type=int)
     parser.add_argument('--warm_up', dest='warm_up',
                         help='whether to using warm up'
                         'Default: False',
                         default=0, type=int)
+    parser.add_argument('--Q_tar', dest='Q_tar',
+                        help='the target conserved charge/spin'
+                        'must specify value if conserved_Sz is True'
+                        'and only affect when conserved_Sz is True'
+                        'Default: None',
+                        default=None, type=int)
+    parser.add_argument('--chem_pot', dest='chem_pot',
+                        help='the value of chemical potential'
+                        'if not not using set to None'
+                        'Default: None',
+                        default=None, type=float)
+
+
 
 
     if len(sys.argv) == 1:

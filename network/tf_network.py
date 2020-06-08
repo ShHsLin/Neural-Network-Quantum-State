@@ -60,7 +60,8 @@ class tf_network:
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True,
                  batch_size=None, using_symm=False, num_blocks=10, multi_gpus=False,
-                 conserved_Sz=True
+                 conserved_Sz=True, Q_tar=None,
+                 conserved_SU2=False, chem_pot=None
                 ):
         '''
         Arguments as follows:
@@ -114,6 +115,9 @@ class tf_network:
         self.using_complex = using_complex
         self.using_symm = using_symm
         self.conserved_Sz = conserved_Sz
+        self.conserved_SU2 = conserved_SU2
+        self.Q_tar = Q_tar
+        self.chem_pot = chem_pot
         self.keep_prob = tf.placeholder(self.TF_FLOAT)
         self.dx_exp_stabilizer = tf.placeholder(self.TF_FLOAT)
         self.multi_gpus = multi_gpus
@@ -1817,7 +1821,7 @@ class tf_network:
 
 
                 ## Target charge = Q_tar
-                Q_tar = self.LxLy // 2
+                Q_tar = self.Q_tar
                 np_mask = mask.gen_fc_mask(self.ordering,
                                            mask_type='A',
                                            dtype=self.NP_FLOAT,
