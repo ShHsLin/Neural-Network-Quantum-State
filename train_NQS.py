@@ -35,7 +35,7 @@ def save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_
     return
 
 
-def progress(count, total, G_norm=None, info_dict=None, head=False):
+def progress(count, total, info_dict=None, head=False):
     if head:
         print("-"*16 + " bar " + "-"*11 + " percent ,      < E >       ,     std < E > ,   | G |,  max_amp")
     else:
@@ -48,6 +48,7 @@ def progress(count, total, G_norm=None, info_dict=None, head=False):
         Eavg = info_dict['E0']
         Evar = info_dict['E0_var']
         max_amp = info_dict['max_amp']
+        G_norm = info_dict['G_norm']
 
         sys.stdout.write('\r[%s] %s%s , %g+%g j, %g , %g , %g+%g j' % (bar, percents, '%', Eavg.real,
                                                                        Eavg.imag, np.sqrt(Evar), G_norm,
@@ -227,6 +228,7 @@ if __name__ == "__main__":
     print("Thermalization time: ", end_c - start_c, end_t - start_t)
 
     tmp_result_dict = {"E": [], "E_var": [], "E0": [], "E0_var": [],
+                       "G_norm": [],
                        "max_amp": [], "channel_stat": []
                       }
 
@@ -238,7 +240,7 @@ if __name__ == "__main__":
     warm_up_array = np.ones(10000)  # np.ones(num_iter)
     warm_up_array[:2000] = np.arange(0.1,1,0.9/2000)
 
-    progress(0, num_iter, 0, 0, head=True)
+    progress(0, num_iter, None, head=True)
     for iteridx in range(1, num_iter + 1):
         if warm_up:
             N.NNet.sess.run(N.NNet.learning_rate.assign(lr*warm_up_array[iteridx-1]))
@@ -256,7 +258,7 @@ if __name__ == "__main__":
                                        SR=SR, Gj=GradW, explicit_SR=explicit_SR,
                                        KFAC=KFAC)
 
-        progress(iteridx, num_iter, np.linalg.norm(GradW), info_dict)
+        progress(iteridx, num_iter, info_dict)
 
         if not real_time:
             if GjFj is not None:

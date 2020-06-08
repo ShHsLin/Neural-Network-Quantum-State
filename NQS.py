@@ -255,11 +255,14 @@ class NQS_base():
                 Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
+            G_norm = np.linalg.norm(Gj)
+            info_dict['G_norm'] = G_norm
+
             end_c, end_t = time.clock(), time.time()
             if verbose:
                 print("monte carlo time ( back propagation to get E_grads ): ",
                       end_c - start_c, end_t - start_t)
-                print("norm(G): ", np.linalg.norm(Gj))
+                print("norm(G): ", G_norm)
 
             #
             # TO FIND BUG IN COMPLEX DERIVATIVE
