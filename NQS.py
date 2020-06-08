@@ -173,27 +173,49 @@ class NQS_base():
         if verbose:
             print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
 
-        ## collect some statistics
-        axis_to_sum = range(len(configDim))
-        axis_to_sum = list(axis_to_sum)
-        sum_to_channel = np.sum(configArray, axis=tuple(axis_to_sum[:-1]))
+
+        ### Statistics should be collected here
+        ###
+        ### 1. ) Log number of particle per sample.
+        ### 2. ) Chemical potential, SU(2) constraint should be added here
+        ###
+
+        info_dict = {}
+        ## config_arr [batch_size, Lx, Ly, channels] --> sum_config_arr [batch_size, channels]
+        sum_config_arr = np.sum(config_arr, axis=(1,2))
+        ## sum_to_channel [channels]  ; This gives statisics in channels sampled.
+        sum_to_channel = np.sum(sum_config_arr, axis=0)
+        ## num_particle [batch_size]
+        num_particle = sum_config_arr.dot(np.arange(self.channels))
+        num_p_unique, num_p_counts = np.unique(num_particle, return_counts=True)
+        avg_num_particle = np.mean(num_particle)  # avg num per sample
+        avg_num_particle_per_site = avg_num_particle / np.prod(configDim[1:-1])
+
+        info_dict['num_p_unique'] = num_p_unique
+        info_dict['num_p_counts'] = num_p_counts
+        info_dict['channel_stat'] = sum_to_channel / np.prod(configDim[:-1])
+
         if verbose:
-            print("sampled config statistic : ", sum_to_channel / np.prod(configDim[:-1]))
-            if self.channels == 3:
-                print("sampled config <N> : ", np.array([0,1,2.]).dot(sum_to_channel / np.prod(configDim[:-1])))
-            elif self.channels == 2:
-                print("sampled config <N> : ", np.array([0,1.]).dot(sum_to_channel / np.prod(configDim[:-1])))
-            else:
-                raise NotImplementedError
+            print("sampled channel statistic : ", sum_to_channel / np.prod(configDim[:-1]))
+            print("sampled config <n>/Lx/Ly : ", avg_num_particle_per_site)
+
+        if self.NNet.conserved_Sz:
+            assert np.isclose(np.sum(num_particle == self.NNet.Q_tar)/configDim[0], 1.)
+
 
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(config_arr[i:i+1])
-        Earray_return = self.get_local_E_batch(config_arr)
-        if len(Earray_return) == 2:
-            Earray = Earray_return[0]
-            E0array = Earray_return[1]
-        else:
-            Earray = E0array = Earray_return
+        E0array = self.get_local_E_batch(config_arr)
+        assert type(E0array) == np.ndarray
+
+        ## [TODO] Add parse arg controll over whether adding chemical potential ?
+        ## [TODO] Add parse arg controll over whether SU2 symm is added?
+        mu = 0.
+        # localE_arr += mu * (num_particle != Lx*Ly//2)
+        # localE_arr += mu * num_particle
+        # localE_arr += mu * (num_particle - Lx*Ly//2)**2
+
+        Earray = E0array
 
         end_c, end_t = time.clock(), time.time()
         if verbose:
@@ -206,11 +228,16 @@ class NQS_base():
 
         amp_batch = self.get_self_amp_batch()
         max_amp = amp_batch[np.argmax(np.abs(amp_batch))]
+        info_dict['max_amp'] = max_amp
+        info_dict['E0'] = E0avg / num_site
+        info_dict['E'] = Eavg / num_site
+        info_dict['E0_var'] = Evar / (num_site**2)
+        info_dict['E_var'] = E0var / (num_site**2)
 
         if verbose:
             print(amp_batch[:5])
-            print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) / num_sample)
-            print("E0/N !!!!: ", E0avg / num_site, "  Var: ", E0var / (num_site**2) / num_sample)
+            print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) )
+            print("E0/N !!!!: ", E0avg / num_site, "  Var: ", E0var / (num_site**2) )
 
         if not SR:
             if self.moving_E_avg != None:
@@ -253,7 +280,7 @@ class NQS_base():
             # plt.legend()
             # plt.show()
             # import pdb;pdb.set_trace()
-            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, None, max_amp
+            return Gj, None, info_dict
         elif KFAC:  # SR + KFAC
             if self.moving_E_avg != None:
                 self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
@@ -297,7 +324,7 @@ class NQS_base():
             print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
             Gj = self.list_to_vec([pair[0] for pair in self.NNet.apply_fisher_inverse(F_list, config_arr)])
             print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, Gj.dot(F0_vec)
+            return Gj, Eavg / num_site, Evar / (num_site**2), Gj.dot(F0_vec)
             import pdb;pdb.set_trace()
 
             '''
@@ -389,7 +416,7 @@ class NQS_base():
                   "norm(F):", np.linalg.norm(F0_vec),
                   "G.dot(F):", Gj.dot(F0_vec))
 
-            return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, Gj.dot(F0_vec)
+            return Gj, Eavg / num_site, Evar / (num_site**2), Gj.dot(F0_vec)
 
         else: #if SR; elif KFAC; else
             if self.cov_list is None:
@@ -1931,20 +1958,13 @@ class NQS_2d(NQS_base):
         # else:
         #     localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:,:-1], amp_ratio[:,:-1,:]) * J / 2
 
-        mu = 0.
-        num_particle = np.sum(config_arr, axis=(1,2)).dot([0,1])
-        # localE_arr += mu * (num_particle != Lx*Ly//2)
-        # localE_arr += mu * num_particle
-
-        # print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
-        assert( np.isclose(np.sum(num_particle == Lx*Ly//2)/num_config, 1.) )
 
         # if np.isnan(localE_arr).any():
         #     import pdb;pdb.set_trace()
 
         assert( not np.isnan(localE_arr).any() )
 
-        return localE_arr + 0. * (num_particle - Lx*Ly//2)**2, localE_arr
+        return localE_arr
 
     def local_E_2dJ1J2_batch(self, config_arr):
         '''
@@ -2357,15 +2377,6 @@ class NQS_2d(NQS_base):
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J2 / 2
         else:
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:,:-1,1:], amp_ratio[:,:-1,1:]) * J2 / 2
-
-        mu = 0.
-        num_particle = np.sum(config_arr, axis=(1,2)).dot([0,1])
-        # localE_arr += mu * (num_particle != Lx*Ly//2)
-        # localE_arr += mu * num_particle
-        print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
-
-        # if np.isnan(localE_arr).any():
-        #     import pdb;pdb.set_trace()
 
         assert( not np.isnan(localE_arr).any() )
 

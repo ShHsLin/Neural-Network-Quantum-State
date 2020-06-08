@@ -1,5 +1,6 @@
 # from memory_profiler import profile
 import os, sys
+import pickle
 import time
 import scipy.sparse.linalg
 from scipy.sparse.linalg import LinearOperator
@@ -10,9 +11,33 @@ from network.tf_network import tf_network
 import NQS
 
 
-def progress(count, total, Eavg, Evar, G_norm=None, max_amp=None, head=False):
+def save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_each):
+    if not os.path.isfile(result_filename):
+        result_dict = {}
+        for key in info_dict.keys():
+            if key not in ["num_p_unique", "num_p_counts"]:
+                result_dict[key] = np.empty([0, *tmp_result_dict[key][0].shape])
+            else:
+                result_dict[key] = []
+
+    else:
+        result_dict = pickle.load(open(result_filename, 'rb'))
+
+    for key in info_dict.keys():
+        if key not in ["num_p_unique", "num_p_counts"]:
+            result_dict[key] = np.concatenate([result_dict[key],
+                                               tmp_result_dict[key][iteridx-save_each:iteridx]]
+                                             )
+        else:
+            result_dict[key].append(info_dict[key])
+
+    pickle.dump(result_dict, open(result_filename, 'wb'))
+    return
+
+
+def progress(count, total, G_norm=None, info_dict=None, head=False):
     if head:
-        print("-"*16 + " bar " + "-"*11 + " percent ,      < E >       ,     var < E > ,   | G |,  max_amp")
+        print("-"*16 + " bar " + "-"*11 + " percent ,      < E >       ,     std < E > ,   | G |,  max_amp")
     else:
         bar_len = 30
         filled_len = int(round(bar_len * count / float(total)))
@@ -20,8 +45,12 @@ def progress(count, total, Eavg, Evar, G_norm=None, max_amp=None, head=False):
         percents = round(100.0 * count / float(total), 1)
         bar = '>' * filled_len + '-' * (bar_len - filled_len)
 
+        Eavg = info_dict['E0']
+        Evar = info_dict['E0_var']
+        max_amp = info_dict['max_amp']
+
         sys.stdout.write('\r[%s] %s%s , %g+%g j, %g , %g , %g+%g j' % (bar, percents, '%', Eavg.real,
-                                                                       Eavg.imag, Evar, G_norm,
+                                                                       Eavg.imag, np.sqrt(Evar), G_norm,
                                                                        max_amp.real, max_amp.imag))
         sys.stdout.flush()  # As suggested by Rom Ruben (see: http://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console/27871113#comment50529068_27871113)
 
@@ -197,7 +226,10 @@ if __name__ == "__main__":
     end_t, end_c = time.time(), time.clock()
     print("Thermalization time: ", end_c - start_c, end_t - start_t)
 
-    E_log = []
+    tmp_result_dict = {"E": [], "E_var": [], "E0": [], "E0_var": [],
+                       "max_amp": [], "channel_stat": []
+                      }
+
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
     GradW = None
@@ -220,11 +252,11 @@ if __name__ == "__main__":
         #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
 
-        GradW, E, E_var, GjFj, max_amp = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                                               SR=SR, Gj=GradW, explicit_SR=explicit_SR,
-                                               KFAC=KFAC)
+        GradW, GjFj, info_dict = N.VMC(num_sample=num_sample, iteridx=iteridx,
+                                       SR=SR, Gj=GradW, explicit_SR=explicit_SR,
+                                       KFAC=KFAC)
 
-        progress(iteridx, num_iter, E, E_var, np.linalg.norm(GradW), max_amp)
+        progress(iteridx, num_iter, np.linalg.norm(GradW), info_dict)
 
         if not real_time:
             if GjFj is not None:
@@ -313,8 +345,25 @@ if __name__ == "__main__":
             else:
                 raise NotImplementedError
 
+        # info_dict contain:
+        #   "E0", "E0_var", "E", "E_var", "max_amp",
+        #   "num_p_unique", "num_p_counts", "channel_stat"
+        for key in info_dict.keys():
+            if key not in ["num_p_unique", "num_p_counts"]:
+                tmp_result_dict[key].append(info_dict[key])
+
+        ## [TODO] delete the code below
+        # E_log.append(info_dict['E'])
+        # E_var_log.append(info_dict['E_var'])
+        # E0_log.append(info_dict['E0'])
+        # E0_var_log.append(info_dict['E0_var'])
+        # max_amp_log.append(info_dict['max_amp'])
+        # channel_stat_log.append(info_dict['channel_stat'])
+        ## num_p_unique & num_p_counts only store per save_each steps.
+        ## to ease storage.
+
+
         # GradW = GradW/np.sqrt(iteridx)
-        E_log.append(E)
         grad_list = dw_to_glist(GradW, var_shape_list)
 
         #  L2 Regularization ###
@@ -326,7 +375,7 @@ if __name__ == "__main__":
         save_each = 100
         if iteridx % save_each == 0:
             # Saving WF
-            if np.isnan(E_log[-1]):
+            if np.isnan(tmp_result_dict["E0"][-1]):
                 print("nan in Energy, stop!")
                 break
             else:
@@ -338,7 +387,7 @@ if __name__ == "__main__":
                 log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
                                 (L, which_net, act, alpha, opt, lr, num_sample),
                                 'a')
-                np.savetxt(log_file, E_log[iteridx-save_each:iteridx], '%.6e', delimiter=',')
+                np.savetxt(log_file, tmp_result_dict["E0"][iteridx-save_each:iteridx], '%.6e', delimiter=',')
                 log_file.close()
 
                 cov_s_list = []
@@ -355,38 +404,16 @@ if __name__ == "__main__":
                 log_file.close()
 
             else:
-                log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' %
-                                (L, which_net, act, alpha, opt, lr, num_sample),
-                                'a')
-                np.savetxt(log_file, E_log[iteridx-save_each:iteridx], '%.6e', delimiter=',')
-                log_file.close()
+                ## [TODO] delete the code below
+                # filename_csv = path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' % (L, which_net, act, alpha, opt, lr, num_sample)
+                # log_file = open(filename_csv, 'a')
+                # np.savetxt(log_file, tmp_result_dict["E0"][iteridx-save_each:iteridx], '%.6e', delimiter=',')
+                # log_file.close()
+
+                result_filename = path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.pkl' % (L, which_net, act, alpha, opt, lr, num_sample)
+                save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_each)
         else:
             pass
-
-
-    # # Saving E_list
-    # if SR:
-    #     log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
-    #                     (L, which_net, act, alpha, opt, lr, num_sample),
-    #                     'a')
-    #     np.savetxt(log_file, E_log, '%.6e', delimiter=',')
-    #     log_file.close()
-    #     print(" The whole training finish; now remove tmp file and "
-    #           " Store the result in csv file")
-    #     os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_tmp.csv' %
-    #               (L, which_net, act, alpha, opt, lr, num_sample))
-    # else:
-    #     log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' %
-    #                     (L, which_net, act, alpha, opt, lr, num_sample),
-    #                     'a')
-    #     np.savetxt(log_file, E_log, '%.6e', delimiter=',')
-    #     log_file.close()
-    #     print(" The whole training finish; now remove tmp file and "
-    #           " Store the result in csv file")
-    #     os.remove(path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR_tmp.csv' %
-    #               (L, which_net, act, alpha, opt, lr, num_sample))
-
-
 
 
     '''
