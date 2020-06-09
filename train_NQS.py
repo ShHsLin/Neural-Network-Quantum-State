@@ -25,8 +25,9 @@ def save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_
 
     for key in info_dict.keys():
         if key not in ["num_p_unique", "num_p_counts"]:
+            assert result_dict[key].shape[0] == iteridx - save_each
             result_dict[key] = np.concatenate([result_dict[key],
-                                               tmp_result_dict[key][iteridx-save_each:iteridx]]
+                                               tmp_result_dict[key][-save_each:]]
                                              )
         else:
             result_dict[key].append(info_dict[key])
@@ -237,11 +238,22 @@ if __name__ == "__main__":
     GradW = None
     # N.moving_E_avg = E_avg * l
 
-    warm_up_array = np.ones(10000)  # np.ones(num_iter)
-    warm_up_array[:2000] = np.arange(0.1,1,0.9/2000)
+    warm_up_array = np.ones(num_iter)  # np.ones(num_iter)
+    if warm_up:
+        assert num_iter > 2000
+        warm_up_array[:2000] = np.arange(0.1,1,0.9/2000)
 
     progress(0, num_iter, None, head=True)
-    for iteridx in range(1, num_iter + 1):
+
+    result_filename = path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.pkl' % (L, which_net, act, alpha, opt, lr, num_sample)
+    if not os.path.isfile(result_filename):
+        start_idx = 0
+    else:
+        result_dict = pickle.load(open(result_filename, 'rb'))
+        start_idx = result_dict['E'].shape[0]
+
+
+    for iteridx in range(start_idx + 1, num_iter + 1):
         if warm_up:
             N.NNet.sess.run(N.NNet.learning_rate.assign(lr*warm_up_array[iteridx-1]))
 
@@ -389,7 +401,7 @@ if __name__ == "__main__":
                 log_file = open(path + 'L%d_%s_%s_a%s_%s%.e_S%d.csv' %
                                 (L, which_net, act, alpha, opt, lr, num_sample),
                                 'a')
-                np.savetxt(log_file, tmp_result_dict["E0"][iteridx-save_each:iteridx], '%.6e', delimiter=',')
+                np.savetxt(log_file, tmp_result_dict["E0"][-save_each:], '%.6e', delimiter=',')
                 log_file.close()
 
                 cov_s_list = []
@@ -409,10 +421,11 @@ if __name__ == "__main__":
                 ## [TODO] delete the code below
                 # filename_csv = path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' % (L, which_net, act, alpha, opt, lr, num_sample)
                 # log_file = open(filename_csv, 'a')
-                # np.savetxt(log_file, tmp_result_dict["E0"][iteridx-save_each:iteridx], '%.6e', delimiter=',')
+                # np.savetxt(log_file, tmp_result_dict["E0"][-save_each:], '%.6e', delimiter=',')
                 # log_file.close()
 
-                result_filename = path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.pkl' % (L, which_net, act, alpha, opt, lr, num_sample)
+                # result_filename = path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.pkl' % (L, which_net, act, alpha, opt, lr, num_sample)
+
                 save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_each)
         else:
             pass
