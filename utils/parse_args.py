@@ -100,6 +100,10 @@ def parse_args():
                         help='Using multiple gpus or not'
                         'Default: False',
                         default=0, type=int)
+    parser.add_argument('--conserved_C4', dest='conserved_C4',
+                        help='whether having C4 conservation'
+                        'Default: False',
+                        default=0, type=int)
     parser.add_argument('--conserved_Sz', dest='conserved_Sz',
                         help='whether having charge conservation'
                         'Default: True',

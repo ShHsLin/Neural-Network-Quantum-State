@@ -59,7 +59,7 @@ class tf_network:
     def __init__(self, which_net, inputShape, optimizer, dim, sess=None,
                  learning_rate=0.1125, momentum=0.90, alpha=2,
                  activation=None, using_complex=True, single_precision=True,
-                 batch_size=None, using_symm=False, num_blocks=10, multi_gpus=False,
+                 batch_size=None, conserved_C4=False, num_blocks=10, multi_gpus=False,
                  conserved_Sz=True, Q_tar=None,
                  conserved_SU2=False, chem_pot=None
                 ):
@@ -113,7 +113,7 @@ class tf_network:
         self.which_net = which_net
         self.num_blocks = num_blocks
         self.using_complex = using_complex
-        self.using_symm = using_symm
+        self.conserved_C4 = conserved_C4
         self.conserved_Sz = conserved_Sz
         self.conserved_SU2 = conserved_SU2
         self.Q_tar = Q_tar
@@ -176,7 +176,7 @@ class tf_network:
         else:
             try:
                 self.amp, self.log_amp, self.log_cond_amp, self.prob = all_out[:4]
-                if self.using_symm:
+                if self.conserved_C4:
                     # self.symm_amp = all_out[4]
                     # self.symm_log_amp = all_out[5]
                     self.amp = all_out[4]
@@ -1702,7 +1702,7 @@ class tf_network:
             out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
-        if not self.using_symm:
+        if not self.conserved_C4:
             self.registered = True
             return out, log_amp, log_cond_amp, prob
         else:
@@ -1730,7 +1730,7 @@ class tf_network:
         ## single model, i.e. w.o. symmetry
         ## using for sampling perpose only
         #######################################
-        self.registered = self.registered or self.using_symm  # Not to register the sampling head
+        self.registered = self.registered or self.conserved_C4  # Not to register the sampling head
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             x_reshaped = tf.reshape(x, [-1, self.LxLy, self.channels])
 
@@ -1933,7 +1933,7 @@ class tf_network:
             out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
-        if not self.using_symm:
+        if not self.conserved_C4:
             self.registered = True
             return out, log_amp, log_cond_amp, prob
         else:
