@@ -21,6 +21,10 @@ def parse_args():
                         ' that the multiplication of learning rate and number of iteration'
                         ' be around one, i.e. lr * num_iter = 1.  Default: 1500',
                         default=500, type=int)
+    parser.add_argument('--save_each', dest='save_each',
+                        help='number of iterations that wavefunction and results'
+                        'are stored. Default: 100',
+                        default=100, type=int)
     parser.add_argument('--num_sample', dest='num_sample',
                         help='Number of sampling in Monte Carlo process. Default: 5000',
                         default=5000, type=int)

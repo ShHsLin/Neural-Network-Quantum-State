@@ -206,16 +206,28 @@ class NQS_base():
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(config_arr[i:i+1])
         E0array = self.get_local_E_batch(config_arr)
+        # import pdb;pdb.set_trace()
         assert type(E0array) == np.ndarray
 
+        Earray = E0array
+
+        if self.NNet.conserved_SU2:
+            totalS_array = self.local_totalS_batch_log(config_arr)
+
+            totalS_avg = np.average(totalS_array)
+            totalS_var = np.var(totalS_array)
+            info_dict['totalS'] = totalS_avg
+            info_dict['totalS_var'] = totalS_var
+
+            SU2_prefactor = 0.1
+            Earray = Earray + SU2_prefactor * totalS_array
+
         ## [TODO] Add parse arg controll over whether adding chemical potential ?
-        ## [TODO] Add parse arg controll over whether SU2 symm is added?
         mu = 0.
         # localE_arr += mu * (num_particle != Lx*Ly//2)
         # localE_arr += mu * num_particle
         # localE_arr += mu * (num_particle - Lx*Ly//2)**2
 
-        Earray = E0array
 
         end_c, end_t = time.clock(), time.time()
         if verbose:
@@ -233,6 +245,7 @@ class NQS_base():
         info_dict['E'] = Eavg / num_site
         info_dict['E0_var'] = Evar / (num_site**2)
         info_dict['E_var'] = E0var / (num_site**2)
+
 
         if verbose:
             print(amp_batch[:5])

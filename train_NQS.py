@@ -51,9 +51,16 @@ def progress(count, total, info_dict=None, head=False):
         max_amp = info_dict['max_amp']
         G_norm = info_dict['G_norm']
 
-        sys.stdout.write('\r[%s] %s%s , %g+%g j, %g , %g , %g+%g j' % (bar, percents, '%', Eavg.real,
-                                                                       Eavg.imag, np.sqrt(Evar), G_norm,
-                                                                       max_amp.real, max_amp.imag))
+        if 'totalS' in info_dict.keys():
+            totalS = info_dict['totalS']
+            sys.stdout.write('\r[%s] %s%s , %g+%gj, %g , %g , %g+%gj, %g+%gj' % (bar, percents, '%', Eavg.real,
+                                                                                  Eavg.imag, np.sqrt(Evar), G_norm,
+                                                                                  max_amp.real, max_amp.imag, totalS.real, totalS.imag))
+        else:
+            sys.stdout.write('\r[%s] %s%s , %g+%gj, %g , %g , %g+%gj' % (bar, percents, '%', Eavg.real,
+                                                                           Eavg.imag, np.sqrt(Evar), G_norm,
+                                                                           max_amp.real, max_amp.imag))
+
         sys.stdout.flush()  # As suggested by Rom Ruben (see: http://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console/27871113#comment50529068_27871113)
 
 
@@ -103,6 +110,7 @@ if __name__ == "__main__":
     PBC = args.PBC
 
     num_blocks, multi_gpus = args.num_blocks, args.multi_gpus
+    save_each = args.save_each
     conserved_Sz, warm_up, Q_tar = bool(args.conserved_Sz), bool(args.warm_up), args.Q_tar
     conserved_C4 = bool(args.conserved_C4)
     conserved_SU2, chem_pot = bool(args.conserved_SU2), args.chem_pot
@@ -231,8 +239,12 @@ if __name__ == "__main__":
 
     tmp_result_dict = {"E": [], "E_var": [], "E0": [], "E0_var": [],
                        "G_norm": [],
-                       "max_amp": [], "channel_stat": []
+                       "max_amp": [], "channel_stat": [],
                       }
+    if conserved_SU2:
+        tmp_result_dict["totalS"] = []
+        tmp_result_dict["totalS_var"] = []
+
 
     N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
     N.NNet.sess.run(N.NNet.momentum.assign(0.9))
@@ -387,7 +399,6 @@ if __name__ == "__main__":
 
         N.NNet.applyGrad(grad_list)
         # To save object ##
-        save_each = 100
         if iteridx % save_each == 0:
             # Saving WF
             if np.isnan(tmp_result_dict["E0"][-1]):
