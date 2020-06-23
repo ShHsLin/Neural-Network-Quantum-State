@@ -61,7 +61,8 @@ class tf_network:
                  activation=None, using_complex=True, single_precision=True,
                  batch_size=None, conserved_C4=False, num_blocks=10, multi_gpus=False,
                  conserved_Sz=True, Q_tar=None,
-                 conserved_SU2=False, chem_pot=None
+                 conserved_SU2=False, chem_pot=None,
+                 conserved_inv=False,
                 ):
         '''
         Arguments as follows:
@@ -114,6 +115,7 @@ class tf_network:
         self.num_blocks = num_blocks
         self.using_complex = using_complex
         self.conserved_C4 = conserved_C4
+        self.conserved_inv = conserved_inv
         self.conserved_Sz = conserved_Sz
         self.conserved_SU2 = conserved_SU2
         self.Q_tar = Q_tar
@@ -1933,7 +1935,7 @@ class tf_network:
             out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
-        if not self.conserved_C4:
+        if not (self.conserved_C4 or self.conserved_inv):
             self.registered = True
             return out, log_amp, log_cond_amp, prob
         else:
@@ -1942,18 +1944,37 @@ class tf_network:
             #######################################
             self.registered = False
             with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
-                num_symm = 4
-                symm_x = tf.concat([
-                    tf.image.rot90(x, k=0),
-                    tf.image.rot90(x, k=1),
-                    tf.image.rot90(x, k=2),
-                    tf.image.rot90(x, k=3),
-                    # tf.image.rot90(1 - x, k=0),
-                    # tf.image.rot90(1 - x, k=1),
-                    # tf.image.rot90(1 - x, k=2),
-                    # tf.image.rot90(1 - x, k=3)
-                ],
-                                   axis=0)
+                if self.conserved_C4 and not self.conserved_inv:
+                    num_symm = 4
+                    symm_x = tf.concat([
+                        tf.image.rot90(x, k=0),
+                        tf.image.rot90(x, k=1),
+                        tf.image.rot90(x, k=2),
+                        tf.image.rot90(x, k=3),
+                        ],
+                        axis=0)
+                elif self.conserved_C4 and self.conserved_inv:
+                    num_symm = 8
+                    symm_x = tf.concat([
+                        tf.image.rot90(x, k=0),
+                        tf.image.rot90(x, k=1),
+                        tf.image.rot90(x, k=2),
+                        tf.image.rot90(x, k=3),
+                        tf.image.rot90(1 - x, k=0),
+                        tf.image.rot90(1 - x, k=1),
+                        tf.image.rot90(1 - x, k=2),
+                        tf.image.rot90(1 - x, k=3)
+                        ],
+                        axis=0)
+                else:  ## only inv
+                    num_symm = 2
+                    symm_x = tf.concat([
+                        tf.image.rot90(x, k=0),
+                        tf.image.rot90(1 - x, k=0),
+                        ],
+                        axis=0)
+
+
 
                 symm_x_reshaped = tf.reshape(symm_x,
                                              [-1, self.LxLy, self.channels])

@@ -219,7 +219,7 @@ class NQS_base():
             info_dict['totalS'] = totalS_avg
             info_dict['totalS_var'] = totalS_var
 
-            SU2_prefactor = 0.1
+            SU2_prefactor = 1.
             Earray = Earray + SU2_prefactor * totalS_array
 
         ## [TODO] Add parse arg controll over whether adding chemical potential ?
