@@ -108,6 +108,10 @@ def parse_args():
                         help='whether having C4 conservation'
                         'Default: False',
                         default=0, type=int)
+    parser.add_argument('--conserved_inv', dest='conserved_inv',
+                        help='whether having spin inversion symmetry'
+                        'Default: False',
+                        default=0, type=int)
     parser.add_argument('--conserved_Sz', dest='conserved_Sz',
                         help='whether having charge conservation'
                         'Default: True',
