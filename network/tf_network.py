@@ -1851,7 +1851,7 @@ class tf_network:
                     # y_{i-1} + m - M*i - Q + M*N >= 0
                     # y_{i-1} + m - M*i - Q + M*N + 0.001 > 0
                     cond2 = tf.math.sign(total_particle + channel - (self.channels-1) *
-                                         tf.range(1,self.LxLy+1, dtype=tf.float32) - Q_tar +
+                                         tf.range(1,self.LxLy+1, dtype=self.TF_FLOAT) - Q_tar +
                                          (self.channels-1) * self.LxLy + 0.001)
                     cond2 = tf.nn.relu(cond2) # + 1e-18
                     indicator_list.append(cond1*cond2)
@@ -2381,7 +2381,7 @@ class tf_network:
         Lx = int(inputShape[1])
         Ly = int(inputShape[2])
         with tf.variable_scope("network", reuse=None):
-            x = tf.cast(x, dtype=tf.float32)
+            x = tf.cast(x, dtype=self.TF_FLOAT)
             x = tf_.circular_conv_2d(x, 3, inputShape[-1], self.alpha * 64, 'conv1',
                                      stride_size=1, biases=True, bias_scale=1., FFT=False)
             # x = tf_.batch_norm(x, phase=self.bn_is_training, scope='bn1')

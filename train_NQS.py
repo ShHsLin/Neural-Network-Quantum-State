@@ -10,6 +10,23 @@ from utils.parse_args import parse_args
 from network.tf_network import tf_network
 import NQS
 
+from tensorflow.python.training.saver import BaseSaverBuilder
+
+class CastFromFloat32SaverBuilder(BaseSaverBuilder):
+  # Based on tensorflow.python.training.saver.BulkSaverBuilder.bulk_restore
+  def bulk_restore(self, filename_tensor, saveables, preferred_shard,
+                   restore_sequentially):
+    from tensorflow.python.ops import io_ops
+    restore_specs = []
+    for saveable in saveables:
+      for spec in saveable.specs:
+        restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
+    names, slices, dtypes = zip(*restore_specs)
+    restore_dtypes = [tf.float32 for _ in dtypes]
+    # with tf.device("cpu:0"):
+    restored = io_ops.restore_v2(filename_tensor, names, slices, restore_dtypes)
+    return [tf.cast(r, dt) for r, dt in zip(restored, dtypes)]
+
 
 def save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_each):
     if not os.path.isfile(result_filename):
@@ -197,7 +214,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(e)
         print("import weights only, not include stabilier, may cause numerical instability")
-        saver = tf.train.Saver(N.NNet.para_list)
+        saver = tf.train.Saver(N.NNet.para_list, builder=CastFromFloat32SaverBuilder())
 
         ckpt_path = path + \
             'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim,
