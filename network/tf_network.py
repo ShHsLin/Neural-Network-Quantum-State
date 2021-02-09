@@ -178,7 +178,7 @@ class tf_network:
         else:
             try:
                 self.amp, self.log_amp, self.log_cond_amp, self.prob = all_out[:4]
-                if self.conserved_C4:
+                if self.conserved_C4 or self.conserved_inv:
                     # self.symm_amp = all_out[4]
                     # self.symm_log_amp = all_out[5]
                     self.amp = all_out[4]
@@ -1600,6 +1600,8 @@ class tf_network:
                 log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)),
                                     axis=[1, 2])
 
+            log_amp = tf.reshape(log_amp, [-1, 1])
+
             out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
@@ -1788,7 +1790,8 @@ class tf_network:
             fc3 = tf.reshape(px, [-1, self.LxLy, self.channels * 2])
 
             np_bias = np.zeros([self.LxLy, self.channels * 2])
-            np_bias[:, self.channels-1] = 0.
+            # np_bias[:, self.channels-1] = 0.
+            np_bias[:, self.channels:] = np.pi * (np.random.rand(self.LxLy, self.channels) - 0.5) * 2
             tf_bias = tf.constant(np_bias, dtype=self.TF_FLOAT)
             fc3 = tf.math.add(fc3, tf_bias)
 
@@ -1932,6 +1935,8 @@ class tf_network:
                 log_cond_amp, tf.cast(x_reshaped, self.TF_COMPLEX)),
                                     axis=[1, 2])
 
+            log_amp = tf.reshape(log_amp, [-1, 1])
+
             out = tf.exp(log_amp)
             out = tf.reshape(out, [-1, 1])
 
@@ -1953,6 +1958,8 @@ class tf_network:
                         tf.image.rot90(x, k=3),
                         ],
                         axis=0)
+                    symm_phase = tf.constant(np.array([1.+0j, 1.+0j, 1.+0j, 1.+0j]),
+                                             dtype=self.TF_COMPLEX)
                 elif self.conserved_C4 and self.conserved_inv:
                     num_symm = 8
                     symm_x = tf.concat([
@@ -1966,6 +1973,10 @@ class tf_network:
                         tf.image.rot90(1 - x, k=3)
                         ],
                         axis=0)
+                    symm_phase = tf.constant(np.array([1.+0j, 1.+0j, 1.+0j, 1.+0j,
+                                                       -1., -1., -1., -1.
+                                                      ]),
+                                             dtype=self.TF_COMPLEX)
                 else:  ## only inv
                     num_symm = 2
                     symm_x = tf.concat([
@@ -1973,6 +1984,8 @@ class tf_network:
                         tf.image.rot90(1 - x, k=0),
                         ],
                         axis=0)
+                    symm_phase = tf.constant(np.array([1.+0j, -1.+0j]),
+                                             dtype=self.TF_COMPLEX)
 
 
 
@@ -2099,7 +2112,7 @@ class tf_network:
 
 
                 symm_im_log_amp = tf.transpose(tf.reshape(symm_im_log_amp, [num_symm, -1]), [1,0])
-                symm_im_amp = tf.exp(symm_im_log_amp)
+                symm_im_amp = tf.exp(symm_im_log_amp) * symm_phase
                 symm_im_amp = tf.reduce_sum(symm_im_amp, axis=[1])
 
                 final_symm_log_amp_re = tf.log(symm_prob) / 2.

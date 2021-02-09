@@ -87,6 +87,8 @@ def select_activation(activation):
         return tf.nn.elu
     elif activation == 'tanh':
         return tf.tanh
+    elif activation == 'sin':
+        return tf.sin
     elif activation == 'selu':
         return tf.nn.selu
     elif activation == 'lncosh':
