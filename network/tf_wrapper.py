@@ -213,18 +213,76 @@ def conv_layer1d(bottom,
                  out_channels,
                  name,
                  stride_size=1,
-                 biases=False):
+                 biases=False,
+                 dtype=tf.float64
+                ):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var1d(filter_size,
                                            in_channels,
                                            out_channels,
-                                           biases=biases)
+                                           biases=biases,
+                                           dtype=dtype
+                                          )
         conv = tf.nn.conv1d(bottom, filt, stride_size, padding='SAME')
         if not biases:
             return conv
         else:
             bias = tf.nn.bias_add(conv, conv_biases)
             return bias
+
+def masked_conv_layer1d(bottom,
+                        filter_size,
+                        in_channels,
+                        out_channels,
+                        mask_type,
+                        name,
+                        stride_size=1,
+                        padding='SAME',
+                        biases=True,
+                        dtype=tf.float64,
+                        weight_normalization=False,
+                        layer_collection=None,
+                        registered=False):
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+        np_mask = mask.gen_1d_conv_mask(mask_type, filter_size, in_channels,
+                                        out_channels)
+        tf_mask = tf.constant(np_mask, dtype=dtype)
+
+        filt, conv_biases = get_conv_var1d(filter_size,
+                                           in_channels,
+                                           out_channels,
+                                           biases=biases,
+                                           dtype=dtype)
+        stride_list = [1, stride_size, 1]
+        if not weight_normalization:
+            conv = tf.nn.conv1d(bottom,
+                                filt * tf_mask,
+                                stride_list,
+                                padding=padding)
+        else:
+            g = tf.get_variable('g', dtype=dtype,
+                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0,1]),
+                                trainable=True)
+            repara_filt = tf.reshape(g,[1,1,out_channels]) * tf.nn.l2_normalize(filt*tf_mask,[0,1])
+            conv = tf.nn.conv1d(bottom,
+                                repara_filt,
+                                stride_list,
+                                padding=padding)
+
+
+        if biases:
+            conv = tf.nn.bias_add(conv, conv_biases)
+            params = [filt, conv_biases]
+        else:
+            params = filt
+
+        if (layer_collection is not None) and (registered == False):
+            layer_collection.register_conv2d(params, stride_list, padding,
+                                             bottom, conv)
+
+        return conv
+
+
 
 
 def circular_conv_1d(bottom,
@@ -542,8 +600,8 @@ def masked_conv_layer2d(bottom,
                         layer_collection=None,
                         registered=False):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-        np_mask = mask.gen_conv_mask(mask_type, filter_size, in_channels,
-                                     out_channels)
+        np_mask = mask.gen_2d_conv_mask(mask_type, filter_size, in_channels,
+                                        out_channels)
         tf_mask = tf.constant(np_mask, dtype=dtype)
 
         filt, conv_biases = get_conv_var2d(filter_size,

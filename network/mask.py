@@ -87,7 +87,32 @@ def gen_fc_mask(ordering, mask_type, dtype=np.float64,
 
     return mask.T  ## This is because the convention of x*W instead of W*x in tf implementation.
 
-def gen_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
+def gen_1d_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
+    """
+    generating a square mask with size filter_size.
+    The shape is [filter_size, filter_size, in_ch, out_ch]
+    """
+    zeros_tensor = np.zeros((in_ch, out_ch), dtype=dtype)
+    id_tensor = np.ones((in_ch, out_ch), dtype=dtype)
+    assert filter_size % 2 == 1
+    mask = np.zeros([filter_size, in_ch, out_ch], dtype=dtype)
+    if mask_type == 'A':
+        for j in range(filter_size//2):
+            mask[j, :, :] = id_tensor
+
+    elif mask_type == 'B':
+        for j in range(filter_size//2+1):
+            mask[j, :, :] = id_tensor
+
+    elif mask_type == 'A2':
+        mask = np.ones([filter_size, in_ch, out_ch], dtype=dtype)
+        mask[-1, :, :] = np.zeros((in_ch, out_ch), dtype=dtype)
+    else:
+        raise NotImplementedError
+
+    return mask
+
+def gen_2d_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
     """
     generating a square mask with size filter_size.
     The shape is [filter_size, filter_size, in_ch, out_ch]
@@ -102,7 +127,7 @@ def gen_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
                 mask[i,j,:,:] = id_tensor
 
         for j in range(filter_size//2):
-            mask[filter_size//2,j,:,:,] = id_tensor
+            mask[filter_size//2,j,:,:] = id_tensor
 
     elif mask_type == 'B':
         for i in range(filter_size//2):
@@ -110,7 +135,8 @@ def gen_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
                 mask[i,j,:,:] = id_tensor
 
         for j in range(filter_size//2+1):
-            mask[filter_size//2,j,:,:,] = id_tensor
+            mask[filter_size//2,j,:,:] = id_tensor
+
     elif mask_type == 'A2':
         mask = np.ones([filter_size, filter_size, in_ch, out_ch], dtype=dtype)
         mask[-1, -1, :, :] = np.zeros((in_ch, out_ch), dtype=dtype)

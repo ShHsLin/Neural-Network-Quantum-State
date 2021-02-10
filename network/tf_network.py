@@ -136,6 +136,7 @@ class tf_network:
         if dim == 1:
             self.x = tf.placeholder(self.TF_INT, [None, inputShape[0], inputShape[1]])
             self.L = int(inputShape[0])
+            self.channels = int(inputShape[1])
             self.build_network = self.build_network_1d
             self.ordering = np.arange(self.L)
         elif dim == 2:
@@ -703,7 +704,13 @@ class tf_network:
                                       layer_collection=self.layer_collection,
                                       registered=self.registered, dtype=self.TF_FLOAT)
 
-            fc3 = tf.reshape(fc3, [-1, self.L , 4])
+            fc3 = tf.reshape(fc3, [-1, self.L , self.channels * 2])
+
+            np_bias = np.zeros([self.L, self.channels * 2])
+            np_bias[:, self.channels:] = np.pi * (np.random.rand(self.L, self.channels) - 0.5) * 2
+            tf_bias = tf.constant(np_bias, dtype=self.TF_FLOAT)
+            fc3 = tf.math.add(fc3, tf_bias)
+
             out0_re = fc3[:,:,0]
             out1_re = fc3[:,:,1]
             out0_im = fc3[:,:,2]
@@ -745,7 +752,104 @@ class tf_network:
         else:
             return tf.real(out), None, log_cond_amp, prob
 
+    def build_pixelCNN_1d(self, x, activation, filter_size=5):
+        act = tf_.select_activation(activation)
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x_input_head = x
+            x = x_input_head[:, :, 0:1]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
+            # padded_x = tf.pad(x,
+            #                   [[0, 0], [filter_size // 2, filter_size // 2], [0, 0]], "CONSTANT")
+            padded_x = tf.pad(x,
+                              [[0, 0], [filter_size - 1, 0],
+                               [0, 0]], "CONSTANT")
 
+            conv1 = tf_.masked_conv_layer1d(padded_x,
+                                            filter_size,
+                                            1,
+                                            self.alpha,
+                                            'A2',
+                                            'masked_conv1',
+                                            padding='VALID',
+                                            dtype=self.TF_FLOAT,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+            conv1 = act(conv1)
+
+            conv1 = tf.pad(conv1,
+                           [[0, 0], [filter_size // 2, filter_size // 2], [0, 0]], "CONSTANT")
+            conv2 = tf_.masked_conv_layer1d(conv1,
+                                            filter_size,
+                                            self.alpha,
+                                            self.alpha,
+                                            'B',
+                                            'masked_conv2',
+                                            padding='VALID',
+                                            dtype=self.TF_FLOAT,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+            conv2 = act(conv2)
+
+            conv2 = tf.pad(conv2,
+                           [[0, 0], [filter_size // 2, filter_size // 2], [0, 0]], "CONSTANT")
+            conv3 = tf_.masked_conv_layer1d(conv2,
+                                            filter_size,
+                                            self.alpha,
+                                            4,
+                                            'B',
+                                            'masked_conv3',
+                                            padding='VALID',
+                                            dtype=self.TF_FLOAT,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+
+            fc3 = tf.reshape(conv3, [-1, self.L , self.channels * 2])
+
+            # np_bias = np.zeros([self.L, self.channels * 2])
+            # np_bias[:, self.channels:] = np.pi * (np.random.rand(self.L, self.channels) - 0.5) * 2
+            # tf_bias = tf.constant(np_bias, dtype=self.TF_FLOAT)
+            # fc3 = tf.math.add(fc3, tf_bias)
+
+            out0_re = fc3[:,:,0]
+            out1_re = fc3[:,:,1]
+            out0_im = fc3[:,:,2]
+            out1_im = fc3[:,:,3]
+            ## stable normalize ##
+            max_re = tf.math.maximum(out0_re, out1_re)
+            out0_re = out0_re - max_re
+            out1_re = out1_re - max_re
+            log_l2_norm = tf.log(tf.exp(2*out0_re) + tf.exp(2*out1_re)) / 2.
+            out0_re = out0_re - log_l2_norm
+            out1_re = out1_re - log_l2_norm
+
+            log_cond_amp_0 = tf.complex(out0_re, out0_im)
+            log_cond_amp_1 = tf.complex(out1_re, out1_im)
+            log_cond_amp = tf.stack([log_cond_amp_0, log_cond_amp_1], axis=-1)
+            ## now a complex tensor of shape [batch_size, L , 2]
+
+            ############################################################
+            ### Constructed a path without involving complex number ####
+            ############################################################
+            re_cond_amp = tf.stack([2 * out0_re, 2 * out0_im], axis=-1)
+            log_prob = tf.reduce_sum(tf.multiply(
+                re_cond_amp, tf.cast(x_input_head, self.TF_FLOAT)),
+                                     axis=[1, 2])
+            prob = tf.exp(log_prob)
+
+            log_amp = tf.reduce_sum(tf.multiply(
+                log_cond_amp, tf.cast(x_input_head, self.TF_COMPLEX)),
+                                    axis=[1, 2])
+
+            log_amp = tf.reshape(log_amp, [-1, 1])
+
+            out = tf.exp(log_amp)
+            out = tf.reshape(out, [-1, 1])
+
+        self.registered = True
+        if self.using_complex:
+            return out, log_amp, log_cond_amp, prob
+        else:
+            return tf.real(out), None, log_cond_amp, prob
 
     def build_ZNet_1d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
@@ -2505,8 +2609,10 @@ class tf_network:
     def build_network_1d(self, which_net, x, activation, num_blocks):
         if which_net == "NN":
             return self.build_NN_1d(x)
-        elif which_net == 'MADE':
+        elif which_net == "MADE":
             return self.build_MADE_1d(x, activation)
+        elif which_net == "pixelCNN":
+            return self.build_pixelCNN_1d(x, activation)
         elif which_net == "ZNet":
             return self.build_ZNet_1d(x)
         elif which_net == "NN3":

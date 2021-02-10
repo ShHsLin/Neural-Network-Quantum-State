@@ -26,10 +26,10 @@ def parse_args():
                         'are stored. Default: 100',
                         default=100, type=int)
     parser.add_argument('--num_sample', dest='num_sample',
-                        help='Number of sampling in Monte Carlo process. Default: 5000',
-                        default=5000, type=int)
+                        help='Number of sampling in Monte Carlo process. Default: 4096',
+                        default=4096, type=int)
     parser.add_argument('--batch_size', dest='batch_size',
-                        help='Batch size in Network pretraining. Default: 500',
+                        help='Batch size in Network pretraining. Default: 512',
                         default=512, type=int)
     parser.add_argument('--alpha', dest='alpha',
                         help='controll parameter for model complexity. Default: 4',
