@@ -95,6 +95,8 @@ def select_activation(activation):
         return logcosh
     elif activation == 'linear':
         return linear
+    elif activation == 'poly':
+        return polynomial
     else:
         raise NotImplementedError
 
@@ -106,6 +108,8 @@ def linear(x):
 def logcosh(x):
     return tf.math.log(tf.math.cosh(x))
 
+def polynomial(x):
+    return (x**2)/2. - (x**4)/12. + (x**6)/45.
 
 def leaky_relu(x):
     return tf.maximum(0.01 * x, x)
@@ -717,7 +721,7 @@ def masked_fc_layer(bottom,
         tf.float32: np.float32,
         tf.float64: np.float64,
         tf.complex64: np.complex64,
-        tf.complex128: np.float128
+        tf.complex128: np.complex128
     }
     np_mask = mask.gen_fc_mask(ordering,
                                mask_type=mask_type,

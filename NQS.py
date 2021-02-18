@@ -803,6 +803,31 @@ class NQS_1d(NQS_base):
             self.config[:, :, 1] = (1 - x)
             return
 
+    def forward_sampling(self):
+        '''
+        Apply foward_sampling
+        '''
+        batch_size = self.batch_size
+        ## Reset the config to zeros
+        self.config = 0 * self.config
+        self.config = 0 * self.config
+        for site_i in range(self.NNet.L):
+            cond_prob_amp = self.NNet.plain_get_cond_log_amp(self.config)
+            cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch,...]
+            cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
+            site_prob = cond_prob[:, site_i, :]
+            if self.channels == 2:
+                mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
+                self.config[mask, site_i, 0] = 1
+                self.config[np.logical_not(mask), site_i, 1] = 1
+            else:
+                for batch_idx in range(batch_size):
+                    self.config[batch_idx, site_i,
+                                np.random.choice(self.channels, p=site_prob[batch_idx])] = 1
+
+            assert( not np.isnan(site_prob).any() )
+        return
+
     def new_config(self):
         L = self.config.shape[1]
 
