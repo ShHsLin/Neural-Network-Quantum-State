@@ -135,6 +135,11 @@ def parse_args():
                         'if not not using set to None'
                         'Default: None',
                         default=None, type=float)
+    parser.add_argument('--T', dest='T',
+                        help='the target time T of the evolved state'
+                        'Default: 0',
+                        default=0., type=float)
+
 
 
 

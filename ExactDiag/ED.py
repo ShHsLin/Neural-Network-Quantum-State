@@ -127,15 +127,34 @@ def spin_spin_correlation(site_i, site_j, L, vector):
     SzSz = scipy.sparse.csr_matrix(hz)
     return vector.conjugate().dot(SzSz.dot(vector))
 
+def entanglement_entropy(site_i, psi, L):
+    psi_matrix = psi.reshape([2**(L//2), 2**(L//2)])
+    _, s, _ = np.linalg.svd(psi_matrix, full_matrices=False)
+    renyi_2 = -np.log(np.sum(s**4))
+    SvN = np.sum(- (s**2) * np.log(s**2) )
+    return renyi_2, SvN
+
+
 def sz_expectation(site_i, vector, L):
     Sz = np.array([[1., 0.],
                    [0., -1.]])
 
-    print("spin z expectation value on site %d" % site_i)
+    # print("spin z expectation value on site %d" % site_i)
     hz = scipy.sparse.kron(scipy.sparse.eye(2 ** (site_i - 1)), Sz)
     hz = scipy.sparse.kron(hz, scipy.sparse.eye(2 ** (L - site_i)))
     Sz = scipy.sparse.csr_matrix(hz)
     return vector.conjugate().dot(Sz.dot(vector))
+
+def sx_expectation(site_i, vector, L):
+    Sx = np.array([[0., 1.],
+                   [1., 0.]])
+
+    # print("spin z expectation value on site %d" % site_i)
+    hx = scipy.sparse.kron(scipy.sparse.eye(2 ** (site_i - 1)), Sx)
+    hx = scipy.sparse.kron(hx, scipy.sparse.eye(2 ** (L - site_i)))
+    Sx = scipy.sparse.csr_matrix(hx)
+    return vector.conjugate().dot(Sx.dot(vector))
+
 
 def gen_H_1d_J1J2(L, J1=1, J2=0.):
     lattice = np.arange(L, dtype=int) + 1
@@ -328,53 +347,94 @@ if __name__ == "__main__":
         N = L
         print("python 1dIsing L=%d, J=%f, g=%f, h=%f" % (L, J, g, h))
         H = gen_H_1d_Ising(L, J, g, h)
-        evals_small, evecs_small = eigsh(H, 6, which='SA')
-        print(evals_small / L)
-        H_list = gen_local_H_1d_Ising(L, J, g, h)
 
+        ### Solving the ground state
+        # evals_small, evecs_small = eigsh(H, 6, which='SA')
+        # print(evals_small / L)
+        # H_list = gen_local_H_1d_Ising(L, J, g, h)
+
+        ### Creating local excitation
         # splus = build_H_one_body([(L//2+1,1)], L, H=None, sx=True, sy=False, sz=False)
         # splus = build_H_one_body([(L//2+1,-1j)], L, H=splus, sx=False, sy=True, sz=False)
 
-        splus = scipy.sparse.kron(scipy.sparse.eye(2 ** (L//2+1 - 1)),
-                                  scipy.sparse.csr_matrix(np.array([[0,0],[0,1]])))
-        splus = scipy.sparse.kron(splus, scipy.sparse.eye(2 ** (L - L//2-1)))
+        # splus = scipy.sparse.kron(scipy.sparse.eye(2 ** (L//2+1 - 1)),
+        #                           scipy.sparse.csr_matrix(np.array([[0,0],[0,1]])))
+        # splus = scipy.sparse.kron(splus, scipy.sparse.eye(2 ** (L - L//2-1)))
 
 
         dt = 0.05
-        H = np.array(H.todense())
-        exp_iHdt = scipy.linalg.expm(1.j * dt * H)
-        total_time = 100
+        # H = np.array(H.todense())
+        # exp_iHdt = scipy.linalg.expm(1.j * dt * H)
+        total_time = 10
         num_real = 1
 
         local_E_array=np.zeros((int(total_time/dt/10)+1, L))
 
+        t_list = []
+        Sx_list = []
+        S2_ent_list = []
+        SvN_ent_list = []
         import matplotlib.pyplot as plt
         for realization in range(num_real):
-            psi = np.exp(np.random.rand(2**L))
-            theta = np.random.rand(2**L)*2*np.pi
-            psi = psi * np.exp(1j*theta)
+            # psi = np.exp(np.random.rand(2**L))
+            # theta = np.random.rand(2**L)*2*np.pi
+            # psi = psi * np.exp(1j*theta)
+            # psi = psi/np.linalg.norm(psi)
+
+            # psi = evecs_small[:,0]
+            # psi = splus.dot(psi)
+            # psi = psi/np.linalg.norm(psi)
+            psi = np.ones([2**L])
             psi = psi/np.linalg.norm(psi)
 
-            psi = evecs_small[:,0]
-            psi = splus.dot(psi)
-            psi = psi/np.linalg.norm(psi)
-
+            T = 0
+            # np.save('1D_Ising_TE/ED_wf_T%.2f.npy' % T, psi)
+            Sx_list.append(sx_expectation(L//2 + 1, psi, L))
+            S2, SvN = entanglement_entropy(L//2 + 1, psi, L)
+            S2_ent_list.append(S2)
+            SvN_ent_list.append(SvN)
+            t_list.append(T)
             for i in range(int(total_time / dt)+1):
-                if i % 10 ==0:
-                    print("<E(%.2f)> : " % (i*0.05), psi.conj().T.dot(H.dot(psi)))
-                    local_E = np.real(measure_local_H(psi, H_list))
-                    local_E_array[i//10,:] += local_E
-                    print("<local_E(%.2f)> : " % (i*0.05), local_E)
-                psi = exp_iHdt.dot(psi)
+                # if i % 10 ==0:
+                #     print("<E(%.2f)> : " % (i*0.05), psi.conj().T.dot(H.dot(psi)))
+                #     local_E = np.real(measure_local_H(psi, H_list))
+                #     local_E_array[i//10,:] += local_E
+                #     print("<local_E(%.2f)> : " % (i*0.05), local_E)
 
-        local_E_array = local_E_array/num_real
-        np.save('local_E_array_L%d_.npy' % (L), local_E_array)
-        for i in range(len(local_E_array)):
-            # plt.figure()
-            plt.plot(local_E_array[i])
-            # plt.savefig('step_%d.eps' % i)
+                # psi = exp_iHdt.dot(psi)
+                psi = scipy.sparse.linalg.expm_multiply(-1.j*dt*H, psi)
 
-        plt.legend()
+                T = T + dt
+                np.save('1D_Ising_TE_L%d_g%.1f_h%.1f/ED_wf_T%.2f.npy' % (L, g, h, T), psi)
+
+                Sx_list.append(sx_expectation(L//2 + 1, psi, L))
+
+                psi_matrix = psi.reshape([2**(L//2), 2**(L//2)])
+                S2, SvN = entanglement_entropy(L//2 + 1, psi, L)
+                S2_ent_list.append(S2)
+                SvN_ent_list.append(SvN)
+                t_list.append(T)
+
+            data_dict = {'t_list': t_list, 'Sx_list': Sx_list,
+                         'S2_ent_list': S2_ent_list, 'SvN_ent_list': SvN_ent_list}
+            np.save('1D_Ising_TE_L%d_g%.1f_h%.1f/data_dict.npy' % (L, g, h), data_dict)
+
+        # local_E_array = local_E_array/num_real
+        # np.save('local_E_array_L%d_.npy' % (L), local_E_array)
+        # for i in range(len(local_E_array)):
+        #     # plt.figure()
+        #     plt.plot(local_E_array[i])
+        #     # plt.savefig('step_%d.eps' % i)
+
+        # plt.legend()
+        # plt.show()
+
+        plt.subplot(3,1,1)
+        plt.plot(Sx_list)
+        plt.subplot(3,1,2)
+        plt.plot(S2_ent_list)
+        plt.subplot(3,1,3)
+        plt.plot(SvN_ent_list)
         plt.show()
 
     else:
