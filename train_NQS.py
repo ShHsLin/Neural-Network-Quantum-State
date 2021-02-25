@@ -97,9 +97,6 @@ if __name__ == "__main__":
     ###############################
     #  Read the input argument ####
     ###############################
-    alpha_map = {"NN": 2, "NN3": 2, "NN_complex": 1, "NN3_complex": 2,
-                 "NN_RBM": 2}
-
     args = parse_args()
     if bool(args.debug):
         np.random.seed(0)
@@ -117,11 +114,15 @@ if __name__ == "__main__":
     if len(path) > 0 and path[-1] != '/':
         path = path + '/'
 
-    if args.alpha != 0:
+    assert (args.alpha is not None) ^ (args.alpha_list is not None)  # XOR
+    if args.alpha is not None:
         alpha = args.alpha
+        alpha_list = None
     else:
-        alpha = alpha_map[which_net]
+        alpha = None
+        alpha_list = args.alpha_list
 
+    filter_size = args.filter_size
     opt, batch_size, H, dim, num_iter = (args.opt, args.batch_size,
                                          args.H, args.dim, args.num_iter)
     PBC = args.PBC
@@ -156,6 +157,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
+                     alpha_list=alpha_list, filter_size=filtersize,
                      activation=act, using_complex=using_complex, single_precision=SP,
                      batch_size=num_sample, num_blocks=num_blocks, multi_gpus=multi_gpus,
                      conserved_C4=conserved_C4, conserved_Sz=conserved_Sz, Q_tar=Q_tar,

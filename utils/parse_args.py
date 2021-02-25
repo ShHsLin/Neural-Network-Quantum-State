@@ -31,9 +31,21 @@ def parse_args():
     parser.add_argument('--batch_size', dest='batch_size',
                         help='Batch size in Network pretraining. Default: 512',
                         default=512, type=int)
+    parser.add_argument('--filter_size', dest='filter_size',
+                        help='controll the size of the filter in convolution kernel.'
+                        'Default: 5',
+                        default=5,
+                        type=int)
     parser.add_argument('--alpha', dest='alpha',
-                        help='controll parameter for model complexity. Default: 4',
-                        default=4, type=int)
+                        help='controll parameter for model complexity. Default: None',
+                        default=None,
+                        type=int)
+    parser.add_argument('--alpha_list', dest='alpha_list', nargs='+',
+                        help='controll the width and the depth by passing multiple'
+                        'integer indicating the alpha(width) of each layer.'
+                        'default: None',
+                        default=None,
+                        type=int)
     parser.add_argument('--opt', dest='opt',
                         help='optimizer for the neural network. Default: Momentum method',
                         default='Mom', type=str)

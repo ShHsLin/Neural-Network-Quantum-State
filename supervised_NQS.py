@@ -27,11 +27,15 @@ if __name__ == "__main__":
     if len(path) > 0 and path[-1] != '/':
         path = path + '/'
 
-    if args.alpha != 0:
+    assert (args.alpha is not None) ^ (args.alpha_list is not None)  # XOR
+    if args.alpha is not None:
         alpha = args.alpha
+        alpha_list = None
     else:
-        alpha = alpha_map[which_net]
+        alpha = None
+        alpha_list = args.alpha_list
 
+    filter_size = args.filter_size
     opt, batch_size, H, dim, num_iter = (args.opt, args.batch_size,
                                          args.H, args.dim, args.num_iter)
     PBC = args.PBC
@@ -65,6 +69,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
+                     alpha_list=alpha_list, filter_size=filter_size,
                      activation=act, using_complex=using_complex, single_precision=SP,
                      batch_size=batch_size, num_blocks=num_blocks, multi_gpus=multi_gpus,
                      conserved_C4=conserved_C4, conserved_Sz=conserved_Sz, Q_tar=Q_tar,
@@ -98,7 +103,7 @@ if __name__ == "__main__":
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'_OBC.csv').reshape((2**L, 1))
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
 
-            Y = np.load('ExactDiag/1D_Ising_TE_L16_g3.0_h0.1/ED_wf_T%.2f.npy' % args.T)
+            Y = np.load('ExactDiag/1D_Ising_TE_L16_g1.0_h0.1/ED_wf_T%.2f.npy' % args.T)
             Y = np.array(Y, dtype=np.complex128)[:, None]
             # Y = Y * np.exp(1j*np.pi/4.)
         elif dim == 2:
@@ -279,7 +284,7 @@ if __name__ == "__main__":
 
             if i % 500 == 0:
                 saver.save(sess, ckpt_path + '/pre')
-                np.save(ckpt_path + '/data_dict.npy', data_dict)
+                np.save(ckpt_path + '/data_dict.npy', data_dict, allow_pickle=True)
 
             if ED and i % 5000 == 0:
                 ### get full batch information
@@ -357,5 +362,5 @@ if __name__ == "__main__":
 
 
         saver.save(sess, ckpt_path + '/pre')
-        np.save(ckpt_path + '/data_dict.npy', data_dict)
+        np.save(ckpt_path + '/data_dict.npy', data_dict, allow_pickle=True)
 
