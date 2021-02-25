@@ -1,0 +1,3 @@
+[submodule "ExactDiag"]
+	path = ExactDiag
+	url = https://github.com/ShHsLin/exact_diagonalization.git
