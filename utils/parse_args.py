@@ -33,8 +33,8 @@ def parse_args():
                         default=512, type=int)
     parser.add_argument('--filter_size', dest='filter_size',
                         help='controll the size of the filter in convolution kernel.'
-                        'Default: 5',
-                        default=5,
+                        'Default: None',
+                        default=None,
                         type=int)
     parser.add_argument('--alpha', dest='alpha',
                         help='controll parameter for model complexity. Default: None',
@@ -149,8 +149,18 @@ def parse_args():
                         default=None, type=float)
     parser.add_argument('--T', dest='T',
                         help='the target time T of the evolved state'
-                        'Default: 0',
-                        default=0., type=float)
+                        'Default: None',
+                        default=None, type=float)
+    parser.add_argument('--g', dest='g',
+                        help='the target parameter g of the evolved state'
+                        'Default: None',
+                        default=None, type=float)
+    parser.add_argument('--h', dest='h',
+                        help='the target parameter h of the evolved state'
+                        'Default: None',
+                        default=None, type=float)
+
+
 
 
 

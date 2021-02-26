@@ -152,12 +152,11 @@ if __name__ == "__main__":
             systemSize = (L, L, 3)
         else:
             pass
-
     else:
         raise NotImplementedError
 
     Net = tf_network(which_net, systemSize, optimizer=opt, dim=dim, alpha=alpha,
-                     alpha_list=alpha_list, filter_size=filtersize,
+                     alpha_list=alpha_list, filter_size=filter_size,
                      activation=act, using_complex=using_complex, single_precision=SP,
                      batch_size=num_sample, num_blocks=num_blocks, multi_gpus=multi_gpus,
                      conserved_C4=conserved_C4, conserved_Sz=conserved_Sz, Q_tar=Q_tar,
@@ -194,17 +193,34 @@ if __name__ == "__main__":
 
     var_shape_list = N.NNet.var_shape_list
     var_list = tf.global_variables()
+
+    #############################################################
+    ### OLD CHECK_POINT FORMAT
+    # ckpt_path = path + 'wavefunction/Pretrain/%s/L%d/' % (which_net, L)
+    # ckpt_path = path + \
+    #     'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim,
+    #                                            which_net, act, L, alpha)
+    if alpha is not None:
+        ckpt_path = path + \
+            'wavefunction/vmc%dd_%s_L%d/%s_%s_a%d' % (dim, H, L, which_net, act, alpha)
+    else:
+        ckpt_path = path + \
+            'wavefunction/vmc%dd_%s_L%d/%s_%s_a' % (dim, H, L, which_net, act) + \
+                ('-'.join([str(alpha) for alpha in alpha_list]))
+
+    if filter_size is not None:
+        ckpt_path = ckpt_path + '_f%d/' % filter_size
+    else:
+        ckpt_path = ckpt_path + '/'
+
+    if not os.path.exists(ckpt_path):
+        os.makedirs(ckpt_path)
+    ckpt = tf.train.get_checkpoint_state(ckpt_path)
+    #############################################################
+
     try:
         # saver = tf.train.Saver(N.NNet.model_var_list)
         saver = tf.train.Saver()
-
-        # ckpt_path = path + 'wavefunction/Pretrain/%s/L%d/' % (which_net, L)
-        ckpt_path = path + \
-            'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim,
-                                                   which_net, act, L, alpha)
-        if not os.path.exists(ckpt_path):
-            os.makedirs(ckpt_path)
-        ckpt = tf.train.get_checkpoint_state(ckpt_path)
 
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
@@ -212,19 +228,11 @@ if __name__ == "__main__":
             # print(N.NNet.sess.run(N.NNet.para_list))
         else:
             print("No checkpoint found, at %s " % ckpt_path)
-
     except Exception as e:
         print(e)
         print("import weights only, not include stabilier, may cause numerical instability")
         saver = tf.train.Saver(N.NNet.para_list, builder=CastFromFloat32SaverBuilder())
 
-        ckpt_path = path + \
-            'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim,
-                                                   which_net, act, L, alpha)
-        if not os.path.exists(ckpt_path):
-            os.makedirs(ckpt_path)
-        ckpt = tf.train.get_checkpoint_state(ckpt_path)
-
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
             print("Restore from last check point, stored at %s" % ckpt_path)
@@ -235,7 +243,6 @@ if __name__ == "__main__":
         # saver = tf.train.Saver(N.NNet.model_var_list)
         saver = tf.train.Saver()
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
-
 
         diag_QFI_path = path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' % (L, which_net, act, alpha, opt, lr, num_sample)
         if os.path.isfile(diag_QFI_path):

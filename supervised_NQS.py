@@ -103,7 +103,7 @@ if __name__ == "__main__":
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'_OBC.csv').reshape((2**L, 1))
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
 
-            Y = np.load('ExactDiag/1D_Ising_TE_L16_g1.0_h0.1/ED_wf_T%.2f.npy' % args.T)
+            Y = np.load('ExactDiag/1D_Ising_TE_L16_g%.1f_h%.1f/ED_wf_T%.2f.npy' % (args.g, args.h, args.T))
             Y = np.array(Y, dtype=np.complex128)[:, None]
             # Y = Y * np.exp(1j*np.pi/4.)
         elif dim == 2:
@@ -214,12 +214,20 @@ if __name__ == "__main__":
 
         print(len(Net.model_var_list), len(Net.para_list))
         saver = tf.train.Saver(Net.model_var_list)
-        ckpt_path = path + \
-                'wavefunction/Supervised/' + '1D_Ising_TE_L16_g3.0_h0.1_T%.2f/' % args.T + \
-                which_net+'_'+act+'_L'+str(L)+'_a'+str(alpha)
-                # 'wavefunction/Supervised/' + 'TE_TFI_h0.9045_T%.1f/' % args.T + \
+        if alpha is not None:
+            ckpt_path = path + \
+                    'wavefunction/Supervised/' + '1D_Ising_TE_L16_g%.1f_h%.1f_T%.2f/' % (args.g, args.h, args.T) + \
+                    which_net+'_'+act+'_L'+str(L)+'_a'+str(alpha)
+                    # 'wavefunction/Supervised/' + 'TE_TFI_h0.9045_T%.1f/' % args.T + ...
+        else:
+            ckpt_path = path + \
+                    'wavefunction/Supervised/' + '1D_Ising_TE_L16_g%.1f_h%.1f_T%.2f/' % (args.g, args.h, args.T) + \
+                    which_net+'_'+act+'_L'+str(L)+'_a'+('-'.join([str(alpha) for alpha in alpha_list]))
 
-        # ckpt_path = 'wavefunction/vml2d/'+which_net+'_'+act+'/L'+str(L)+'a'+str(alpha)
+        if filter_size is not None:
+            ckpt_path = ckpt_path + '_f%d' % filter_size
+
+        # ckpt_path = 'wavefunction/vmc2d/'+which_net+'_'+act+'/L'+str(L)+'a'+str(alpha)
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)
 
