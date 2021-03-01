@@ -159,6 +159,13 @@ def parse_args():
                         help='the target parameter h of the evolved state'
                         'Default: None',
                         default=None, type=float)
+    parser.add_argument('--num_threads', dest='num_threads',
+                        help='setting the number of threads used for tensorflow CPU'
+                        'numpy behaviour is not controlled here, but should be'
+                        'controlled by the enviroment variable OMP_NUM_THREADS'
+                        'Default: None',
+                        default=None, type=int)
+
 
 
 

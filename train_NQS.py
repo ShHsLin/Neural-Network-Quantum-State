@@ -128,6 +128,7 @@ if __name__ == "__main__":
     PBC = args.PBC
 
     num_blocks, multi_gpus = args.num_blocks, args.multi_gpus
+    num_threads = args.num_threads
     save_each = args.save_each
     conserved_Sz, warm_up, Q_tar = bool(args.conserved_Sz), bool(args.warm_up), args.Q_tar
     conserved_C4 = bool(args.conserved_C4)
@@ -161,7 +162,7 @@ if __name__ == "__main__":
                      batch_size=num_sample, num_blocks=num_blocks, multi_gpus=multi_gpus,
                      conserved_C4=conserved_C4, conserved_Sz=conserved_Sz, Q_tar=Q_tar,
                      conserved_SU2=conserved_SU2, chem_pot=chem_pot,
-                     conserved_inv=conserved_inv,
+                     conserved_inv=conserved_inv, num_threads=num_threads,
                     )
     if dim == 1:
         N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,

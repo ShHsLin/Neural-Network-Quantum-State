@@ -63,7 +63,7 @@ class tf_network:
                  batch_size=None, conserved_C4=False, num_blocks=10, multi_gpus=False,
                  conserved_Sz=True, Q_tar=None,
                  conserved_SU2=False, chem_pot=None,
-                 conserved_inv=False,
+                 conserved_inv=False, num_threads=None
                 ):
         '''
         Arguments as follows:
@@ -105,6 +105,7 @@ class tf_network:
         ## To not exceed the size.
         # self.max_fp_batch_size = self.max_bp_batch_size * 10
         self.batch_size = batch_size
+        self.num_threads = num_threads
 
 
         ##########################
@@ -427,7 +428,13 @@ class tf_network:
         # Initializing All the variables and operation, all operation and variables should 
         # be defined before here.!!!!
         ####################################################################################
-        config = tf.ConfigProto()
+        if self.num_threads is not None:
+            config = tf.ConfigProto(intra_op_parallelism_threads=self.num_threads,
+                                    inter_op_parallelism_threads=slef.num_threads,
+                                    allow_soft_placement=True)
+        else:
+            config = tf.ConfigProto()
+
         config.gpu_options.allow_growth=True
         config.allow_soft_placement=True
         if sess is None:
