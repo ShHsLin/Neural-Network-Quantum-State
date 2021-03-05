@@ -6,6 +6,9 @@ from utils.parse_args import parse_args
 from network.tf_network import tf_network
 import network.tf_wrapper as tf_
 import NQS
+import sys
+sys.path.append('ExactDiag')
+import many_body
 
 
 if __name__ == "__main__":
@@ -39,6 +42,8 @@ if __name__ == "__main__":
     opt, batch_size, H, dim, num_iter = (args.opt, args.batch_size,
                                          args.H, args.dim, args.num_iter)
     PBC = args.PBC
+    supervised_model = args.supervised_model
+    assert supervised_model is not None
 
     num_blocks, multi_gpus = args.num_blocks, args.multi_gpus
     num_threads = args.num_threads
@@ -104,14 +109,14 @@ if __name__ == "__main__":
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'_OBC.csv').reshape((2**L, 1))
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
 
-            Y = np.load('ExactDiag/1D_Ising_TE_L16_g%.1f_h%.1f/ED_wf_T%.2f.npy' % (args.g, args.h, args.T))
+            Y = np.load('ExactDiag/wavefunction/%s/ED_wf_T%.2f.npy' % (supervised_model, args.T))
             Y = np.array(Y, dtype=np.complex128)[:, None]
-            # Y = Y * np.exp(1j*np.pi/4.)
         elif dim == 2:
             X_computation_basis = np.genfromtxt('ExactDiag/basis_L%d.csv' % (L**2), delimiter=',')
             X = np.zeros([2**(L**2), L, L, 2])
             X[:,:,:,0] = X_computation_basis.reshape([2**(L**2), L, L])
             X[:,:,:,1] = 1-X_computation_basis.reshape([2**(L**2), L, L])
+
             Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
             Y = np.array(Y, dtype=np.complex128)[:, None]
         else:
@@ -149,15 +154,13 @@ if __name__ == "__main__":
         #IPJ
         #################################################################################
 
-    data_dict = {'cost_avg': [], 'kl_avg': [], 'l2_avg': [], 'fidelity_avg': [],
-                 'cost_var': [], 'kl_var': [], 'l2_var': [], 'fidelity_var': [],
-                }
+
 
     with Net.sess as sess:
-        pi = tf.constant(np.pi)
+        pi = tf.constant(np.pi, dtype=Net.TF_FLOAT)
 
-        true_amp_log_re = tf.placeholder(tf.float32, [None, 1])
-        true_amp_log_im = tf.placeholder(tf.float32, [None, 1])
+        true_amp_log_re = tf.placeholder(Net.TF_FLOAT, [None, 1])
+        true_amp_log_im = tf.placeholder(Net.TF_FLOAT, [None, 1])
         net_amp_log_re = tf.real(Net.log_amp)
         net_amp_log_im = tf.imag(Net.log_amp)
         assert net_amp_log_re.shape[1] == 1
@@ -172,7 +175,7 @@ if __name__ == "__main__":
         cost = kl_cost + l2_cost
 
 
-        true_amp = tf.placeholder(tf.complex64, [None, 1])
+        true_amp = tf.placeholder(Net.TF_COMPLEX, [None, 1])
         v1 = true_amp
         v2 = Net.amp
         # sampled_l2 = tf.reduce_mean(tf.square(tf.abs(v1 - v2)/tf.abs(v1)))
@@ -217,12 +220,12 @@ if __name__ == "__main__":
         saver = tf.train.Saver(Net.model_var_list)
         if alpha is not None:
             ckpt_path = path + \
-                    'wavefunction/Supervised/' + '1D_Ising_TE_L16_g%.1f_h%.1f_T%.2f/' % (args.g, args.h, args.T) + \
+                    'wavefunction/Supervised/' + '%s_T%.2f/' % (supervised_model, args.T) + \
                     which_net+'_'+act+'_L'+str(L)+'_a'+str(alpha)
                     # 'wavefunction/Supervised/' + 'TE_TFI_h0.9045_T%.1f/' % args.T + ...
         else:
             ckpt_path = path + \
-                    'wavefunction/Supervised/' + '1D_Ising_TE_L16_g%.1f_h%.1f_T%.2f/' % (args.g, args.h, args.T) + \
+                    'wavefunction/Supervised/' + '%s_T%.2f/' % (supervised_model, args.T) + \
                     which_net+'_'+act+'_L'+str(L)+'_a'+('-'.join([str(alpha) for alpha in alpha_list]))
 
         if filter_size is not None:
@@ -243,8 +246,17 @@ if __name__ == "__main__":
         print("-------- Start training -------\n")
         print(("Total num para: ", Net.getNumPara()))
 
+        try:
+            data_dict = np.load(ckpt_path + '/data_dict.npy', allow_pickle=True).item()
+            print("found data_dict")
+        except:
+            print("no data_dict found; create new data_dict")
+            data_dict = {'cost_avg': [], 'kl_avg': [], 'l2_avg': [], 'fidelity_avg': [],
+                         'cost_var': [], 'kl_var': [], 'l2_var': [], 'fidelity_var': [],
+                         'lr': []
+                        }
+            data_dict['num_para'] = Net.getNumPara()
 
-        previous_fidelity = 0.
         cost_list = []
         kl_list = []
         l2_list = []
@@ -272,7 +284,8 @@ if __name__ == "__main__":
             kl_list.append(kl)
             l2_list.append(l2)
             fidelity_list.append(f)
-            if i % 100 == 0:
+            if i % 500 == 0:
+                data_dict['lr'].append(lr)
                 data_dict['cost_avg'].append(np.average(cost_list))
                 data_dict['kl_avg'].append(np.average(kl_list))
                 data_dict['l2_avg'].append(np.average(l2_list))
@@ -290,21 +303,23 @@ if __name__ == "__main__":
                 l2_list = []
                 fidelity_list = []
 
-
-            if i % 500 == 0:
-                saver.save(sess, ckpt_path + '/pre')
-                np.save(ckpt_path + '/data_dict.npy', data_dict, allow_pickle=True)
-
             if ED and i % 5000 == 0:
                 ### get full batch information
                 y = Net.get_amp(X)
                 print(('y norm : ', np.linalg.norm(y)))
                 measured_fidelity = np.square(np.abs(Y.flatten().dot(y.flatten().conj())))
                 print("Fidelity = ", measured_fidelity)
-                if measured_fidelity > 1 - 1e-3 : # or (measured_fidelity - previous_fidelity) < 1e-4 :
+                data_dict['fidelity'] = measured_fidelity
+
+                saver.save(sess, ckpt_path + '/pre')
+                np.save(ckpt_path + '/data_dict.npy', data_dict, allow_pickle=True)
+
+                # if measured_fidelity > 1 - 1e-4 or (measured_fidelity - previous_fidelity) < 1e-4 :
+                #     break
+                # else:
+                #     previous_fidelity = measured_fidelity
+                if (measured_fidelity > 1 - 1e-4) or (data_dict['cost_avg'][-1] > np.average(data_dict['cost_avg'][-10:-5])):
                     break
-                else:
-                    previous_fidelity = measured_fidelity
 
                 PLOT = False
                 SZ_MASK = True
@@ -329,45 +344,54 @@ if __name__ == "__main__":
                     plt.show()
 
 
-        ####################################################
-        ### Measure renyi-2 entanglement entropy  ###
-        ####################################################
-        config_arr = np.zeros([2 * num_sample, *systemSize])
-        for i in range(1, 1+int(2 * num_sample // batch_size)):
-            N.forward_sampling()
-            config_arr[(i-1) * batch_size: i * batch_size] = N.config.copy()
+        if ED:
+            sx_expectation = many_body.sx_expectation(L//2+1, y.flatten(), L)
+            print("<Sx> = ", sx_expectation)
+            data_dict["Sx"] = sx_expectation
 
-        amp_no_swap = Net.get_amp(config_arr)
+            S2, SvN = many_body.entanglement_entropy(L//2 + 1, y.flatten(), L)
+            data_dict["renyi_2"] = S2
+            data_dict["SvN"] = SvN
+        else:
+            ####################################################
+            ### Measure renyi-2 entanglement entropy  ###
+            ####################################################
+            config_arr = np.zeros([2 * num_sample, *systemSize])
+            for i in range(1, 1+int(2 * num_sample // batch_size)):
+                N.forward_sampling()
+                config_arr[(i-1) * batch_size: i * batch_size] = N.config.copy()
 
-        swap_config_arr = config_arr.copy()
-        swap_config_arr[:num_sample, :L//2, :] = config_arr[num_sample:, :L//2, :]
-        swap_config_arr[num_sample:, :L//2, :] = config_arr[:num_sample, :L//2, :]
-        amp_swap = Net.get_amp(swap_config_arr)
+            amp_no_swap = Net.get_amp(config_arr)
 
-        rho_2 = 0
-        for i in range(num_sample):
-            rho_2 += (amp_swap[i].conj() * amp_swap[i+num_sample].conj())/(amp_no_swap[i].conj() * amp_no_swap[i+num_sample].conj())
+            swap_config_arr = config_arr.copy()
+            swap_config_arr[:num_sample, :L//2, :] = config_arr[num_sample:, :L//2, :]
+            swap_config_arr[num_sample:, :L//2, :] = config_arr[:num_sample, :L//2, :]
+            amp_swap = Net.get_amp(swap_config_arr)
 
-        rho_2 = rho_2[0] / num_sample
-        print("Tr rho_2 = ", rho_2)
-        print("Renyi 2 = ", -np.log(rho_2))
+            rho_2 = 0
+            for i in range(num_sample):
+                rho_2 += (amp_swap[i].conj() * amp_swap[i+num_sample].conj())/(amp_no_swap[i].conj() * amp_no_swap[i+num_sample].conj())
 
-        print(type(rho_2))
-        # data_dict = np.load(ckpt_path+'/data_dict.npy', allow_pickle=True).item()
-        data_dict["renyi_2"] = -np.log(rho_2)
+            rho_2 = rho_2[0] / num_sample
+            print("Tr rho_2 = ", rho_2)
+            print("Renyi 2 = ", -np.log(rho_2))
 
-        #################
-        ### Measure Sx
-        #################
+            print(type(rho_2))
+            # data_dict = np.load(ckpt_path+'/data_dict.npy', allow_pickle=True).item()
+            data_dict["renyi_2"] = -np.log(rho_2)
 
-        flip_config_arr = config_arr.copy()
-        flip_config_arr[:, L//2, :] = (1 - flip_config_arr[:, L//2, :])
+            #################
+            ### Measure Sx
+            #################
 
-        amp_flip = Net.get_amp(flip_config_arr)
-        # amp_no_swap
-        sx_expectation = np.average( amp_flip / amp_no_swap )
-        print("<Sx> = ", sx_expectation)
-        data_dict["Sx"] = sx_expectation
+            flip_config_arr = config_arr.copy()
+            flip_config_arr[:, L//2, :] = (1 - flip_config_arr[:, L//2, :])
+
+            amp_flip = Net.get_amp(flip_config_arr)
+            # amp_no_swap
+            sx_expectation = np.average( amp_flip / amp_no_swap )
+            print("<Sx> = ", sx_expectation)
+            data_dict["Sx"] = sx_expectation
 
 
         saver.save(sess, ckpt_path + '/pre')

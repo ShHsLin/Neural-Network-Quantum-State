@@ -165,7 +165,9 @@ def parse_args():
                         'controlled by the enviroment variable OMP_NUM_THREADS'
                         'Default: None',
                         default=None, type=int)
-
+    parser.add_argument('--supervised_model', dest='supervised_model',
+                        help='Name of the supervised Hamiltonian. Default: None',
+                        default=None, type=str)
 
 
 
