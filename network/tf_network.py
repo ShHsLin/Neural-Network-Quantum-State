@@ -430,7 +430,7 @@ class tf_network:
         ####################################################################################
         if self.num_threads is not None:
             config = tf.ConfigProto(intra_op_parallelism_threads=self.num_threads,
-                                    inter_op_parallelism_threads=slef.num_threads,
+                                    inter_op_parallelism_threads=self.num_threads,
                                     allow_soft_placement=True)
         else:
             config = tf.ConfigProto()

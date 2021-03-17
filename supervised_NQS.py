@@ -117,7 +117,8 @@ if __name__ == "__main__":
             X[:,:,:,0] = X_computation_basis.reshape([2**(L**2), L, L])
             X[:,:,:,1] = 1-X_computation_basis.reshape([2**(L**2), L, L])
 
-            Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
+            # Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
+            Y = np.load('ExactDiag/wavefunction/%s/ED_wf_T%.2f.npy' % (supervised_model, args.T))
             Y = np.array(Y, dtype=np.complex128)[:, None]
         else:
             raise NotImplementedError
@@ -145,7 +146,8 @@ if __name__ == "__main__":
 
         ###### Example 2:
         import pickle
-        MPS = pickle.load(open('/tuph/t30/space/ga63zuh/qTEBD/tenpy_tebd/data_tebd_dt1.000000e-03/1d_TFI_g1.4000_h0.9045/L31/wf_chi1024_4th/T%.1f.pkl' % args.T, 'rb'))
+        MPS = np.load('ExactDiag/wavefunction/%s/somethinghere' % args.T)
+        # MPS = pickle.load(open('/tuph/t30/space/ga63zuh/qTEBD/tenpy_tebd/data_tebd_dt1.000000e-03/1d_TFI_g1.4000_h0.9045/L31/wf_chi1024_4th/T%.1f.pkl' % args.T, 'rb'))
         # MPS = [np.array([1., 0.]).reshape([2, 1, 1])] * 31
 
 
