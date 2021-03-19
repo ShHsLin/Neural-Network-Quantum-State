@@ -19,8 +19,8 @@ def parse_args():
     parser.add_argument('--num_iter', dest='num_iter',
                         help='number of iteration for optimization. It is suggested'
                         ' that the multiplication of learning rate and number of iteration'
-                        ' be around one, i.e. lr * num_iter = 1.  Default: 1500',
-                        default=500, type=int)
+                        ' be around one, i.e. lr * num_iter = 1.  Default: 100000',
+                        default=200000, type=int)
     parser.add_argument('--save_each', dest='save_each',
                         help='number of iterations that wavefunction and results'
                         'are stored. Default: 100',

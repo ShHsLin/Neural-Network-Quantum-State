@@ -2163,25 +2163,31 @@ class tf_network:
             x_reshaped = tf.reshape(x, [-1, self.LxLy, 2])
             x = x_reshaped[:, :, 0]
             x = tf.cast(x, dtype=self.TF_FLOAT)
-            fc1 = tf_.masked_fc_layer(x, self.LxLy, self.LxLy * self.alpha, 'masked_fc1',
+
+            assert self.alpha_list is not None
+            fc1 = tf_.masked_fc_layer(x, self.LxLy, self.LxLy * self.alpha_list[0], 'masked_fc1',
                                       self.ordering, 'A', layer_collection=self.layer_collection,
                                       registered=self.registered, dtype=self.TF_FLOAT)
-            fc1 = act(fc1)
-            fc2 = tf_.masked_fc_layer(fc1, self.LxLy * self.alpha, self.LxLy * self.alpha,
-                                      'masked_fc2', self.ordering, 'B',
-                                      layer_collection=self.layer_collection,
-                                      registered=self.registered, dtype=self.TF_FLOAT)
-            fc2 = act(fc2)
-            fc3 = tf_.masked_fc_layer(fc2, self.LxLy * self.alpha, self.LxLy * 4,
-                                      'masked_fc3', self.ordering, 'B',
-                                      layer_collection=self.layer_collection,
-                                      registered=self.registered, dtype=self.TF_FLOAT)
+            fc = act(fc1)
 
-            fc3 = tf.reshape(fc3, [-1, self.LxLy, 4])
-            out0_re = fc3[:,:,0]
-            out1_re = fc3[:,:,1]
-            out0_im = fc3[:,:,2]
-            out1_im = fc3[:,:,3]
+            for idx in range(1, len(self.alpha_list)):
+                fc = tf_.masked_fc_layer(fc, self.LxLy * self.alpha_list[idx-1], self.LxLy * self.alpha_list[idx],
+                                         'masked_fc%d' % (idx+1), self.ordering, 'B',
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered, dtype=self.TF_FLOAT)
+                fc = act(fc)
+
+            fc_end = tf_.masked_fc_layer(fc, self.LxLy * self.alpha_list[-1], self.LxLy * 4,
+                                         'masked_fc%d' % (len(self.alpha_list) + 1), self.ordering, 'B',
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered, dtype=self.TF_FLOAT)
+
+            fc_end = tf.reshape(fc_end, [-1, self.LxLy , self.channels * 2])
+
+            out0_re = fc_end[:,:,0]
+            out1_re = fc_end[:,:,1]
+            out0_im = fc_end[:,:,2]
+            out1_im = fc_end[:,:,3]
             ## stable normalize ##
             max_re = tf.math.maximum(out0_re, out1_re)
             out0_re = out0_re - max_re

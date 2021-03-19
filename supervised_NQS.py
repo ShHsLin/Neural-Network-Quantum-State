@@ -102,6 +102,7 @@ if __name__ == "__main__":
     ED = True
     if ED:
         if dim == 1:
+            N_sys = L
             X_computation_basis = np.genfromtxt('ExactDiag/basis_L%d.csv' % L, delimiter=',')
             X = np.zeros([2**L, L, 2])
             X[:,:,0] = X_computation_basis.reshape([2**L, L])
@@ -112,6 +113,7 @@ if __name__ == "__main__":
             Y = np.load('ExactDiag/wavefunction/%s/ED_wf_T%.2f.npy' % (supervised_model, args.T))
             Y = np.array(Y, dtype=np.complex128)[:, None]
         elif dim == 2:
+            N_sys = L ** 2
             X_computation_basis = np.genfromtxt('ExactDiag/basis_L%d.csv' % (L**2), delimiter=',')
             X = np.zeros([2**(L**2), L, L, 2])
             X[:,:,:,0] = X_computation_basis.reshape([2**(L**2), L, L])
@@ -263,7 +265,7 @@ if __name__ == "__main__":
         kl_list = []
         l2_list = []
         fidelity_list = []
-        for i in range(1, 100000+1):
+        for i in range(1, num_iter+1):
             if ED:
                 batch_mask = np.random.choice(len(Y), batch_size, p=ED_prob)
                 X_mini_batch = X[batch_mask]
@@ -307,7 +309,19 @@ if __name__ == "__main__":
 
             if ED and i % 5000 == 0:
                 ### get full batch information
-                y = Net.get_amp(X)
+                # y = Net.get_amp(X)
+                y_list = []
+                for i in range((2**N_sys) // 1024):
+                    start_idx, end_idx = i*1024, (i+1)*1024
+                    yi = Net.get_amp(X[start_idx:end_idx])
+                    y_list.append(yi)
+
+                y_list.append(Net.get_amp(X[end_idx:]))
+                y = np.concatenate(y_list)
+
+
+
+
                 print(('y norm : ', np.linalg.norm(y)))
                 measured_fidelity = np.square(np.abs(Y.flatten().dot(y.flatten().conj())))
                 print("Fidelity = ", measured_fidelity)
@@ -347,11 +361,11 @@ if __name__ == "__main__":
 
 
         if ED:
-            sx_expectation = many_body.sx_expectation(L//2+1, y.flatten(), L)
+            sx_expectation = many_body.sx_expectation(N_sys//2+1, y.flatten(), N_sys)
             print("<Sx> = ", sx_expectation)
             data_dict["Sx"] = sx_expectation
 
-            S2, SvN = many_body.entanglement_entropy(L//2 + 1, y.flatten(), L)
+            S2, SvN = many_body.entanglement_entropy(N_sys//2 + 1, y.flatten(), N_sys)
             data_dict["renyi_2"] = S2
             data_dict["SvN"] = SvN
         else:
