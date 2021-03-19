@@ -2403,11 +2403,18 @@ class tf_network:
 
             fc3 = tf.reshape(px, [-1, self.LxLy, self.channels * 2])
 
-            np_bias = np.zeros([self.LxLy, self.channels * 2])
+            '''
+            The np_bias and tf_bias should be used constant to network.
+            This would be useful for setting chemical potential.
+
+            IF np_bias and tf_bias is not constant; i.e. rand init,
+            it would result in value that is different when the model
+            is reloaded !!!
+            '''
+            # np_bias = np.zeros([self.LxLy, self.channels * 2])
             # np_bias[:, self.channels-1] = 0.
-            np_bias[:, self.channels:] = np.pi * (np.random.rand(self.LxLy, self.channels) - 0.5) * 2
-            tf_bias = tf.constant(np_bias, dtype=self.TF_FLOAT)
-            fc3 = tf.math.add(fc3, tf_bias)
+            # tf_bias = tf.constant(np_bias, dtype=self.TF_FLOAT)
+            # fc3 = tf.math.add(fc3, tf_bias)
 
             if self.conserved_Sz:
                 # assert self.channels == 2
