@@ -1325,7 +1325,7 @@ class tf_network:
                                           registered=self.registered)
             conv = tf.tanh(conv1_gate) * tf.math.sigmoid(conv1)
 
-            for idx in range(1, len(self.num_blocks)):
+            for idx in range(1, self.num_blocks):
                 residual_head = conv
                 conv = tf.pad(conv,
                               [[0, 0], [filter_size - 1, 0], [0, 0]], "CONSTANT")
@@ -1416,6 +1416,161 @@ class tf_network:
             return out, log_amp, log_cond_amp, prob
         else:
             return tf.real(out), None, log_cond_amp, prob
+
+    def build_ARTN_1d(self, x, activation):
+        act = tf_.select_activation(activation)
+        chi = 2
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x_input_head = x
+            x = x_input_head[:, :, 0]
+            x = tf.cast(x, dtype=self.TF_FLOAT)
+
+            assert self.alpha_list is not None
+            fc1 = tf_.masked_fc_layer(x, self.L, self.L * self.alpha_list[0], 'masked_fc1',
+                                      self.ordering, 'A', layer_collection=self.layer_collection,
+                                      registered=self.registered, dtype=self.TF_FLOAT)
+            fc = act(fc1)
+
+            for idx in range(1, len(self.alpha_list)):
+                fc = tf_.masked_fc_layer(fc, self.L * self.alpha_list[idx-1], self.L * self.alpha_list[idx],
+                                         'masked_fc%d' % (idx+1), self.ordering, 'B',
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered, dtype=self.TF_FLOAT)
+                fc = act(fc)
+
+            fc_end = tf_.masked_fc_layer(fc, self.L * self.alpha_list[-1], self.L * self.channels * 2 * (chi**2),
+                                         'masked_fc%d' % (len(self.alpha_list) + 1), self.ordering, 'B',
+                                         layer_collection=self.layer_collection,
+                                         registered=self.registered, dtype=self.TF_FLOAT)
+
+
+            ### NA-TNS
+
+            fc_end = tf.reshape(fc_end, [-1, self.L , 2 * chi * self.channels * chi])
+            gate_set = tf_.gen_2_qubit_gate(fc_end)  ## [batch_size, L, 4, 4]
+            two_site_gate_rep = tf.reshape(gate_set, [-1, self.L, 2, 2, 2, 2])  # N, L, p',q',p,q
+
+            ''' old version should be remove
+            ## contract qubit ind
+            M_array = tf.reshape(two_site_gate_rep[:, :, :, :, :, 0], [-1, self.L, self.channels, 4])  # n, l, p', (q' p)
+            ## now a complex tensor of shape [batch_size, L , 2]
+            input_mask = tf.cast(x_input_head, self.TF_COMPLEX)
+            ## contract phys ind
+            M_array = tf.reduce_sum(tf.multiply(M_array, input_mask), axis=[2])  # n, l, (q', p)
+            M_array = tf.reshape(M_array, [-1, self.L, 2, 2])
+            '''
+
+            ## contract qubit ind
+            M_array = two_site_gate_rep[:, :, :, :, :, 0]  # n, l, p', q', p
+
+            input_mask = tf.cast(x_input_head, self.TF_COMPLEX)
+            ## now a complex tensor of shape [batch_size, L , 2]
+            input_mask_extend = tf.tensordot(tf.cast(x_input_head, self.TF_COMPLEX), tf.ones([2, 2], dtype=self.TF_COMPLEX), axes=0)
+            ## now a complex tensor of shape [batch_size, L , 2, 2, 2]
+            ## contract phys ind
+            M_array = tf.reduce_sum(tf.multiply(M_array, input_mask_extend), axis=[2])  # n, l, [p'], q', p
+            M_array = tf.transpose(M_array, [0, 1, 3, 2])  # n, l, p, q'
+
+
+            M_list = []
+            for site_idx in range(self.L):
+                M_list.append(M_array[:, site_idx, :, :])
+
+            M_list[0] = M_list[0][:, 0:1, :]  # contract qubit ind
+            M_list[-1] = tf.transpose(input_mask[:, -1:, :], [0, 2, 1])
+
+            ## now having MPS
+            ## contract MPS.
+
+            '''
+            fc_end = tf.reshape(fc_end, [-1, self.L , 2, chi, self.channels * chi])
+
+            complex_para_mat = tf.complex(fc_end[:,:,0,:,:], fc_end[:,:,1,:,:])
+            ## [num_data, L, chi, self.channels * chi]
+            M_list = []
+            M_list.append(complex_para_mat[:, 0, :1, :])
+            for M_idx in range(1, self.L-1):
+                M_list.append(complex_para_mat[:, M_idx, :, :])
+
+            M_list.append(complex_para_mat[:, -1, :, :self.channels])
+
+            ## M in M_list is of dimension [num_data, chi, self.channels * chi]
+            ## Now perform canonicalization
+            M_list[-1] = tf.Print(M_list[-1], [tf.real(M_list[-1])], message="This is the real part: ")
+            M_list[-1] = tf.Print(M_list[-1], [tf.imag(M_list[-1])], message="This is the imag part: ")
+            Q, R = tf.linalg.qr(tf.transpose(M_list[-1], [0, 2, 1]))
+            Q, R = tf.transpose(Q, [0, 2, 1]), tf.transpose(R, [0, 2, 1])
+            ## RQ = M
+            M_list[-1] = tf.reshape(Q, [-1, chi, self.channels, 1])
+            for M_idx in range(self.L-2, 0, -1):
+                # M = tf.tensordot(tf.reshape(M_list[M_idx], [-1, chi, self.channels, chi]), R, axes=[[3], [0]])
+                # M = tf.linalg.matmul(tf.reshape(M_list[M_idx], [-1, chi, self.channels, chi]), R)
+                M = tf.einsum('nlpr,nrm->nlpm', tf.reshape(M_list[M_idx], [-1, chi, self.channels, chi]), R)
+
+                M = tf.reshape(M, [-1, chi, self.channels*chi])
+                Q, R = tf.linalg.qr(tf.transpose(M, [0, 2, 1]))
+                Q, R = tf.transpose(Q, [0, 2, 1]), tf.transpose(R, [0, 2, 1])
+                M_list[M_idx] = tf.reshape(Q, [-1, chi, self.channels, chi])
+
+            # M = tf.tensordot(tf.reshape(M_list[0], [-1, self.channels, chi]), R, axes=[[2], [0]])
+            # M = tf.reshape(M, [-1, 1, self.channels, chi])
+            M = tf.einsum('nlpr,nrm->nlpm', tf.reshape(M_list[0], [-1, 1, self.channels, chi]), R)
+            M_list[0] = M / tf.norm(M, axis=[-2,-1], keepdims=True)
+
+            ## M in M_list is of dimension [num_data, chi, self.channels, chi]
+            ## Except the first and the last one
+
+
+            input_mask = tf.cast(x_input_head, self.TF_COMPLEX)
+            ## now a complex tensor of shape [batch_size, L , 2]
+            for M_idx in range(self.L):
+                M_list[M_idx] = tf.einsum('nlpr,np->nlr', M_list[M_idx], input_mask[:, M_idx,: ])
+                # M_list[M_idx] = tf.reduce_sum(tf.multiply(
+                #     M_list[M_idx], tf.broadcast_to(input_mask[:, M_idx,: ], tf.shape(M_list[M_idx]))),
+                #     axis=[2])
+            ## M in M_list is of dimension [num_data, chi, chi]
+            ## Except the first and the last one
+            '''
+
+
+            ############################################################
+            ### Final contraction of MPS  ####
+            ############################################################
+            iter_M = M_list[0]
+            for M_idx in range(1, self.L):
+                iter_M = tf.linalg.matmul(iter_M, M_list[M_idx])
+
+            # _, dim2, dim3 = tf.shape(iter_M)
+            # assert dim2 == 1
+            # assert dim3 == 1
+
+            out = amp = tf.reshape(iter_M, [-1, 1])
+            log_amp = tf.log(amp)
+            log_amp_re = tf.real(log_amp)
+            log_amp_im = tf.imag(log_amp)
+            log_amp_re = tf.clip_by_value(log_amp_re, -60., 60.)
+            log_amp = tf.complex(log_amp_re, log_amp_im)
+
+
+
+            # prob = tf.exp(log_prob)
+
+            # log_amp = tf.reduce_sum(tf.multiply(
+            #     log_cond_amp, tf.cast(x_input_head, self.TF_COMPLEX)),
+            #                         axis=[1, 2])
+
+            # log_amp = tf.reshape(log_amp, [-1, 1])
+
+            # out = tf.exp(log_amp)
+            # out = tf.reshape(out, [-1, 1])
+
+        self.registered = True
+        if self.using_complex:
+            return out, log_amp
+        else:
+            return tf.real(out)
+
+
 
     def build_ZNet_1d(self, x):
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
@@ -3204,6 +3359,8 @@ class tf_network:
             return self.build_pixelCNN_dense_1d(x, activation)
         elif which_net == "gated_CNN":
             return self.build_gated_CNN_1d(x, activation)
+        elif which_net == "ARTN":
+            return self.build_ARTN_1d(x, activation)
         elif which_net == "ZNet":
             return self.build_ZNet_1d(x)
         elif which_net == "NN3":

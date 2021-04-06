@@ -185,6 +185,88 @@ def avg_pool2d(x, name, kernel_size, stride_size=2, padding='SAME'):
                           padding=padding,
                           name=name)
 
+def kron(A, B, rankA, dimA, dimB, swap=False):
+    """
+    Returns Kronecker product of two square matrices.
+
+    Args:
+        A: tf tensor of shape (..., dim1, dim1)
+        B: tf tensor of shape (dim2, dim2)
+        A may contain batch dimensions
+        Not assuming complex or real-valued.
+        A, B have to have the same dtype
+
+    Returns:
+        tf tensor of shape (..., dim1 * dim2, dim1 * dim2),
+        kronecker product of two matrices
+    """
+
+    if not swap:
+        AB = tf.transpose(tf.tensordot(A, B, axes=0), list(range(rankA-2)) + [rankA-2+0, rankA-2+2, rankA-2+1, rankA-2+3])
+        shape = AB.get_shape().as_list() # get the shape of each dimention
+        return tf.reshape(AB, [-1] + shape[1:rankA-2] + [dimA * dimB, dimA * dimB])
+    else:
+        AB = tf.transpose(tf.tensordot(A, B, axes=0), list(range(rankA-2)) + [rankA-2+2, rankA-2+0, rankA-2+3, rankA-2+1])
+        shape = AB.get_shape().as_list() # get the shape of each dimention
+        return tf.reshape(AB, [-1] + shape[1:rankA-2] + [dimA * dimB, dimA * dimB])
+
+
+def gen_2_qubit_gate(x):
+    '''
+    [NOT TESTED BACKPROP BUG FREE]
+    Input:
+        real-valued tensor with dimension [..., N]
+        where N > 15, the rest is abandoned
+
+    Return:
+        complex-valued tensor with dimension [..., 4, 4]
+
+    Goal:
+    circuit += one_qubit_unitary(bits[0], symbols[0:3])
+    circuit += one_qubit_unitary(bits[1], symbols[3:6])
+    circuit += [cirq.ZZ(*bits)**symbols[6]]
+    circuit += [cirq.YY(*bits)**symbols[7]]
+    circuit += [cirq.XX(*bits)**symbols[8]]
+    circuit += one_qubit_unitary(bits[0], symbols[9:12])
+    circuit += one_qubit_unitary(bits[1], symbols[12:])
+    '''
+    np_X = np.array([[0., 1.], [1., 0.]], dtype=np.complex128)
+    np_Y = np.array([[0., -1.j], [1.j, 0.]], dtype=np.complex128)
+    np_Z = np.array([[1., 0.], [0., -1.]], dtype=np.complex128)
+    np_I = np.array([[1., 0.], [0., 1.]], dtype=np.complex128)
+    X = tf.constant(np_X)
+    Y = tf.constant(np_Y)
+    Z = tf.constant(np_Z)
+    I = tf.constant(np_I)
+    XX = tf.constant(np.kron(np_X, np_X))
+    YY = tf.constant(np.kron(np_Y, np_Y))
+    ZZ = tf.constant(np.kron(np_Z, np_Z))
+
+    sig_mat = tf.stack([X, Y, Z])  ##[3, 2, 2]
+    sig_sig_mat = tf.stack([XX, YY, ZZ])  ##[3, 4, 4]
+
+    x = tf.Print(x, [x[:,-1:,0:8]], message='0-8')
+    x = tf.Print(x, [x[:,-1:,8:]], message='8-')
+    x = tf.cast(x, dtype=tf.complex128)
+    rot1 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,0:3], sig_mat, axes=[[-1], [0]]) )  ## N, L, 2, 2
+    rot2 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,3:6], sig_mat, axes=[[-1], [0]]) )
+    rot3 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,6:9], sig_sig_mat, axes=[[-1], [0]]) )
+    rot4 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,9:12], sig_mat, axes=[[-1], [0]]) )
+    rot5 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,12:15], sig_mat, axes=[[-1], [0]]) )
+    # rot1 = tf.Print(rot1, [tf.real(rot1[0, -1, :, :])], message='rotation real  ')
+    # rot1 = tf.Print(rot1, [tf.imag(rot1[0, -1, :, :])], message='rotation imag  ')
+    rot1 = kron(rot1, I, rankA=4, dimA=2, dimB=2, swap=False)
+    rot2 = kron(rot2, I, rankA=4, dimA=2, dimB=2, swap=True)
+    rot4 = kron(rot4, I, rankA=4, dimA=2, dimB=2, swap=False)
+    rot5 = kron(rot5, I, rankA=4, dimA=2, dimB=2, swap=True)
+
+    iter_mat = rot5
+    for rot in [rot4, rot3, rot2, rot1]:
+        iter_mat = tf.linalg.matmul(iter_mat, rot)
+
+    return iter_mat
+
+
 
 def batch_norm(bottom, phase, scope='bn'):
     return tf.contrib.layers.batch_norm(bottom,
