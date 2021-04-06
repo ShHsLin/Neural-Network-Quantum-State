@@ -19,8 +19,8 @@ def parse_args():
     parser.add_argument('--num_iter', dest='num_iter',
                         help='number of iteration for optimization. It is suggested'
                         ' that the multiplication of learning rate and number of iteration'
-                        ' be around one, i.e. lr * num_iter = 1.  Default: 100000',
-                        default=200000, type=int)
+                        ' be around one, i.e. lr * num_iter = 1.  Default: 300000',
+                        default=300000, type=int)
     parser.add_argument('--save_each', dest='save_each',
                         help='number of iterations that wavefunction and results'
                         'are stored. Default: 100',
@@ -110,8 +110,8 @@ def parse_args():
                         default=0, type=int)
     parser.add_argument('--num_blocks', dest='num_blocks',
                         help='Determine the number of block in pixelCNN sturcture;'
-                        'Default: 10',
-                        default=10, type=int)
+                        'Default: None',
+                        default=None, type=int)
     parser.add_argument('--multi_gpus', dest='multi_gpus',
                         help='Using multiple gpus or not'
                         'Default: False',

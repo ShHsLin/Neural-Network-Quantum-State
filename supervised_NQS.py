@@ -232,6 +232,9 @@ if __name__ == "__main__":
                     'wavefunction/Supervised/' + '%s_T%.2f/' % (supervised_model, args.T) + \
                     which_net+'_'+act+'_L'+str(L)+'_a'+('-'.join([str(alpha) for alpha in alpha_list]))
 
+        if num_blocks is not None:
+            ckpt_path = ckpt_path + '_block%d' % num_blocks
+
         if filter_size is not None:
             ckpt_path = ckpt_path + '_f%d' % filter_size
 
