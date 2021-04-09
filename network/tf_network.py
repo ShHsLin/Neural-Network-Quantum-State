@@ -1290,7 +1290,7 @@ class tf_network:
         else:
             return tf.real(out), None, log_cond_amp, prob
 
-    def build_gated_CNN_1d(self, x, activation):
+    def build_gated_CNN_1d(self, x, activation, skip_connections=False):
         act = tf_.select_activation(activation)
         filter_size = self.filter_size
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
@@ -1324,6 +1324,19 @@ class tf_network:
                                           layer_collection=self.layer_collection,
                                           registered=self.registered)
             conv = tf.tanh(conv1_gate) * tf.math.sigmoid(conv1)
+
+            if skip_connections:
+                skip_connections_list = []
+                conv_head2 = tf_.conv_layer1d(conv,
+                                              1,
+                                              self.alpha * 4,
+                                              self.alpha * 4,
+                                              'causal_conv1_1x1_skip',
+                                              padding='VALID',
+                                              dtype=self.TF_FLOAT,
+                                              layer_collection=self.layer_collection,
+                                              registered=self.registered)
+                skip_connections_list.append(conv_head2)
 
             for idx in range(1, self.num_blocks):
                 residual_head = conv
@@ -1360,7 +1373,36 @@ class tf_network:
                                              dtype=self.TF_FLOAT,
                                              layer_collection=self.layer_collection,
                                              registered=self.registered)
+                if skip_connections:
+                    conv_head2 = tf_.conv_layer1d(conv,
+                                                  1,
+                                                  self.alpha * 4,
+                                                  self.alpha * 4,
+                                                  'causal_conv%d_1x1_skip' % (idx+1),
+                                                  padding='VALID',
+                                                  dtype=self.TF_FLOAT,
+                                                  layer_collection=self.layer_collection,
+                                                  registered=self.registered)
+                    skip_connections_list.append(conv_head2)
+
                 conv = conv_head + residual_head
+
+            if skip_connections:
+                skip_conv = tf.math.accumulate_n(skip_connections_list)
+                conv = conv + skip_conv
+
+                conv = tf.nn.relu(conv)
+                conv = tf_.conv_layer1d(conv,
+                                        1,
+                                        self.alpha * 4,
+                                        self.alpha * 4,
+                                        'causal_conv_end1_1x1',
+                                        padding='VALID',
+                                        dtype=self.TF_FLOAT,
+                                        layer_collection=self.layer_collection,
+                                        registered=self.registered)
+                conv = tf.nn.relu(conv)
+
 
             conv = tf.pad(conv,
                           [[0, 0], [filter_size - 1, 0], [0, 0]], "CONSTANT")
@@ -1416,6 +1458,181 @@ class tf_network:
             return out, log_amp, log_cond_amp, prob
         else:
             return tf.real(out), None, log_cond_amp, prob
+
+    def build_WaveNet_1d(self, x, activation, skip_connections=True):
+        act = tf_.select_activation(activation)
+        filter_size = self.filter_size
+        with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
+            x_input_head = x
+            # x = x_input_head[:, :, 0:1]
+            x = tf.concat([x_input_head, tf.ones_like(x_input_head[:, :, 0:1])], axis=-1)
+            print(x.shape)
+            assert filter_size == 2
+            x = tf.cast(x, dtype=self.TF_FLOAT)
+            padded_x = tf.pad(x[:,:-1,:],
+                              [[0, 0], [filter_size, 0],
+                               [0, 0]], "CONSTANT")
+
+            assert self.alpha is not None
+            assert self.num_blocks is not None
+            conv1 = tf_.conv_layer1d(padded_x,
+                                     filter_size,
+                                     3,
+                                     self.alpha*4,
+                                     'causal_conv1',
+                                     padding='VALID',
+                                     dtype=self.TF_FLOAT,
+                                     layer_collection=self.layer_collection,
+                                     registered=self.registered)
+            conv1_gate = tf_.conv_layer1d(padded_x,
+                                          filter_size,
+                                          3,
+                                          self.alpha*4,
+                                          'causal_conv1_gate',
+                                          padding='VALID',
+                                          dtype=self.TF_FLOAT,
+                                          layer_collection=self.layer_collection,
+                                          registered=self.registered)
+            conv = tf.tanh(conv1_gate) * tf.math.sigmoid(conv1)
+
+            if skip_connections:
+                skip_connections_list = []
+                conv_head2 = tf_.conv_layer1d(conv,
+                                              1,
+                                              self.alpha * 4,
+                                              self.alpha * 4,
+                                              'causal_conv1_1x1_skip',
+                                              padding='VALID',
+                                              dtype=self.TF_FLOAT,
+                                              layer_collection=self.layer_collection,
+                                              registered=self.registered)
+                skip_connections_list.append(conv_head2)
+
+            for idx in range(1, self.num_blocks):
+                dilations = int(2**((idx-1) % np.ceil(np.log2(self.L))))
+                residual_head = conv
+                conv = tf.pad(conv,
+                              [[0, 0], [(filter_size - 1)*dilations, 0], [0, 0]], "CONSTANT")
+                ## sigmoid branch
+                conv_sig = tf_.conv_layer1d(conv,
+                                            filter_size,
+                                            self.alpha * 4,
+                                            self.alpha * 4,
+                                            'causal_conv%d' % (idx+1),
+                                            padding='VALID',
+                                            dilations=dilations,
+                                            dtype=self.TF_FLOAT,
+                                            layer_collection=self.layer_collection,
+                                            registered=self.registered)
+                ## tanh branch
+                conv_gate = tf_.conv_layer1d(conv,
+                                             filter_size,
+                                             self.alpha * 4,
+                                             self.alpha * 4,
+                                             'causal_conv%d_gate' % (idx+1),
+                                             padding='VALID',
+                                             dilations=dilations,
+                                             dtype=self.TF_FLOAT,
+                                             layer_collection=self.layer_collection,
+                                             registered=self.registered)
+                ## Gated activation
+                conv = tf.tanh(conv_gate) * tf.math.sigmoid(conv_sig)
+                conv_head = tf_.conv_layer1d(conv,
+                                             1,
+                                             self.alpha * 4,
+                                             self.alpha * 4,
+                                             'causal_conv%d_1x1' % (idx+1),
+                                             padding='VALID',
+                                             dtype=self.TF_FLOAT,
+                                             layer_collection=self.layer_collection,
+                                             registered=self.registered)
+                if skip_connections:
+                    conv_head2 = tf_.conv_layer1d(conv,
+                                                  1,
+                                                  self.alpha * 4,
+                                                  self.alpha * 4,
+                                                  'causal_conv%d_1x1_skip' % (idx+1),
+                                                  padding='VALID',
+                                                  dtype=self.TF_FLOAT,
+                                                  layer_collection=self.layer_collection,
+                                                  registered=self.registered)
+                    skip_connections_list.append(conv_head2)
+
+                conv = conv_head + residual_head
+
+            if skip_connections:
+                skip_conv = tf.math.accumulate_n(skip_connections_list)
+                conv = conv + skip_conv
+
+                conv = tf.nn.relu(conv)
+                conv = tf_.conv_layer1d(conv,
+                                        1,
+                                        self.alpha * 4,
+                                        self.alpha * 4,
+                                        'causal_conv_end1_1x1',
+                                        padding='VALID',
+                                        dtype=self.TF_FLOAT,
+                                        layer_collection=self.layer_collection,
+                                        registered=self.registered)
+                conv = tf.nn.relu(conv)
+
+
+            conv = tf.pad(conv,
+                          [[0, 0], [filter_size - 1, 0], [0, 0]], "CONSTANT")
+            conv_end = tf_.conv_layer1d(conv,
+                                        filter_size,
+                                        self.alpha * 4,
+                                        4,
+                                        'causal_conv_end',
+                                        padding='VALID',
+                                        dtype=self.TF_FLOAT,
+                                        layer_collection=self.layer_collection,
+                                        registered=self.registered)
+
+            fc_end = tf.reshape(conv_end, [-1, self.L , self.channels * 2])
+
+            out0_re = fc_end[:,:,0]
+            out1_re = fc_end[:,:,1]
+            out0_im = fc_end[:,:,2]
+            out1_im = fc_end[:,:,3]
+            ## stable normalize ##
+            max_re = tf.math.maximum(out0_re, out1_re)
+            out0_re = out0_re - max_re
+            out1_re = out1_re - max_re
+            log_l2_norm = tf.log(tf.exp(2*out0_re) + tf.exp(2*out1_re)) / 2.
+            out0_re = out0_re - log_l2_norm
+            out1_re = out1_re - log_l2_norm
+
+            log_cond_amp_0 = tf.complex(out0_re, out0_im)
+            log_cond_amp_1 = tf.complex(out1_re, out1_im)
+            log_cond_amp = tf.stack([log_cond_amp_0, log_cond_amp_1], axis=-1)
+            ## now a complex tensor of shape [batch_size, L , 2]
+
+            ############################################################
+            ### Constructed a path without involving complex number ####
+            ############################################################
+            re_cond_amp = tf.stack([2 * out0_re, 2 * out0_im], axis=-1)
+            log_prob = tf.reduce_sum(tf.multiply(
+                re_cond_amp, tf.cast(x_input_head, self.TF_FLOAT)),
+                                     axis=[1, 2])
+            prob = tf.exp(log_prob)
+
+            log_amp = tf.reduce_sum(tf.multiply(
+                log_cond_amp, tf.cast(x_input_head, self.TF_COMPLEX)),
+                                    axis=[1, 2])
+
+            log_amp = tf.reshape(log_amp, [-1, 1])
+
+            out = tf.exp(log_amp)
+            out = tf.reshape(out, [-1, 1])
+
+        self.registered = True
+        if self.using_complex:
+            return out, log_amp, log_cond_amp, prob
+        else:
+            return tf.real(out), None, log_cond_amp, prob
+
+
 
     def build_ARTN_1d(self, x, activation):
         act = tf_.select_activation(activation)
@@ -3359,6 +3576,10 @@ class tf_network:
             return self.build_pixelCNN_dense_1d(x, activation)
         elif which_net == "gated_CNN":
             return self.build_gated_CNN_1d(x, activation)
+        elif which_net == "gated_CNN_skip":
+            return self.build_gated_CNN_1d(x, activation, skip_connections=True)
+        elif which_net == "WaveNet":
+            return self.build_WaveNet_1d(x, activation)
         elif which_net == "ARTN":
             return self.build_ARTN_1d(x, activation)
         elif which_net == "ZNet":

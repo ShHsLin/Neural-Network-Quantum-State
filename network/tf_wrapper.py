@@ -293,6 +293,23 @@ def batch_norm_new(bottom, phase, scope_name='bn'):
         name=scope_name)
 
 
+def time_to_batch(value, dilation, name=None):
+    with tf.name_scope('time_to_batch'):
+        shape = tf.shape(value)  # N, L_p, C
+        pad_elements = dilation - 1 - (shape[1] + dilation - 1) % dilation
+        padded = tf.pad(value, [[0, 0], [0, pad_elements], [0, 0]])  # N, L_p_p, C
+        reshaped = tf.reshape(padded, [-1, dilation, shape[2]])  # N * (L_p_p)/d, d, C
+        transposed = tf.transpose(reshaped, perm=[1, 0, 2])  # d, N * (L_p_p)/d, C
+        return tf.reshape(transposed, [shape[0] * dilation, -1, shape[2]])  # N*d, (L_p_p/d), C
+
+def batch_to_time(value, dilation, name=None):
+    with tf.name_scope('batch_to_time'):
+        shape = tf.shape(value)  # N*d, (L_p_p/d), C
+        prepared = tf.reshape(value, [dilation, -1, shape[2]])  # d, N * (L_p_p)/d, C
+        transposed = tf.transpose(prepared, perm=[1, 0, 2])  # N * (L_p_p)/d, d, C
+        return tf.reshape(transposed,
+                          [tf.div(shape[0], dilation), -1, shape[2]])  # N, L_p_p, C
+
 def conv_layer1d(bottom,
                  filter_size,
                  in_channels,
@@ -300,6 +317,7 @@ def conv_layer1d(bottom,
                  name,
                  stride_size=1,
                  padding='SAME',
+                 dilations=None,
                  biases=True,
                  dtype=tf.float64,
                  weight_normalization=False,
@@ -314,7 +332,22 @@ def conv_layer1d(bottom,
                                            dtype=dtype
                                           )
         stride_list = [1, stride_size, 1]
-        conv = tf.nn.conv1d(bottom, filt, stride_list, padding=padding)
+        if dilations is None or dilations == 1:
+            conv = tf.nn.conv1d(bottom, filt, stride_list, padding=padding)
+        else:
+            assert stride_size == 1
+            assert padding=='VALID'
+            transformed = time_to_batch(bottom, dilations)
+            conv = tf.nn.conv1d(transformed, filt, stride_list,
+                                padding='VALID')
+            restored = batch_to_time(conv, dilations)
+            # Remove excess elements at the end. We assume the input is padded with
+            # the causal padding, i.e. (filter_size - 1) * dilations
+            out_width = tf.shape(bottom)[1] - (filter_size - 1) * dilations
+            conv = tf.slice(restored,
+                            [0, 0, 0],
+                            [-1, out_width, -1])
+
         if biases:
             conv = tf.nn.bias_add(conv, conv_biases)
             params = [filt, conv_biases]

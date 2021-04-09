@@ -185,7 +185,14 @@ if __name__ == "__main__":
         # sampled_l2 = tf.reduce_mean(tf.square(tf.abs(v1 - v2)/tf.abs(v1)))
         sampled_overlap = tf.reduce_mean(tf.real( v2/v1 ))
         sampled_fidelity = tf.square(tf.abs(tf.reduce_mean( v2/v1 )))
-        # cost = -sampled_overlap
+
+        # cost = 1. - sampled_overlap
+        # cost = 1. - sampled_fidelity
+        true_log_amp = tf.complex(true_amp_log_re, true_amp_log_im)
+        # cost = tf.reduce_sum(tf.square( tf.abs( true_log_amp - Net.log_amp )))
+        # cost = tf.reduce_sum(tf.square( tf.abs( tf.exp(true_log_amp) - tf.exp(Net.log_amp))))
+        # cost = tf.reduce_mean(tf.square( tf.abs( tf.exp(true_log_amp) - tf.exp(Net.log_amp)) /  tf.square(tf.abs(tf.exp(true_log_amp))) ))
+        # cost = - tf.log(sampled_fidelity)
 
         ###################################
         # Cost function 1: Batch fidelity #
@@ -314,12 +321,15 @@ if __name__ == "__main__":
                 ### get full batch information
                 # y = Net.get_amp(X)
                 y_list = []
+                end_idx=0
                 for i in range((2**N_sys) // 1024):
                     start_idx, end_idx = i*1024, (i+1)*1024
                     yi = Net.get_amp(X[start_idx:end_idx])
                     y_list.append(yi)
 
-                y_list.append(Net.get_amp(X[end_idx:]))
+                if end_idx != 2**N_sys:
+                    y_list.append(Net.get_amp(X[end_idx:]))
+
                 y = np.concatenate(y_list)
 
 
