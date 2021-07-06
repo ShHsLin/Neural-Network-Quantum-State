@@ -917,15 +917,19 @@ class tf_network:
             x_input_head = x
             x = x_input_head[:, :, 0]
             x = tf.cast(x, dtype=self.TF_COMPLEX)
+            x = x - 0.5
             fc1 = tf_.masked_fc_layer(x, self.L, self.L * self.alpha, 'masked_complex_fc1',
                                       self.ordering, 'A', layer_collection=self.layer_collection,
                                       registered=self.registered, dtype=self.TF_COMPLEX)
             fc1 = act(fc1)
-            fc2 = tf_.masked_fc_layer(fc1, self.L * self.alpha, self.L * self.alpha,
-                                      'masked_complex_fc2', self.ordering, 'B',
-                                      layer_collection=self.layer_collection,
-                                      registered=self.registered, dtype=self.TF_COMPLEX)
-            fc2 = act(fc2)
+            # fc2 = tf_.masked_fc_layer(fc1, self.L * self.alpha, self.L * self.alpha,
+            #                           'masked_complex_fc2', self.ordering, 'B',
+            #                           layer_collection=self.layer_collection,
+            #                           registered=self.registered, dtype=self.TF_COMPLEX)
+            # fc2 = act(fc2)
+            fc2 = fc1
+
+
             fc3 = tf_.masked_fc_layer(fc2, self.L * self.alpha, self.L * self.channels,
                                       'masked_complex_fc3', self.ordering, 'B',
                                       layer_collection=self.layer_collection,

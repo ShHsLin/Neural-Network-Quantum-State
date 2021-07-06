@@ -283,7 +283,7 @@ if __name__ == "__main__":
             else:
                 configs, amps = sample_mps.parallel_sampling(MPS, batch_size)
                 Y_mini_batch = np.array(amps, dtype=np.complex128)[:, None]
-                X_mini_batch = np.zeros([batch_size, *systemSize] )
+                X_mini_batch = np.zeros([batch_size, *systemSize])
                 X_mini_batch[..., 0] = configs.reshape([batch_size, *systemSize[:-1]])
                 X_mini_batch[..., 1] = 1 - configs.reshape([batch_size, *systemSize[:-1]])
 

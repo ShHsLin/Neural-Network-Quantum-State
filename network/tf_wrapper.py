@@ -1046,7 +1046,7 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
         else:
             part_dtype = tf.float64
 
-        u = tf.random_uniform([in_size, out_size], minval=0, maxval=1.)
+        u = tf.random_uniform([in_size, out_size], minval=0, maxval=1., dtype=part_dtype)
         sigma = np.sqrt(2. / in_size)
         w_mag = sigma * tf.sqrt(-2. * tf.log(1. - u))
         theta = tf.random_uniform([in_size, out_size],
@@ -1069,7 +1069,9 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
                                   dtype=part_dtype)
             im_initial_value = tf.random_uniform([out_size],
                                                  minval=0,
-                                                 maxval=2. * np.pi)
+                                                 maxval=2. * np.pi,
+                                                 dtype=part_dtype
+                                                )
             imag_biases = get_var(im_initial_value,
                                   name + "imag_biases",
                                   dtype=part_dtype)
