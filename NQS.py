@@ -141,7 +141,7 @@ class NQS_base():
         configDim[0] = num_sample
         config_arr = np.zeros(configDim, dtype=np.int8)
 
-        NAQS = True
+        NAQS = False
         if NAQS:
             for i in range(1, 1+int(num_sample//self.batch_size)):
                 self.forward_sampling(sym_sec=None)
@@ -314,10 +314,13 @@ class NQS_base():
                 Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
+            G_norm = np.linalg.norm(Gj)
+            info_dict['G_norm'] = G_norm
             end_c, end_t = time.clock(), time.time()
-            print("monte carlo time ( back propagation to get E_grads ): ",
-                  end_c - start_c, end_t - start_t)
-            print("norm(G): ", np.linalg.norm(Gj))
+            if verbose:
+                print("monte carlo time ( back propagation to get E_grads ): ",
+                      end_c - start_c, end_t - start_t)
+                print("norm(G): ", G_norm)
 
             F0_vec = Gj
             F_list = self.vec_to_list(F0_vec)
@@ -326,7 +329,8 @@ class NQS_base():
             Olist = self.NNet.get_log_grads(config_arr)
             Oi = np.concatenate([g.flatten() for g in Olist]) / num_sample
             end_c, end_t = time.clock(), time.time()
-            print("<O> time (batch_gradient): ", end_c - start_c, end_t - start_t)
+            if verbose:
+                print("<O> time (batch_gradient): ", end_c - start_c, end_t - start_t)
 
             # Initiate KFAC
             self.NNet.apply_cov_update(config_arr)
@@ -337,11 +341,16 @@ class NQS_base():
                 print(e)
 
             end_c, end_t = time.clock(), time.time()
-            print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
+            if verbose:
+                print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
+
             Gj = self.list_to_vec([pair[0] for pair in self.NNet.apply_fisher_inverse(F_list, config_arr)])
-            print("norm(G): ", np.linalg.norm(Gj))
-            return Gj, Eavg / num_site, Evar / (num_site**2), Gj.dot(F0_vec)
-            import pdb;pdb.set_trace()
+            G_norm = np.linalg.norm(Gj)
+            info_dict['G_norm'] = G_norm
+            if verbose:
+                print("norm(G): ", G_norm)
+
+            return Gj, Gj.dot(F0_vec), info_dict
 
             '''
             # compute OO, OO_F
@@ -424,17 +433,17 @@ class NQS_base():
             Gj, info = scipy.sparse.linalg.minres(implicit_Sij, F0_vec, x0=Gj)
 
             end_c, end_t = time.clock(), time.time()
-            print("solving SG=F: ", end_c - start_c, end_t - start_t)
-            print("conv Gj : ", info)
+            if verbose:
+                print("solving SG=F: ", end_c - start_c, end_t - start_t)
+                print("conv Gj : ", info)
 
+                print("norm(G): ", np.linalg.norm(Gj),
+                      "norm(F):", np.linalg.norm(F0_vec),
+                      "G.dot(F):", Gj.dot(F0_vec))
 
-            print("norm(G): ", np.linalg.norm(Gj),
-                  "norm(F):", np.linalg.norm(F0_vec),
-                  "G.dot(F):", Gj.dot(F0_vec))
+            return Gj, Gj.dot(F0_vec), info_dict
 
-            return Gj, Eavg / num_site, Evar / (num_site**2), Gj.dot(F0_vec)
-
-        else: #if SR; elif KFAC; else
+        else:  # the else from - if not SR; - elif KFAC
             if self.cov_list is None:
                 self.cov_list = []
                 for var_shape in self.NNet.var_shape_list:
@@ -452,7 +461,8 @@ class NQS_base():
 
         Oarray = self.NNet.run_unaggregated_gradient(config_arr)
         end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( back propagation to get log_grads ): ", end_c - start_c, end_t - start_t)
+        if verbose:
+            print("monte carlo time ( back propagation to get log_grads ): ", end_c - start_c, end_t - start_t)
 
         # for i in range(num_sample):
         #     O_List = self.NNet.get_log_grads(config_arr[i:i+1])
@@ -586,15 +596,19 @@ class NQS_base():
         _Fj = np.concatenate([_f.flatten() for _f in _Flist])
         _Gj = np.concatenate([_g.flatten() for _g in _Glist])
         end_c, end_t = time.clock(), time.time()
-        print("monte carlo time ( compute inv OO from cov_list and get Gj ): ",
-              end_c - start_c, end_t - start_t)
+        if verbose:
+            print("monte carlo time ( compute inv OO from cov_list and get Gj ): ",
+                  end_c - start_c, end_t - start_t)
+
+        G_norm = np.linalg.norm(_Gj)
+        info_dict['G_norm'] = G_norm
 
         _GjFj = np.linalg.norm(_Gj.dot(_Fj))
-        print("norm(G): ", np.linalg.norm(_Gj),
-              "norm(F):", np.linalg.norm(_Fj),
-              "G.dot(F):", _GjFj)
-        # import pdb;pdb.set_trace()
-        return _Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, _GjFj
+        if verbose:
+            print("norm(G): ", G_norm,
+                  "norm(F):", np.linalg.norm(_Fj),
+                  "G.dot(F):", _GjFj)
+        return _Gj, _GjFj, info_dict
 
 
         ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
@@ -725,7 +739,7 @@ class NQS_base():
         import pdb;pdb.set_trace()
         print(" TO debug FjFj, ", Fj.dot(_Fj)/np.linalg.norm(Fj)/np.linalg.norm(_Fj),
               " TO debug GjGj, ", Gj.dot(_Gj)/np.linalg.norm(Gj)/np.linalg.norm(_Gj))
-        return Gj, Eavg / num_site, Evar / (num_site**2) / num_sample, GjFj
+        return Gj, GjFj, info_dict
 
 
 class NQS_1d(NQS_base):
