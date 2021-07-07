@@ -5,12 +5,14 @@ Ordering is an np.array with indices that one should
 go through.
 """
 
+
 def gen_raster_scan_order(L=3):
     """
     Generate raster scan ordering on a square lattice
     with size LxL.
     """
     return np.arange(L*L)
+
 
 def gen_zigzag_order(L=3):
     """
@@ -34,6 +36,7 @@ def gen_zigzag_order(L=3):
 
     return np.array([lattice[pt] for pt in all_points])
 
+
 def gen_fc_mask_simple(ordering, mask_type, dtype=np.float64):
     """
     N = |ordering|
@@ -56,7 +59,8 @@ def gen_fc_mask_simple(ordering, mask_type, dtype=np.float64):
     else:
         raise NotImplementedError
 
-    return mask.T  ## This is because the convention of x*W instead of W*x in tf implementation.
+    return mask.T  # This is because the convention of x*W instead of W*x in tf implementation.
+
 
 def gen_fc_mask(ordering, mask_type, dtype=np.float64,
                 in_hidden=1, out_hidden=1):
@@ -76,16 +80,17 @@ def gen_fc_mask(ordering, mask_type, dtype=np.float64,
         for count, block_idx in enumerate(ordering):
             for in_idx in ordering[:count]:
                 mask[block_idx*out_hidden:(block_idx+1)*out_hidden,
-                     in_idx*in_hidden:(in_idx+1)*in_hidden]  = 1
+                     in_idx*in_hidden:(in_idx+1)*in_hidden] = 1
     elif mask_type == 'B':
         for count, block_idx in enumerate(ordering):
             for in_idx in ordering[:count+1]:
                 mask[block_idx*out_hidden:(block_idx+1)*out_hidden,
-                     in_idx*in_hidden:(in_idx+1)*in_hidden]  = 1
+                     in_idx*in_hidden:(in_idx+1)*in_hidden] = 1
     else:
         raise NotImplementedError
 
-    return mask.T  ## This is because the convention of x*W instead of W*x in tf implementation.
+    return mask.T  # This is because the convention of x*W instead of W*x in tf implementation.
+
 
 def gen_1d_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
     """
@@ -112,6 +117,7 @@ def gen_1d_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
 
     return mask
 
+
 def gen_2d_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
     """
     generating a square mask with size filter_size.
@@ -124,18 +130,18 @@ def gen_2d_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
     if mask_type == 'A':
         for i in range(filter_size//2):
             for j in range(filter_size):
-                mask[i,j,:,:] = id_tensor
+                mask[i, j, :, :] = id_tensor
 
         for j in range(filter_size//2):
-            mask[filter_size//2,j,:,:] = id_tensor
+            mask[filter_size//2, j, :, :] = id_tensor
 
     elif mask_type == 'B':
         for i in range(filter_size//2):
             for j in range(filter_size):
-                mask[i,j,:,:] = id_tensor
+                mask[i, j, :, :] = id_tensor
 
         for j in range(filter_size//2+1):
-            mask[filter_size//2,j,:,:] = id_tensor
+            mask[filter_size//2, j, :, :] = id_tensor
 
     elif mask_type == 'A2':
         mask = np.ones([filter_size, filter_size, in_ch, out_ch], dtype=dtype)
@@ -146,17 +152,16 @@ def gen_2d_conv_mask(mask_type, filter_size, in_ch, out_ch, dtype=np.float64):
     return mask
 
 
-
 if __name__ == '__main__':
     i = 3
     assert np.isclose(0, np.linalg.norm(np.array(gen_raster_scan_order(i))-np.arange(i**2)))
-    assert np.isclose(0, np.linalg.norm(np.array(gen_zigzag_order(i))-
-                                        np.array([0,1,3,6,4,2,5,7,8])))
+    assert np.isclose(0, np.linalg.norm(np.array(gen_zigzag_order(i)) -
+                                        np.array([0, 1, 3, 6, 4, 2, 5, 7, 8])))
 
     i = 4
     assert np.isclose(0, np.linalg.norm(np.array(gen_raster_scan_order(i))-np.arange(i**2)))
-    assert np.isclose(0, np.linalg.norm(np.array(gen_zigzag_order(i))-
-                                        np.array([0,1,4,8,5,2,3,6,9,12,13,10,7,11,14,15])))
+    assert np.isclose(0, np.linalg.norm(np.array(gen_zigzag_order(i)) -
+                                        np.array([0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15])))
 
     mask1 = np.array([[0., 0., 0., 0., 0., 0., 0., 0., 0.],
                       [1., 0., 0., 0., 0., 0., 0., 0., 0.],
@@ -169,5 +174,3 @@ if __name__ == '__main__':
                       [1., 1., 1., 1., 1., 1., 1., 1., 0.]])
 
     print("test pass!")
-
-

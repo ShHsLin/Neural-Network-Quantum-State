@@ -1,9 +1,8 @@
 # from memory_profiler import profile
-import os, sys
+import os
+import sys
 import pickle
 import time
-import scipy.sparse.linalg
-from scipy.sparse.linalg import LinearOperator
 import numpy as np
 import tensorflow as tf
 from utils.parse_args import parse_args
@@ -12,20 +11,21 @@ import VMC
 
 from tensorflow.python.training.saver import BaseSaverBuilder
 
+
 class CastFromFloat32SaverBuilder(BaseSaverBuilder):
-  # Based on tensorflow.python.training.saver.BulkSaverBuilder.bulk_restore
-  def bulk_restore(self, filename_tensor, saveables, preferred_shard,
-                   restore_sequentially):
-    from tensorflow.python.ops import io_ops
-    restore_specs = []
-    for saveable in saveables:
-      for spec in saveable.specs:
-        restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
-    names, slices, dtypes = zip(*restore_specs)
-    restore_dtypes = [tf.float32 for _ in dtypes]
-    # with tf.device("cpu:0"):
-    restored = io_ops.restore_v2(filename_tensor, names, slices, restore_dtypes)
-    return [tf.cast(r, dt) for r, dt in zip(restored, dtypes)]
+    # Based on tensorflow.python.training.saver.BulkSaverBuilder.bulk_restore
+    def bulk_restore(self, filename_tensor, saveables, preferred_shard,
+                     restore_sequentially):
+        from tensorflow.python.ops import io_ops
+        restore_specs = []
+        for saveable in saveables:
+            for spec in saveable.specs:
+                restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
+        names, slices, dtypes = zip(*restore_specs)
+        restore_dtypes = [tf.float32 for _ in dtypes]
+        # with tf.device("cpu:0"):
+        restored = io_ops.restore_v2(filename_tensor, names, slices, restore_dtypes)
+        return [tf.cast(r, dt) for r, dt in zip(restored, dtypes)]
 
 
 def save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_each):
@@ -45,7 +45,7 @@ def save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_
             assert result_dict[key].shape[0] == iteridx - save_each
             result_dict[key] = np.concatenate([result_dict[key],
                                                tmp_result_dict[key][-save_each:]]
-                                             )
+                                              )
         else:
             result_dict[key].append(info_dict[key])
 
@@ -71,12 +71,12 @@ def progress(count, total, info_dict=None, head=False):
         if 'totalS' in info_dict.keys():
             totalS = info_dict['totalS']
             sys.stdout.write('\r[%s] %s%s , %g+%gj, %g , %g , %g+%gj, %g+%gj' % (bar, percents, '%', Eavg.real,
-                                                                                  Eavg.imag, np.sqrt(Evar), G_norm,
-                                                                                  max_amp.real, max_amp.imag, totalS.real, totalS.imag))
+                                                                                 Eavg.imag, np.sqrt(Evar), G_norm,
+                                                                                 max_amp.real, max_amp.imag, totalS.real, totalS.imag))
         else:
             sys.stdout.write('\r[%s] %s%s , %g+%gj, %g , %g , %g+%gj' % (bar, percents, '%', Eavg.real,
-                                                                           Eavg.imag, np.sqrt(Evar), G_norm,
-                                                                           max_amp.real, max_amp.imag))
+                                                                         Eavg.imag, np.sqrt(Evar), G_norm,
+                                                                         max_amp.real, max_amp.imag))
 
         sys.stdout.flush()  # As suggested by Rom Ruben (see: http://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console/27871113#comment50529068_27871113)
 
@@ -139,7 +139,6 @@ if __name__ == "__main__":
     else:
         assert Q_tar is not None
 
-
     if opt == "KFAC":
         KFAC = True
     else:
@@ -163,7 +162,7 @@ if __name__ == "__main__":
                      conserved_C4=conserved_C4, conserved_Sz=conserved_Sz, Q_tar=Q_tar,
                      conserved_SU2=conserved_SU2, chem_pot=chem_pot,
                      conserved_inv=conserved_inv, num_threads=num_threads,
-                    )
+                     )
     if dim == 1:
         vmc = VMC.VMC_1d(systemSize, Wavefunction=Net, Hamiltonian=H, batch_size=batch_size,
                          J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
@@ -196,7 +195,7 @@ if __name__ == "__main__":
     var_list = tf.global_variables()
 
     #############################################################
-    ### OLD CHECK_POINT FORMAT
+    # OLD CHECK_POINT FORMAT
     # ckpt_path = path + 'wavefunction/Pretrain/%s/L%d/' % (which_net, L)
     # ckpt_path = path + \
     #     'wavefunction/vmc%dd/%s_%s/L%da%d/' % (dim,
@@ -207,7 +206,7 @@ if __name__ == "__main__":
     else:
         ckpt_path = path + \
             'wavefunction/vmc%dd_%s_L%d/%s_%s_a' % (dim, H, L, which_net, act) + \
-                ('-'.join([str(alpha) for alpha in alpha_list]))
+            ('-'.join([str(alpha) for alpha in alpha_list]))
 
     if filter_size is not None:
         ckpt_path = ckpt_path + '_f%d/' % filter_size
@@ -248,8 +247,8 @@ if __name__ == "__main__":
         diag_QFI_path = path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' % (L, which_net, act, alpha, opt, lr, num_sample)
         if os.path.isfile(diag_QFI_path):
             vmc.diag_QFI = np.load(path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' %
-                                 (L, which_net, act, alpha, opt, lr, num_sample),
-                                 vmc.diag_QFI)
+                                   (L, which_net, act, alpha, opt, lr, num_sample),
+                                   vmc.diag_QFI)
 
     # Thermalization
     print("Thermalizing ~~ ")
@@ -269,11 +268,10 @@ if __name__ == "__main__":
     tmp_result_dict = {"E": [], "E_var": [], "E0": [], "E0_var": [],
                        "G_norm": [],
                        "max_amp": [], "channel_stat": [],
-                      }
+                       }
     if conserved_SU2:
         tmp_result_dict["totalS"] = []
         tmp_result_dict["totalS_var"] = []
-
 
     vmc.wf.sess.run(vmc.wf.learning_rate.assign(lr))
     vmc.wf.sess.run(vmc.wf.momentum.assign(0.9))
@@ -283,7 +281,7 @@ if __name__ == "__main__":
     warm_up_array = np.ones(num_iter)  # np.ones(num_iter)
     if warm_up:
         assert num_iter > 2000
-        warm_up_array[:2000] = np.arange(0.1,1,0.9/2000)
+        warm_up_array[:2000] = np.arange(0.1, 1, 0.9/2000)
 
     progress(0, num_iter, None, head=True)
 
@@ -293,7 +291,6 @@ if __name__ == "__main__":
     else:
         result_dict = pickle.load(open(result_filename, 'rb'))
         start_idx = result_dict['E'].shape[0]
-
 
     for iteridx in range(start_idx + 1, num_iter + 1):
         if warm_up:
@@ -408,16 +405,15 @@ if __name__ == "__main__":
             if key not in ["num_p_unique", "num_p_counts"]:
                 tmp_result_dict[key].append(info_dict[key])
 
-        ## [TODO] delete the code below
+        # [TODO] delete the code below
         # E_log.append(info_dict['E'])
         # E_var_log.append(info_dict['E_var'])
         # E0_log.append(info_dict['E0'])
         # E0_var_log.append(info_dict['E0_var'])
         # max_amp_log.append(info_dict['max_amp'])
         # channel_stat_log.append(info_dict['channel_stat'])
-        ## num_p_unique & num_p_counts only store per save_each steps.
-        ## to ease storage.
-
+        # num_p_unique & num_p_counts only store per save_each steps.
+        # to ease storage.
 
         # GradW = GradW/np.sqrt(iteridx)
         grad_list = dw_to_glist(GradW, var_shape_list)
@@ -459,7 +455,7 @@ if __name__ == "__main__":
                 log_file.close()
 
             else:
-                ## [TODO] delete the code below
+                # [TODO] delete the code below
                 # filename_csv = path + 'L%d_%s_%s_a%s_%s%.e_S%d_noSR.csv' % (L, which_net, act, alpha, opt, lr, num_sample)
                 # log_file = open(filename_csv, 'a')
                 # np.savetxt(log_file, tmp_result_dict["E0"][-save_each:], '%.6e', delimiter=',')
@@ -470,7 +466,6 @@ if __name__ == "__main__":
                 save_result_dict(result_filename, tmp_result_dict, info_dict, iteridx, save_each)
         else:
             pass
-
 
     '''
     Task1

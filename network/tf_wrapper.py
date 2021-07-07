@@ -1,3 +1,4 @@
+import kfac
 import tensorflow as tf
 from functools import reduce
 import numpy as np
@@ -8,7 +9,6 @@ from . import layers
 import sys
 # We append the relative path to kfac cloned directory
 sys.path.append("../kfac")
-import kfac
 
 # Inverse update ops will be run every _INVERT_EVRY iterations.
 _INVERT_EVERY = 10
@@ -31,7 +31,7 @@ def select_optimizer(optimizer,
                                           momentum=momentum)
     elif optimizer == 'RMSprop':
         return tf.train.RMSPropOptimizer(learning_rate=learning_rate,
-                                         epsilon=1e-6)  #previous 1e-1
+                                         epsilon=1e-6)  # previous 1e-1
     elif optimizer == 'GD':
         return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
     elif optimizer == 'Adadelta':
@@ -108,8 +108,10 @@ def linear(x):
 def logcosh(x):
     return tf.math.log(tf.math.cosh(x))
 
+
 def polynomial(x):
     return (x**2)/2. - (x**4)/12. + (x**6)/45.
+
 
 def leaky_relu(x):
     return tf.maximum(0.01 * x, x)
@@ -185,6 +187,7 @@ def avg_pool2d(x, name, kernel_size, stride_size=2, padding='SAME'):
                           padding=padding,
                           name=name)
 
+
 def kron(A, B, rankA, dimA, dimB, swap=False):
     """
     Returns Kronecker product of two square matrices.
@@ -202,12 +205,14 @@ def kron(A, B, rankA, dimA, dimB, swap=False):
     """
 
     if not swap:
-        AB = tf.transpose(tf.tensordot(A, B, axes=0), list(range(rankA-2)) + [rankA-2+0, rankA-2+2, rankA-2+1, rankA-2+3])
-        shape = AB.get_shape().as_list() # get the shape of each dimention
+        AB = tf.transpose(tf.tensordot(A, B, axes=0), list(range(rankA-2)) +
+                          [rankA-2+0, rankA-2+2, rankA-2+1, rankA-2+3])
+        shape = AB.get_shape().as_list()  # get the shape of each dimention
         return tf.reshape(AB, [-1] + shape[1:rankA-2] + [dimA * dimB, dimA * dimB])
     else:
-        AB = tf.transpose(tf.tensordot(A, B, axes=0), list(range(rankA-2)) + [rankA-2+2, rankA-2+0, rankA-2+3, rankA-2+1])
-        shape = AB.get_shape().as_list() # get the shape of each dimention
+        AB = tf.transpose(tf.tensordot(A, B, axes=0), list(range(rankA-2)) +
+                          [rankA-2+2, rankA-2+0, rankA-2+3, rankA-2+1])
+        shape = AB.get_shape().as_list()  # get the shape of each dimention
         return tf.reshape(AB, [-1] + shape[1:rankA-2] + [dimA * dimB, dimA * dimB])
 
 
@@ -234,38 +239,37 @@ def gen_2_qubit_gate(x):
     np_Y = np.array([[0., -1.j], [1.j, 0.]], dtype=np.complex128)
     np_Z = np.array([[1., 0.], [0., -1.]], dtype=np.complex128)
     np_I = np.array([[1., 0.], [0., 1.]], dtype=np.complex128)
-    X = tf.constant(np_X)
-    Y = tf.constant(np_Y)
-    Z = tf.constant(np_Z)
-    I = tf.constant(np_I)
-    XX = tf.constant(np.kron(np_X, np_X))
-    YY = tf.constant(np.kron(np_Y, np_Y))
-    ZZ = tf.constant(np.kron(np_Z, np_Z))
+    tf_X = tf.constant(np_X)
+    tf_Y = tf.constant(np_Y)
+    tf_Z = tf.constant(np_Z)
+    tf_I = tf.constant(np_I)
+    tf_XX = tf.constant(np.kron(np_X, np_X))
+    tf_YY = tf.constant(np.kron(np_Y, np_Y))
+    tf_ZZ = tf.constant(np.kron(np_Z, np_Z))
 
-    sig_mat = tf.stack([X, Y, Z])  ##[3, 2, 2]
-    sig_sig_mat = tf.stack([XX, YY, ZZ])  ##[3, 4, 4]
+    sig_mat = tf.stack([tf_X, tf_Y, tf_Z])  # [3, 2, 2]
+    sig_sig_mat = tf.stack([tf_XX, tf_YY, tf_ZZ])  # [3, 4, 4]
 
-    x = tf.Print(x, [x[:,-1:,0:8]], message='0-8')
-    x = tf.Print(x, [x[:,-1:,8:]], message='8-')
+    x = tf.Print(x, [x[:, -1:, 0:8]], message='0-8')
+    x = tf.Print(x, [x[:, -1:, 8:]], message='8-')
     x = tf.cast(x, dtype=tf.complex128)
-    rot1 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,0:3], sig_mat, axes=[[-1], [0]]) )  ## N, L, 2, 2
-    rot2 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,3:6], sig_mat, axes=[[-1], [0]]) )
-    rot3 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,6:9], sig_sig_mat, axes=[[-1], [0]]) )
-    rot4 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,9:12], sig_mat, axes=[[-1], [0]]) )
-    rot5 = tf.linalg.expm( 1.j * tf.tensordot(x[:,:,12:15], sig_mat, axes=[[-1], [0]]) )
+    rot1 = tf.linalg.expm(1.j * tf.tensordot(x[:, :, 0:3], sig_mat, axes=[[-1], [0]]))  # N, L, 2, 2
+    rot2 = tf.linalg.expm(1.j * tf.tensordot(x[:, :, 3:6], sig_mat, axes=[[-1], [0]]))
+    rot3 = tf.linalg.expm(1.j * tf.tensordot(x[:, :, 6:9], sig_sig_mat, axes=[[-1], [0]]))
+    rot4 = tf.linalg.expm(1.j * tf.tensordot(x[:, :, 9:12], sig_mat, axes=[[-1], [0]]))
+    rot5 = tf.linalg.expm(1.j * tf.tensordot(x[:, :, 12:15], sig_mat, axes=[[-1], [0]]))
     # rot1 = tf.Print(rot1, [tf.real(rot1[0, -1, :, :])], message='rotation real  ')
     # rot1 = tf.Print(rot1, [tf.imag(rot1[0, -1, :, :])], message='rotation imag  ')
-    rot1 = kron(rot1, I, rankA=4, dimA=2, dimB=2, swap=False)
-    rot2 = kron(rot2, I, rankA=4, dimA=2, dimB=2, swap=True)
-    rot4 = kron(rot4, I, rankA=4, dimA=2, dimB=2, swap=False)
-    rot5 = kron(rot5, I, rankA=4, dimA=2, dimB=2, swap=True)
+    rot1 = kron(rot1, tf_I, rankA=4, dimA=2, dimB=2, swap=False)
+    rot2 = kron(rot2, tf_I, rankA=4, dimA=2, dimB=2, swap=True)
+    rot4 = kron(rot4, tf_I, rankA=4, dimA=2, dimB=2, swap=False)
+    rot5 = kron(rot5, tf_I, rankA=4, dimA=2, dimB=2, swap=True)
 
     iter_mat = rot5
     for rot in [rot4, rot3, rot2, rot1]:
         iter_mat = tf.linalg.matmul(iter_mat, rot)
 
     return iter_mat
-
 
 
 def batch_norm(bottom, phase, scope='bn'):
@@ -302,6 +306,7 @@ def time_to_batch(value, dilation, name=None):
         transposed = tf.transpose(reshaped, perm=[1, 0, 2])  # d, N * (L_p_p)/d, C
         return tf.reshape(transposed, [shape[0] * dilation, -1, shape[2]])  # N*d, (L_p_p/d), C
 
+
 def batch_to_time(value, dilation, name=None):
     with tf.name_scope('batch_to_time'):
         shape = tf.shape(value)  # N*d, (L_p_p/d), C
@@ -309,6 +314,7 @@ def batch_to_time(value, dilation, name=None):
         transposed = tf.transpose(prepared, perm=[1, 0, 2])  # N * (L_p_p)/d, d, C
         return tf.reshape(transposed,
                           [tf.div(shape[0], dilation), -1, shape[2]])  # N, L_p_p, C
+
 
 def conv_layer1d(bottom,
                  filter_size,
@@ -323,20 +329,20 @@ def conv_layer1d(bottom,
                  weight_normalization=False,
                  layer_collection=None,
                  registered=False
-                ):
+                 ):
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         filt, conv_biases = get_conv_var1d(filter_size,
                                            in_channels,
                                            out_channels,
                                            biases=biases,
                                            dtype=dtype
-                                          )
+                                           )
         stride_list = [1, stride_size, 1]
         if dilations is None or dilations == 1:
             conv = tf.nn.conv1d(bottom, filt, stride_list, padding=padding)
         else:
             assert stride_size == 1
-            assert padding=='VALID'
+            assert padding == 'VALID'
             transformed = time_to_batch(bottom, dilations)
             conv = tf.nn.conv1d(transformed, filt, stride_list,
                                 padding='VALID')
@@ -359,6 +365,7 @@ def conv_layer1d(bottom,
                                              bottom, conv)
 
         return conv
+
 
 def masked_conv_layer1d(bottom,
                         filter_size,
@@ -391,14 +398,13 @@ def masked_conv_layer1d(bottom,
                                 padding=padding)
         else:
             g = tf.get_variable('g', dtype=dtype,
-                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0,1]),
+                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0, 1]),
                                 trainable=True)
-            repara_filt = tf.reshape(g,[1,1,out_channels]) * tf.nn.l2_normalize(filt*tf_mask,[0,1])
+            repara_filt = tf.reshape(g, [1, 1, out_channels]) * tf.nn.l2_normalize(filt*tf_mask, [0, 1])
             conv = tf.nn.conv1d(bottom,
                                 repara_filt,
                                 stride_list,
                                 padding=padding)
-
 
         if biases:
             conv = tf.nn.bias_add(conv, conv_biases)
@@ -411,8 +417,6 @@ def masked_conv_layer1d(bottom,
                                              bottom, conv)
 
         return conv
-
-
 
 
 def circular_conv_1d(bottom,
@@ -697,11 +701,10 @@ def conv_layer2d(bottom,
             conv = tf.nn.conv2d(bottom, filt, stride_list, padding=padding)
         else:
             g = tf.get_variable('g', dtype=dtype,
-                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0,1,2]),
+                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0, 1, 2]),
                                 trainable=True)
-            repara_filt = tf.reshape(g,[1,1,1,out_channels]) * tf.nn.l2_normalize(filt,[0,1,2])
+            repara_filt = tf.reshape(g, [1, 1, 1, out_channels]) * tf.nn.l2_normalize(filt, [0, 1, 2])
             conv = tf.nn.conv2d(bottom, repara_filt, stride_list, padding=padding)
-
 
         if biases:
             conv = tf.nn.bias_add(conv, conv_biases)
@@ -747,14 +750,13 @@ def masked_conv_layer2d(bottom,
                                 padding=padding)
         else:
             g = tf.get_variable('g', dtype=dtype,
-                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0,1,2]),
+                                initializer=tf.math.reduce_sum(tf.math.square(filt), axis=[0, 1, 2]),
                                 trainable=True)
-            repara_filt = tf.reshape(g,[1,1,1,out_channels]) * tf.nn.l2_normalize(filt*tf_mask,[0,1,2])
+            repara_filt = tf.reshape(g, [1, 1, 1, out_channels]) * tf.nn.l2_normalize(filt*tf_mask, [0, 1, 2])
             conv = tf.nn.conv2d(bottom,
                                 repara_filt,
                                 stride_list,
                                 padding=padding)
-
 
         if biases:
             conv = tf.nn.bias_add(conv, conv_biases)
@@ -1071,7 +1073,7 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
                                                  minval=0,
                                                  maxval=2. * np.pi,
                                                  dtype=part_dtype
-                                                )
+                                                 )
             imag_biases = get_var(im_initial_value,
                                   name + "imag_biases",
                                   dtype=part_dtype)
@@ -1163,7 +1165,7 @@ def pixel_block_sharir(x,
                     output with 4 channel, representing spin up spin down amp = exp(r+i\theta)
     '''
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-        ## Starting block
+        # Starting block
         if block_type == 'start':
             assert out_channel % 2 == 0
             vertical_branch = x
@@ -1184,13 +1186,13 @@ def pixel_block_sharir(x,
                                            layer_collection=layer_collection,
                                            registered=registered)
 
-            ## If the activation below applies here, then
-            ## it is applied before the down_shift concatanation step
-            ## This might not be what we want
+            # If the activation below applies here, then
+            # it is applied before the down_shift concatanation step
+            # This might not be what we want
             #
             # vertical_branch = activation(vertical_branch)
 
-            ## N H W C
+            # N H W C
             down_shift_v_branch = tf.pad(vertical_branch[:, :-1, :, :],
                                          [[0, 0], [1, 0], [0, 0], [0, 0]],
                                          "CONSTANT")
@@ -1276,9 +1278,9 @@ def pixel_block_sharir(x,
                                              layer_collection=layer_collection,
                                              registered=registered)
 
-            ## If the activation below applies here, then
-            ## it is applied before the down_shift concatanation step
-            ## This might not be what we want
+            # If the activation below applies here, then
+            # it is applied before the down_shift concatanation step
+            # This might not be what we want
             #
             # vertical_branch = activation(vertical_branch)
 
@@ -1286,8 +1288,8 @@ def pixel_block_sharir(x,
             # horizontal_branch = tf.concat([horizontal_branch[:,0:1,:,:],
             #                                horizontal_branch[:,1:,:,:] + vertical_branch[:,:-1,:,:]],
             #                               axis=1)
-            ## Correct Concate way
-            ## N H W C
+            # Correct Concate way
+            # N H W C
             down_shift_v_branch = tf.pad(vertical_branch[:, :-1, :, :],
                                          [[0, 0], [1, 0], [0, 0], [0, 0]],
                                          "CONSTANT")
@@ -1388,17 +1390,17 @@ def pixel_block_sharir(x,
                                              layer_collection=layer_collection,
                                              registered=registered)
 
-            ## If the activation below applies here, then
-            ## it is applied before the down_shift concatanation step
-            ## This might not be what we want
+            # If the activation below applies here, then
+            # it is applied before the down_shift concatanation step
+            # This might not be what we want
             # vertical_branch = activation(vertical_branch)
 
-            ## Wrong CONCATE WAY
+            # Wrong CONCATE WAY
             # horizontal_branch = tf.concat([horizontal_branch[:,0:1,:,:],
             #                                horizontal_branch[:,1:,:,:] + vertical_branch[:,:-1,:,:]],
             #                               axis=1)
-            ## Correct Concate way
-            ## N H W C
+            # Correct Concate way
+            # N H W C
             down_shift_v_branch = tf.pad(vertical_branch[:, :-1, :, :],
                                          [[0, 0], [1, 0], [0, 0], [0, 0]],
                                          "CONSTANT")
@@ -1426,12 +1428,12 @@ def pixel_block_sharir(x,
             #                                         layer_collection=layer_collection,
             #                                         registered=registered)
 
-
             out = horizontal_branch
         else:
             raise NotImplementedError
 
         return out
+
 
 def pixel_resiual_block(x, block_name, dtype, filter_size, activation, num_of_layers=2,
                         layer_collection=None, registered=False, weight_normalization=False):
@@ -1445,7 +1447,7 @@ def pixel_resiual_block(x, block_name, dtype, filter_size, activation, num_of_la
                                   layer_collection=layer_collection,
                                   registered=registered,
                                   weight_normalization=weight_normalization,
-                                 )
+                                  )
         activation(x)
 
     x = pixel_block_sharir_v2(x, num_channel, num_channel, 'mid', block_name+'-'+str(num_of_layers-1),
@@ -1454,10 +1456,11 @@ def pixel_resiual_block(x, block_name, dtype, filter_size, activation, num_of_la
                               layer_collection=layer_collection,
                               registered=registered,
                               weight_normalization=weight_normalization,
-                             )
+                              )
     x = x + x_input
     activation(x)
     return x
+
 
 def pixel_block_sharir_v2(x,
                           in_channel,
@@ -1478,7 +1481,7 @@ def pixel_block_sharir_v2(x,
                     output with 4 channel, representing spin up spin down amp = exp(r+i\theta)
     '''
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-        ## Starting block
+        # Starting block
         if block_type == 'start':
             assert out_channel % 4 == 0
             vertical_branch = x
@@ -1498,10 +1501,10 @@ def pixel_block_sharir_v2(x,
                                            weight_normalization=weight_normalization,
                                            layer_collection=layer_collection,
                                            registered=registered)
-            ## Leaving the vertical_branch being pre-act
+            # Leaving the vertical_branch being pre-act
 
             y = activation(vertical_branch)
-            ## N H W C
+            # N H W C
             down_shift_v_branch = tf.pad(y[:, :-1, :, :],
                                          [[0, 0], [1, 0], [0, 0], [0, 0]],
                                          "CONSTANT")
@@ -1516,7 +1519,6 @@ def pixel_block_sharir_v2(x,
                                                layer_collection=layer_collection,
                                                registered=registered)
             down_shift_v_branch = activation(down_shift_v_branch)
-
 
             hor_padded_x = tf.pad(
                 horizontal_branch,
@@ -1545,7 +1547,6 @@ def pixel_block_sharir_v2(x,
                                              layer_collection=layer_collection,
                                              registered=registered)
             horizontal_branch = activation(horizontal_branch)
-
 
             horizontal_branch = tf.concat(
                 [down_shift_v_branch, horizontal_branch], axis=3)
@@ -1589,10 +1590,10 @@ def pixel_block_sharir_v2(x,
                                            weight_normalization=weight_normalization,
                                            layer_collection=layer_collection,
                                            registered=registered)
-            ## Leaving the vertical_branch being pre-act
+            # Leaving the vertical_branch being pre-act
 
             y = activation(vertical_branch)
-            ## N H W C
+            # N H W C
             down_shift_v_branch = tf.pad(y[:, :-1, :, :],
                                          [[0, 0], [1, 0], [0, 0], [0, 0]],
                                          "CONSTANT")
@@ -1607,7 +1608,6 @@ def pixel_block_sharir_v2(x,
                                                layer_collection=layer_collection,
                                                registered=registered)
             down_shift_v_branch = activation(down_shift_v_branch)
-
 
             hor_padded_x = tf.pad(
                 horizontal_branch,
@@ -1637,7 +1637,6 @@ def pixel_block_sharir_v2(x,
                                              registered=registered)
             horizontal_branch = activation(horizontal_branch)
 
-
             horizontal_branch = tf.concat(
                 [down_shift_v_branch, horizontal_branch], axis=3)
 
@@ -1664,7 +1663,6 @@ def pixel_block_sharir_v2(x,
         return out
 
 
-
 def pixel_block(x,
                 in_channel,
                 out_channel,
@@ -1683,7 +1681,7 @@ def pixel_block(x,
                     output with 4 channel, representing spin up spin down amp = exp(r+i\theta)
     '''
     with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-        ## Starting block
+        # Starting block
         if block_type == 'start':
             assert out_channel % 2 == 0
             # Should add padding, top 2 rows
@@ -1738,12 +1736,12 @@ def pixel_block(x,
                                            layer_collection=layer_collection,
                                            registered=registered)
             vertical_branch = activation(vertical_branch)
-            ## N H W C
+            # N H W C
             horizontal_branch = tf.concat([
                 horizontal_branch[:, 0:1, :, :],
                 horizontal_branch[:, 1:, :, :] + vertical_branch[:, :-1, :, :]
             ],
-                                          axis=1)
+                axis=1)
             # Should add padding, top 2 rows && left 2 columns
             horizontal_branch = masked_conv_layer2d(
                 horizontal_branch,

@@ -169,12 +169,6 @@ def parse_args():
                         help='Name of the supervised Hamiltonian. Default: None',
                         default=None, type=str)
 
-
-
-
-
-
-
     if len(sys.argv) == 1:
         pass
         # parser.print_help()

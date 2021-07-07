@@ -23,6 +23,7 @@ So that easily to change from 1d problem to 2d problem?
 So easily to switch model
 """
 
+
 class VMC_base():
     def __init__(self):
         self.cov_list = None
@@ -66,7 +67,6 @@ class VMC_base():
         assert num_para == T_ind
         return unaggregated_O_list
 
-
     def getSelfAmp(self):
         return float(self.wf.get_amp(self.config))
 
@@ -107,9 +107,10 @@ class VMC_base():
                 amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
 
             for idx in range(array_shape[0] // max_size):
-                amp_array[max_size * idx : max_size * (idx + 1)] = self.wf.get_amp(config_arr[max_size * idx : max_size * (idx + 1)]).flatten()
+                amp_array[max_size * idx: max_size *
+                          (idx + 1)] = self.wf.get_amp(config_arr[max_size * idx: max_size * (idx + 1)]).flatten()
 
-            amp_array[max_size * (array_shape[0]//max_size) : ] = self.wf.get_amp(config_arr[max_size * (array_shape[0]//max_size) : ]).flatten()
+            amp_array[max_size * (array_shape[0]//max_size):] = self.wf.get_amp(config_arr[max_size * (array_shape[0]//max_size):]).flatten()
             return amp_array
 
     def eval_log_amp_array(self, config_arr):
@@ -124,16 +125,18 @@ class VMC_base():
         else:
             log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
             for idx in range(array_shape[0] // max_size):
-                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.wf.get_log_amp(config_arr[max_size * idx : max_size * (idx + 1)]).flatten()
+                log_amp_array[max_size * idx: max_size *
+                              (idx + 1)] = self.wf.get_log_amp(config_arr[max_size * idx: max_size * (idx + 1)]).flatten()
 
             if array_shape[0] % max_size != 0:
-                log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.wf.get_log_amp(config_arr[max_size * (array_shape[0]//max_size) : ]).flatten()
+                log_amp_array[max_size * (array_shape[0]//max_size):] = self.wf.get_log_amp(
+                    config_arr[max_size * (array_shape[0]//max_size):]).flatten()
 
             return log_amp_array
 
     def get_VMC_gradient(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True,
                          verbose=False,
-                        ):
+                         ):
         num_para = self.wf_num_para
         num_site = self.num_site
         # OOsum = np.zeros((num_para, num_para))
@@ -180,22 +183,20 @@ class VMC_base():
                 if verbose:
                     print("acceptance ratio: ", sum_accept_ratio/(1. + int(num_sample * corrlength / self.batch_size)))
 
-
         end_c, end_t = time.clock(), time.time()
         if verbose:
             print("monte carlo time (gen config): ", end_c - start_c, end_t - start_t)
 
-
-        ### Statistics should be collected here
+        # Statistics should be collected here
         ###
-        ### 1. ) Log number of particle per sample.
-        ### 2. ) Chemical potential, SU(2) constraint should be added here
+        # 1. ) Log number of particle per sample.
+        # 2. ) Chemical potential, SU(2) constraint should be added here
         ###
 
         info_dict = {}
-        ## config_arr [batch_size, Lx, Ly, channels] --> sum_config_arr [batch_size, channels]
-        sum_config_arr = np.sum(config_arr, axis=(1,2))
-        ## sum_to_channel [channels]  ; This gives statisics in channels sampled.
+        # config_arr [batch_size, Lx, Ly, channels] --> sum_config_arr [batch_size, channels]
+        sum_config_arr = np.sum(config_arr, axis=(1, 2))
+        # sum_to_channel [channels]  ; This gives statisics in channels sampled.
         sum_to_channel = np.sum(sum_config_arr, axis=0)
         ## num_particle [batch_size]
         num_particle = sum_config_arr.dot(np.arange(self.channels))
@@ -213,7 +214,6 @@ class VMC_base():
 
         if self.wf.conserved_Sz:
             assert np.isclose(np.sum(num_particle == self.wf.Q_tar)/configDim[0], 1.)
-
 
         # for i in range(num_sample):
         #     Earray[i] = self.get_local_E(config_arr[i:i+1])
@@ -234,12 +234,11 @@ class VMC_base():
             SU2_prefactor = 1.
             Earray = Earray + SU2_prefactor * totalS_array
 
-        ## [TODO] Add parse arg controll over whether adding chemical potential ?
+        # [TODO] Add parse arg controll over whether adding chemical potential ?
         mu = 0.
         # localE_arr += mu * (num_particle != Lx*Ly//2)
         # localE_arr += mu * num_particle
         # localE_arr += mu * (num_particle - Lx*Ly//2)**2
-
 
         end_c, end_t = time.clock(), time.time()
         if verbose:
@@ -258,11 +257,10 @@ class VMC_base():
         info_dict['E0_var'] = Evar / (num_site**2)
         info_dict['E_var'] = E0var / (num_site**2)
 
-
         if verbose:
             print(amp_batch[:5])
-            print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2) )
-            print("E0/N !!!!: ", E0avg / num_site, "  Var: ", E0var / (num_site**2) )
+            print("E/N !!!!: ", Eavg / num_site, "  Var: ", Evar / (num_site**2))
+            print("E0/N !!!!: ", E0avg / num_site, "  Var: ", E0var / (num_site**2))
 
         if not SR:
             if self.moving_E_avg != None:
@@ -273,11 +271,11 @@ class VMC_base():
                 Earray = Earray - Eavg
 
             Glist = self.wf.get_E_grads(config_arr, Earray)
-            ## The below seems to be wrong.
+            # The below seems to be wrong.
             # Glist = self.wf.get_E_grads(config_arr, Earray.conjugate())
             # Reg
             for idx, W in enumerate(self.wf.get_para_list()):
-                Glist[idx] = Glist[idx] /num_sample + W * self.reg
+                Glist[idx] = Glist[idx] / num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
             G_norm = np.linalg.norm(Gj)
@@ -318,12 +316,12 @@ class VMC_base():
                 Earray = Earray - Eavg
 
             Glist = self.wf.get_E_grads(config_arr, Earray)
-            ## The below seems to be wrong.
+            # The below seems to be wrong.
             # Glist = self.wf.get_E_grads(config_arr, Earray.conjugate())
 
             # Reg
             for idx, W in enumerate(self.wf.get_para_list()):
-                Glist[idx] = Glist[idx] /num_sample + W * self.reg
+                Glist[idx] = Glist[idx] / num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
             G_norm = np.linalg.norm(Gj)
@@ -416,7 +414,6 @@ class VMC_base():
             # plt.plot(OO_F/np.linalg.norm(OO_F), 'r'); plt.plot(KFAC_OO_F/np.linalg.norm(KFAC_OO_F), 'b'); plt.show();
             # import pdb;pdb.set_trace()
 
-
             # ## TESTING Fisher_inverse
             # invOO_F0 = np.linalg.pinv(OO, 1e-6).dot(F0_vec)
             # print(np.linalg.norm(invOO_F0), np.linalg.norm(G_prev_vec))
@@ -429,7 +426,6 @@ class VMC_base():
             # plt.plot(invOO_F0, 'b')
             # plt.show()
 
-
             def implicit_S(v):
                 avgO = Oi
                 finalv = - avgO.conjugate() * avgO.dot(v)
@@ -438,7 +434,7 @@ class VMC_base():
                 KFAC_OO_v = self.wf.apply_fisher_multiply(v_list, config_arr)
                 finalv += self.list_to_vec([pair[0] for pair in KFAC_OO_v])
 
-                return np.real(finalv)  + v * 1e-4
+                return np.real(finalv) + v * 1e-4
 
             implicit_Sij = LinearOperator((num_para, num_para), matvec=implicit_S)
 
@@ -470,7 +466,6 @@ class VMC_base():
             else:
                 pass
 
-
         Oarray = self.wf.run_unaggregated_gradient(config_arr)
         end_c, end_t = time.clock(), time.time()
         if verbose:
@@ -495,7 +490,7 @@ class VMC_base():
         #########               START                             ##########
 
         unaggregated_O_list = self.Oarray_to_Olist(Oarray - np.outer(Osum/num_sample, np.ones(num_sample)))
-        ## The unaggregated_O has mean subtracted already
+        # The unaggregated_O has mean subtracted already
         decay_rate = 0.85
         new_k_size = 32
         save_k_size = 64
@@ -504,13 +499,13 @@ class VMC_base():
         for idx, unaggregated_O in enumerate(unaggregated_O_list):
             var_size = unaggregated_O.shape[0]
             if var_size < 512:
-                ## Forming cov, inv_cov explicitly
-                cov = (unaggregated_O.conjugate().dot(unaggregated_O.T) ).real / num_sample
+                # Forming cov, inv_cov explicitly
+                cov = (unaggregated_O.conjugate().dot(unaggregated_O.T)).real / num_sample
                 cov += np.eye(cov.shape[0]) * stablize_eps
                 self.cov_list[idx] = self.cov_list[idx] * decay_rate + cov * (1-decay_rate)
             else:
                 if var_size < max_var_size:
-                    cov = (unaggregated_O.real.dot(unaggregated_O.real.T) ) / num_sample
+                    cov = (unaggregated_O.real.dot(unaggregated_O.real.T)) / num_sample
                     cov += (unaggregated_O.imag.dot(unaggregated_O.imag.T)) / num_sample
                     # cov_U, cov_S, cov_Vd = scipy.sparse.linalg.svds(cov, k=k_size)
                     if self.cov_list[idx] is not None:
@@ -533,7 +528,7 @@ class VMC_base():
                         imag_part = unaggregated_O.imag
                         finalv = real_part.dot(real_part.T.dot(_v) / num_sample)
                         finalv += imag_part.dot(imag_part.T.dot(_v) / num_sample)
-                        return finalv  + _v * stablize_eps
+                        return finalv + _v * stablize_eps
 
                     implicit_cov_op = LinearOperator((var_size, var_size), matvec=implicit_cov, rmatvec=implicit_cov)
                     try:
@@ -544,6 +539,7 @@ class VMC_base():
 
                     if self.cov_list[idx] is not None:
                         old_cov_S, old_cov_U = self.cov_list[idx][:]
+
                         def implicit_cov_all(_v):
                             finalv = cov_U.dot(np.diag(cov_S).dot(cov_U.T.dot(_v))) * (1-decay_rate)
                             finalv += old_cov_U.dot(np.diag(old_cov_S).dot(old_cov_U.T.dot(_v))) * (decay_rate)
@@ -560,13 +556,12 @@ class VMC_base():
                     else:
                         self.cov_list[idx] = [cov_S, cov_U]
 
-
         if verbose:
             # End for update cov_list
-            end_c, end_t = time.clock(), time.time();
+            end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( update cov_list ): ", end_c - start_c, end_t - start_t)
 
-        if self.moving_E_avg != None:
+        if self.moving_E_avg is not None:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
             print("moving_E_avg/N !!!!: ", self.moving_E_avg / num_site)
             Earray_m_avg = Earray - self.moving_E_avg
@@ -575,9 +570,8 @@ class VMC_base():
 
         _Flist = self.wf.get_E_grads(config_arr, Earray_m_avg)
 
-
         if verbose:
-            end_c, end_t = time.clock(), time.time();
+            end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( get E_grads ): ", end_c - start_c, end_t - start_t)
 
         ## Adding Regularization ##
@@ -594,22 +588,21 @@ class VMC_base():
                 _g, info = scipy.sparse.linalg.minres(cov, _Flist[idx].flatten())
                 if info != 0:
                     print(info)
-                    import pdb;pdb.set_trace()
+                    import pdb
+                    pdb.set_trace()
                 else:
                     _Glist.append(_g)
             else:
                 cov_S, cov_U = cov[:]
                 # print(cov_S)
                 # _g = cov_U.dot(np.diag(1./cov_S).dot(cov_U.T.dot(_Flist[idx].flatten())))
-                cov_S[cov_S<0]=0
+                cov_S[cov_S < 0] = 0
                 _g = cov_U.dot(np.diag(cov_S/(cov_S**2 + stablize_eps)).dot(cov_U.T.dot(_Flist[idx].flatten())))
                 _Glist.append(_g)
 
-
         if verbose:
-            end_c, end_t = time.clock(), time.time();
+            end_c, end_t = time.clock(), time.time()
             print("monte carlo time ( inverse cov_list get G ): ", end_c - start_c, end_t - start_t)
-
 
         _Fj = np.concatenate([_f.flatten() for _f in _Flist])
         _Gj = np.concatenate([_g.flatten() for _g in _Glist])
@@ -628,11 +621,9 @@ class VMC_base():
                   "G.dot(F):", _GjFj)
         # return _Gj, _GjFj, info_dict
 
-
         ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
         #########               END                               ##########
         ####################################################################
-
 
         if not explicit_SR:
             pass
@@ -706,8 +697,7 @@ class VMC_base():
             #            1j * Sij[self.im_idx_array][:, self.re_idx_array] +
             #            1j * Sij[self.re_idx_array][:, self.im_idx_array])
 
-
-            # Adding regularization/dumping/rotation 
+            # Adding regularization/dumping/rotation
             # regu_para = np.amax([10 * (0.9**iteridx), 1e-4])
             # Sij = Sij + regu_para * np.diag(np.ones(Sij.shape[0]))
             if not self.real_time:
@@ -846,7 +836,7 @@ class VMC_1d(VMC_base):
         Apply foward_sampling
         '''
         batch_size = self.batch_size
-        ## Reset the config to zeros
+        # Reset the config to zeros
         self.config = 0 * self.config
         self.config = 0 * self.config
         for site_i in range(self.wf.L):
@@ -855,7 +845,7 @@ class VMC_1d(VMC_base):
             cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
             site_prob = cond_prob[:, site_i, :]
             if self.channels == 2:
-                mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
+                mask = np.random.random_sample((batch_size,)) < site_prob[:, 0]
                 self.config[mask, site_i, 0] = 1
                 self.config[np.logical_not(mask), site_i, 1] = 1
             else:
@@ -863,7 +853,7 @@ class VMC_1d(VMC_base):
                     self.config[batch_idx, site_i,
                                 np.random.choice(self.channels, p=site_prob[batch_idx])] = 1
 
-            assert( not np.isnan(site_prob).any() )
+            assert(not np.isnan(site_prob).any())
         return
 
     def new_config(self):
@@ -975,9 +965,6 @@ class VMC_1d(VMC_base):
         return np.average(energyList)
 
     def VMC_observable(self, num_sample):
-        L = self.config.shape[1]
-        num_para = self.wf_num_para
-
         start_c, start_t = time.clock(), time.time()
         corrlength = self.corrlength
         configDim = list(self.config.shape)
@@ -1012,7 +999,7 @@ class VMC_1d(VMC_base):
 
         end_c, end_t = time.clock(), time.time()
         print("monte carlo time ( spin-spin-correlation ): ", end_c - start_c, end_t - start_t)
-        return {"SzSz" : SzSz, "Sz": Sz, "local_E": local_E}
+        return {"SzSz": SzSz, "Sz": Sz, "local_E": local_E}
 
     def getLocal_no_OO(self, config):
         '''
@@ -1128,7 +1115,7 @@ class VMC_1d(VMC_base):
 
         config_shift_copy = np.zeros((num_config, L, inputShape1), dtype=np.int32)
         SzSz_j = [0.25]
-        for j in range(1,L):
+        for j in range(1, L):
             config_shift_copy[:, :-j, :] = config_arr[:, j:, :]
             config_shift_copy[:, -j:, :] = config_arr[:, :j, :]
             SzSz = np.einsum('ijk,ijk->', config_arr, config_shift_copy) / L / num_config
@@ -1145,7 +1132,7 @@ class VMC_1d(VMC_base):
         '''
         num_config, L, inputShape1 = config_arr.shape
 
-        Sz_j = np.einsum('ij->j', config_arr[:,:,0]) / num_config
+        Sz_j = np.einsum('ij->j', config_arr[:, :, 0]) / num_config
         # Sz_j average over num_config
         # In this convention Sz_j is in [0,1]
         Sz_j = (Sz_j-0.5)
@@ -1203,7 +1190,7 @@ class VMC_1d(VMC_base):
         #################
         # num_config x L
         Sz = config_arr[:, :, 0]
-        localE_arr += ((np.einsum('ij->j', Sz) / num_config) - 0.5 ) * 2 * (-h)
+        localE_arr += ((np.einsum('ij->j', Sz) / num_config) - 0.5) * 2 * (-h)
 
         return localE_arr
 
@@ -1304,9 +1291,9 @@ class VMC_1d(VMC_base):
         for convenient we use the following convention
         H = -J sz_i sz_j + g sx_i - h sz_i
         '''
-        J = 0.4 # self.J
-        g = 0.9045 # self.g
-        h = 0.7090 # self.h
+        J = 0.4  # self.J
+        g = 0.9045  # self.g
+        h = 0.7090  # self.h
         PBC = self.PBC
         '''
         Base on the fact that, in one-hot representation
@@ -1316,9 +1303,9 @@ class VMC_1d(VMC_base):
 
         we assume 0 represent up and 1 represent down
         '''
-        J = 1 # self.J
-        g = 3.5 # self.g
-        h = 0. # self.h
+        J = 1  # self.J
+        g = 3.5  # self.g
+        h = 0.  # self.h
         num_config, L, inputShape1 = config_arr.shape
         oldAmp = self.eval_amp_array(config_arr)
         localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
@@ -1335,7 +1322,7 @@ class VMC_1d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ij->i', SzSz - 0.5) * 2 * (-J)
         else:
-            localE_arr += np.einsum('ij->i', SzSz[:,:-1] - 0.5) * 2 * (-J)
+            localE_arr += np.einsum('ij->i', SzSz[:, :-1] - 0.5) * 2 * (-J)
 
         #################
         #  g sigma^x_i  #
@@ -1527,7 +1514,7 @@ class VMC_2d(VMC_base):
         Apply foward_sampling
         '''
         batch_size = self.batch_size
-        ## Reset the config to zeros
+        # Reset the config to zeros
         self.config = 0 * self.config
         if sym_sec is None:
             self.config = 0 * self.config
@@ -1542,7 +1529,7 @@ class VMC_2d(VMC_base):
                     cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
                     site_prob = cond_prob[:, site_i, site_j, :]
                     if self.channels == 2:
-                        mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
+                        mask = np.random.random_sample((batch_size,)) < site_prob[:, 0]
                         self.config[mask, site_i, site_j, 0] = 1
                         self.config[np.logical_not(mask), site_i, site_j, 1] = 1
                     else:
@@ -1550,27 +1537,26 @@ class VMC_2d(VMC_base):
                             self.config[batch_idx, site_i, site_j,
                                         np.random.choice(self.channels, p=site_prob[batch_idx])] = 1
 
-                    assert( not np.isnan(site_prob).any() )
-
+                    assert(not np.isnan(site_prob).any())
 
             return
         else:
             tmp_config = self.config.copy()
             num_sampled = 0
-            while ( num_sampled < batch_size ):
-                ## Start sampling
+            while (num_sampled < batch_size):
+                # Start sampling
                 self.config = 0 * self.config
                 for site_i in range(self.Lx):
                     for site_j in range(self.Ly):
                         cond_prob_amp = self.wf.plain_get_cond_log_amp(self.config)
-                        cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch, 
+                        cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch,
                         cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
                         site_prob = cond_prob[:, site_i, site_j, :]
-                        mask = np.random.random_sample((batch_size,)) < site_prob[:,0]
+                        mask = np.random.random_sample((batch_size,)) < site_prob[:, 0]
                         self.config[mask, site_i, site_j, 0] = 1
                         self.config[np.logical_not(mask), site_i, site_j, 1] = 1
 
-                Sz_array = np.sum(self.config[:,:,:,0], axis=(1,2))
+                Sz_array = np.sum(self.config[:, :, :, 0], axis=(1, 2))
                 sym_mask = (Sz_array == self.Lx * self.Ly // 2)
                 new_n_sampled = np.sum(sym_mask)
                 if num_sampled+new_n_sampled <= batch_size:
@@ -1591,8 +1577,8 @@ class VMC_2d(VMC_base):
         3.) vectorized for batch update
         4.) 10% propasal include global spin inversion
         '''
-        ## Should add implementation with log amplitude
-        ## which would be more stable for numerical reason.
+        # Should add implementation with log amplitude
+        # which would be more stable for numerical reason.
         batch_size = self.batch_size
         old_log_amp = self.get_self_log_amp_batch()
         # old_amp = self.get_self_amp_batch()
@@ -1603,19 +1589,21 @@ class VMC_2d(VMC_base):
         # Random Update
         # randsite2_x = np.random.randint(self.Lx, size=(batch_size,))
         # randsite2_y = np.random.randint(self.Ly, size=(batch_size,))
-        # Local Update, (0) right (1) upper right (2) up 
+        # Local Update, (0) right (1) upper right (2) up
         rand_direct = np.random.randint(3, size=(batch_size,))
         rand_dx = 1 - (rand_direct // 2)
         rand_dy = (rand_direct + 1) // 2
-        randsite2_x = np.array( (randsite1_x + self.Lx + rand_dx) % self.Lx, dtype=np.int32)
-        randsite2_y = np.array( (randsite1_y + self.Ly + rand_dy) % self.Ly, dtype=np.int32)
+        randsite2_x = np.array((randsite1_x + self.Lx + rand_dx) % self.Lx, dtype=np.int32)
+        randsite2_y = np.array((randsite1_y + self.Ly + rand_dy) % self.Ly, dtype=np.int32)
 
         mask = (self.config[np.arange(batch_size), randsite1_x, randsite1_y, 0] +
                 self.config[np.arange(batch_size), randsite2_x, randsite2_y, 0]) == 1
 
         flip_config = self.config.copy()
-        flip_config[np.arange(batch_size), randsite1_x, randsite1_y, :] = 1 - flip_config[np.arange(batch_size), randsite1_x, randsite1_y, :]
-        flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :] = 1 - flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :]
+        flip_config[np.arange(batch_size), randsite1_x, randsite1_y, :] = 1 - \
+            flip_config[np.arange(batch_size), randsite1_x, randsite1_y, :]
+        flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :] = 1 - \
+            flip_config[np.arange(batch_size), randsite2_x, randsite2_y, :]
 
         # Random total spin flip 10 % of configurations
         to_flip_idx = np.random.choice(batch_size, batch_size//10, replace=False)
@@ -1662,9 +1650,9 @@ class VMC_2d(VMC_base):
                 dtype=float or complex
                 dtype depends on whether we are using complex amplitude wavefunction.
         '''
-        J=1.
-        g=2.
-        h=0.
+        J = 1.
+        g = 2.
+        h = 0.
         PBC = self.PBC
 
         num_config, Lx, Ly, local_dim = config_arr.shape
@@ -1683,7 +1671,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * (-J)
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :] - 0.5) * 2 * (-J)
 
         ########################
         # PBC : S_ij dot S_i(j+1)
@@ -1698,7 +1686,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * (-J)
+            localE_arr += np.einsum('ijk->i', SzSz[:, :, :-1] - 0.5) * 2 * (-J)
 
         #################
         #  g sigma^x_i  #
@@ -1740,9 +1728,9 @@ class VMC_2d(VMC_base):
                 np.array of shape (num_config)
                 dtype=complex
         '''
-        J=1.
-        g=3.5
-        h=0.
+        J = 1.
+        g = 3.5
+        h = 0.
         PBC = self.PBC
 
         num_config, Lx, Ly, local_dim = config_arr.shape
@@ -1761,7 +1749,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * (-J)
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :] - 0.5) * 2 * (-J)
 
         ########################
         # PBC : S_ij dot S_i(j+1)
@@ -1776,7 +1764,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * (-J)
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * (-J)
+            localE_arr += np.einsum('ijk->i', SzSz[:, :, :-1] - 0.5) * 2 * (-J)
 
         #################
         #  g sigma^x_i  #
@@ -1793,8 +1781,8 @@ class VMC_2d(VMC_base):
         flip_log_amp_arr = flip_log_amp_arr.reshape((Lx, Ly, num_config))
         # localE += g * amp_ratio
         amp_ratio = np.exp(flip_log_amp_arr -
-                           np.einsum('jk,i->jki', np.ones((Lx,Ly), dtype=self.NP_FLOAT), old_log_amp)
-                          )
+                           np.einsum('jk,i->jki', np.ones((Lx, Ly), dtype=self.NP_FLOAT), old_log_amp)
+                           )
         localE_arr += np.einsum('ijk -> k',  amp_ratio) * (-g)
 
         #################
@@ -1845,7 +1833,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * J / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :] - 0.5) * 2 * J / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -1862,7 +1850,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
         else:
-            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:-1,:], flip_Amp_arr[:-1,:,:]) * J / oldAmp / 2
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:, :-1, :], flip_Amp_arr[:-1, :, :]) * J / oldAmp / 2
 
         ########################
         # PBC : S_ij dot S_i(j+1)
@@ -1877,7 +1865,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * J / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :, :-1] - 0.5) * 2 * J / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -1894,7 +1882,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J / oldAmp / 2
         else:
-            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:,:-1], flip_Amp_arr[:,:-1,:]) * J / oldAmp / 2
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:, :, :-1], flip_Amp_arr[:, :-1, :]) * J / oldAmp / 2
 
         return localE_arr
 
@@ -1942,7 +1930,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * J / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :] - 0.5) * 2 * J / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin=local_dim
@@ -1952,23 +1940,23 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
                 config_flip_arr[i, j, :, (i+1) % Lx, j, :] = 1 - config_flip_arr[i, j, :, (i+1) % Lx, j, :]
 
-
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, Lx, Ly, local_dim]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(SzSz.flatten()))  # mask part indicate Szi != Szj
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
 
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J / 2
         else:
-            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:,:-1,:], amp_ratio[:,:-1,:]) * J / 2
+            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:, :-1, :], amp_ratio[:, :-1, :]) * J / 2
 
         # flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
         #                                                                    Lx, Ly, local_dim))
@@ -1983,7 +1971,6 @@ class VMC_2d(VMC_base):
         # else:
         #     localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:-1,:], amp_ratio[:-1,:,:]) * J / 2
 
-
         ########################
         # The term : S_ij dot S_i(j+1)
         ########################
@@ -1997,7 +1984,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * J / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :, :-1] - 0.5) * 2 * J / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin=local_dim
@@ -2007,22 +1994,23 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
                 config_flip_arr[i, j, :, i, (j+1) % Ly, :] = 1 - config_flip_arr[i, j, :, i, (j+1) % Ly, :]
 
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape: [num_config, Lx, Ly, Lx, Ly, local_dim]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(SzSz.flatten()))  # mask part indicate Szi != Szj
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
 
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J / 2
         else:
-            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:,:,:-1], amp_ratio[:,:,:-1]) * J / 2
+            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:, :, :-1], amp_ratio[:, :, :-1]) * J / 2
 
         # flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
         #                                                                    Lx, Ly, local_dim))
@@ -2037,11 +2025,10 @@ class VMC_2d(VMC_base):
         # else:
         #     localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:,:-1], amp_ratio[:,:-1,:]) * J / 2
 
-
         # if np.isnan(localE_arr).any():
         #     import pdb;pdb.set_trace()
 
-        assert( not np.isnan(localE_arr).any() )
+        assert(not np.isnan(localE_arr).any())
 
         return localE_arr
 
@@ -2072,7 +2059,6 @@ class VMC_2d(VMC_base):
         oldAmp = self.eval_amp_array(config_arr)
         localE_arr = np.zeros((num_config), dtype=oldAmp.dtype)
 
-
         ########################
         # PBC : J1 S_ij dot S_(i+1)j
         ########################
@@ -2086,7 +2072,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J1 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * J1 / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :] - 0.5) * 2 * J1 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -2103,8 +2089,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J1 / oldAmp / 2
         else:
-            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:,:-1,:], flip_Amp_arr[:-1,:,:]) * J1 / oldAmp / 2
-
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz)[:, :-1, :], flip_Amp_arr[:-1, :, :]) * J1 / oldAmp / 2
 
         ########################
         # PBC : J1 S_ij dot S_i(j+1)
@@ -2119,7 +2104,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J1 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * J1 / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :, :-1] - 0.5) * 2 * J1 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -2136,7 +2121,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J1 / oldAmp / 2
         else:
-            localE_arr += np.einsum('ijk,jki->i', (1-SzSz[:,:,:-1]), flip_Amp_arr[:,:-1,:]) * J1 / oldAmp / 2
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz[:, :, :-1]), flip_Amp_arr[:, :-1, :]) * J1 / oldAmp / 2
 
         ########################
         # PBC : J2 S_ij dot S_(i+1)(j+1)
@@ -2153,8 +2138,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J2 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:-1] - 0.5) * 2 * J2 / 4
-
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :-1] - 0.5) * 2 * J2 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -2162,7 +2146,8 @@ class VMC_2d(VMC_base):
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
-                config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :] = 1 - config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :]
+                config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :] = 1 - \
+                    config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :]
 
         flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
                                                                    Lx, Ly, local_dim))
@@ -2171,8 +2156,8 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J2 / oldAmp / 2
         else:
-            localE_arr += np.einsum('ijk,jki->i', (1-SzSz[:,:-1,:-1]),
-                                    flip_Amp_arr[:-1,:-1,:]) * J2 / oldAmp / 2
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz[:, :-1, :-1]),
+                                    flip_Amp_arr[:-1, :-1, :]) * J2 / oldAmp / 2
 
         ########################
         # PBC : J2 S_ij dot S_(i+1)(j-1)
@@ -2189,7 +2174,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J2 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,1:] - 0.5) * 2 * J2 / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, 1:] - 0.5) * 2 * J2 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin
@@ -2197,7 +2182,8 @@ class VMC_2d(VMC_base):
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
-                config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :] = 1 - config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :]
+                config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :] = 1 - \
+                    config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :]
 
         flip_Amp_arr = self.eval_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
                                                                    Lx, Ly, local_dim))
@@ -2206,7 +2192,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,jki->i', (1-SzSz), flip_Amp_arr) * J2 / oldAmp / 2
         else:
-            localE_arr += np.einsum('ijk,jki->i', (1-SzSz[:,:-1,1:]), flip_Amp_arr[:-1,1:,:]) * J2 / oldAmp / 2
+            localE_arr += np.einsum('ijk,jki->i', (1-SzSz[:, :-1, 1:]), flip_Amp_arr[:-1, 1:, :]) * J2 / oldAmp / 2
 
         return localE_arr
 
@@ -2244,7 +2230,6 @@ class VMC_2d(VMC_base):
         # old_log_amp shape (num_config,1)
         localE_arr = np.zeros((num_config), dtype=np.complex64)
 
-
         ########################
         # PBC : J1 S_ij dot S_(i+1)j
         ########################
@@ -2258,7 +2243,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J1 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:] - 0.5) * 2 * J1 / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :] - 0.5) * 2 * J1 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin=local_dim
@@ -2268,19 +2253,20 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
                 config_flip_arr[i, j, :, (i+1) % Lx, j, :] = 1 - config_flip_arr[i, j, :, (i+1) % Lx, j, :]
 
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, Lx, Ly, local_dim]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(SzSz.flatten()))  # mask part indicate Szi != Szj
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
 
         flip_log_amp_arr = flip_log_amp_arr.reshape((num_config, Lx, Ly))
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
 
         # flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
         #                                                                    Lx, Ly, local_dim))
@@ -2294,8 +2280,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J1 / 2
         else:
-            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:,:-1,:], amp_ratio[:,:-1,:]) * J1 / 2
-
+            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:, :-1, :], amp_ratio[:, :-1, :]) * J1 / 2
 
         ########################
         # PBC : J1 S_ij dot S_i(j+1)
@@ -2310,8 +2295,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J1 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:,:-1] - 0.5) * 2 * J1 / 4
-
+            localE_arr += np.einsum('ijk->i', SzSz[:, :, :-1] - 0.5) * 2 * J1 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin=local_dim
@@ -2321,20 +2305,20 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
                 config_flip_arr[i, j, :, i, (j+1) % Ly, :] = 1 - config_flip_arr[i, j, :, i, (j+1) % Ly, :]
 
-
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, Lx, Ly, local_dim]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(SzSz.flatten()))  # mask part indicate Szi != Szj
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
 
         flip_log_amp_arr = flip_log_amp_arr.reshape((num_config, Lx, Ly))
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
 
         # flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
         #                                                                    Lx, Ly, local_dim))
@@ -2348,9 +2332,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J1 / 2
         else:
-            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:,:,:-1], amp_ratio[:,:,:-1]) * J1 / 2
-
-
+            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:, :, :-1], amp_ratio[:, :, :-1]) * J1 / 2
 
         ########################
         # PBC : J2 S_ij dot S_(i+1)(j+1)
@@ -2367,7 +2349,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J2 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,:-1] - 0.5) * 2 * J2 / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, :-1] - 0.5) * 2 * J2 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin=local_dim
@@ -2375,7 +2357,8 @@ class VMC_2d(VMC_base):
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
-                config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :] = 1 - config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :]
+                config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :] = 1 - \
+                    config_flip_arr[i, j, :, (i+1) % Lx, (j+1) % Ly, :]
 
         # flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
         #                                                                    Lx, Ly, local_dim))
@@ -2386,24 +2369,24 @@ class VMC_2d(VMC_base):
         #                                                 old_log_amp))
         # localE_arr += np.einsum('ijk,jki->i', (1-SzSz), amp_ratio) * J2 / 2
 
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, Lx, Ly, local_dim]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(SzSz.flatten()))  # mask part indicate Szi != Szj
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
 
         flip_log_amp_arr = flip_log_amp_arr.reshape((num_config, Lx, Ly))
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J2 / 2
         else:
-            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:,:-1,:-1], amp_ratio[:,:-1,:-1]) * J2 / 2
-
+            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:, :-1, :-1], amp_ratio[:, :-1, :-1]) * J2 / 2
 
         ########################
         # PBC : J2 S_ij dot S_(i+1)(j-1)
@@ -2420,7 +2403,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J2 / 4
         else:
-            localE_arr += np.einsum('ijk->i', SzSz[:,:-1,1:] - 0.5) * 2 * J2 / 4
+            localE_arr += np.einsum('ijk->i', SzSz[:, :-1, 1:] - 0.5) * 2 * J2 / 4
 
         #   g      h      i           j    k     l
         #   Lx ,  Ly , num_config ,  Lx , Ly,  num_spin=local_dim
@@ -2428,7 +2411,8 @@ class VMC_2d(VMC_base):
         for i in range(Lx):
             for j in range(Ly):
                 config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
-                config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :] = 1 - config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :]
+                config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :] = 1 - \
+                    config_flip_arr[i, j, :, (i+1) % Lx, (j-1+Ly) % Ly, :]
 
         # flip_log_amp_arr = self.eval_log_amp_array(config_flip_arr.reshape(Lx * Ly * num_config,
         #                                                                    Lx, Ly, local_dim))
@@ -2439,28 +2423,28 @@ class VMC_2d(VMC_base):
         #                                                 old_log_amp))
         # localE_arr += np.einsum('ijk,jki->i', (1-SzSz), amp_ratio) * J2 / 2
 
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, Lx, Ly, local_dim]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(SzSz.flatten()))  # mask part indicate Szi != Szj
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
 
         flip_log_amp_arr = flip_log_amp_arr.reshape((num_config, Lx, Ly))
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J2 / 2
         else:
-            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:,:-1,1:], amp_ratio[:,:-1,1:]) * J2 / 2
+            localE_arr += np.einsum('ijk,ijk->i', (1-SzSz)[:, :-1, 1:], amp_ratio[:, :-1, 1:]) * J2 / 2
 
-        assert( not np.isnan(localE_arr).any() )
+        assert(not np.isnan(localE_arr).any())
 
         return localE_arr
-
 
     def local_E_2dJulian_batch_log(self, config_arr, t1=-0.1,
                                    t2=-0.9, U=32.):
@@ -2494,11 +2478,10 @@ class VMC_2d(VMC_base):
         inter_coeff_map[4] = np.sqrt(2)
         inter_coeff_map[6] = np.sqrt(2)
         inter_coeff_map[7] = 2
-        inter_coeff_map = inter_coeff_map.reshape([3,3])
+        inter_coeff_map = inter_coeff_map.reshape([3, 3])
         # inter_coeff_map = np.zeros((4,))
         # inter_coeff_map[2] = 1.
         # inter_coeff_map = inter_coeff_map.reshape([2, 2])
-
 
         max_num_p = 2
         #######################
@@ -2510,8 +2493,8 @@ class VMC_2d(VMC_base):
         interacting_coeff = np.zeros((Lx, Ly, num_config))
         for i in range(Lx):
             for j in range(Ly):
-                ## hopping from (i,j) to (i+1, j)
-                new_i = (i+1)%Lx
+                # hopping from (i,j) to (i+1, j)
+                new_i = (i+1) % Lx
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
                 mask2 = (config_arr[:, new_i, j, max_num_p] != 1)  # (i+1,j) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
@@ -2527,29 +2510,28 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, final_mask, new_i, j, :max_num_p] *= 0
                 config_flip_arr[i, j, final_mask, new_i, j, 1:] = tmp_config
                 # write in the interacting_coeff
-                if i%2 == 0:
+                if i % 2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
                 else:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
 
-
-
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
-        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        interacting_coeff = np.transpose(interacting_coeff, [2, 0, 1])
         # now of the shape, [num_config, Lx, Ly]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         # this mask is identical to the final_mask in the loop above.
         mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
         mask_to_eval = np.logical_not(mask_to_eval)
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
-        ## [TODO] remove the exp( masked ) part.
+        # [TODO] remove the exp( masked ) part.
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
         # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
         #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
         #                   )
@@ -2557,8 +2539,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
         else:
-            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,:-1,:], amp_ratio[:,:-1,:])
-
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:, :-1, :], amp_ratio[:, :-1, :])
 
         #######################
         # HOP TO THE LEFT    ##
@@ -2569,8 +2550,8 @@ class VMC_2d(VMC_base):
         interacting_coeff = np.zeros((Lx, Ly, num_config))
         for i in range(Lx):
             for j in range(Ly):
-                ## hopping from (i,j) to (i-1, j)
-                new_i = (i-1+Lx)%Lx
+                # hopping from (i,j) to (i-1, j)
+                new_i = (i-1+Lx) % Lx
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
                 mask2 = (config_arr[:, new_i, j, max_num_p] != 1)  # (i-1,j) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
@@ -2586,29 +2567,28 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, final_mask, new_i, j, :max_num_p] *= 0
                 config_flip_arr[i, j, final_mask, new_i, j, 1:] = tmp_config
                 # write in the interacting_coeff
-                if i%2 == 0:
+                if i % 2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
                 else:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
 
-
-
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
-        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        interacting_coeff = np.transpose(interacting_coeff, [2, 0, 1])
         # now of the shape, [num_config, Lx, Ly]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         # this mask is identical to the final_mask in the loop above.
         mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
         mask_to_eval = np.logical_not(mask_to_eval)
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
-        ## [TODO] remove the exp( masked ) part.
+        # [TODO] remove the exp( masked ) part.
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
         # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
         #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
         #                   )
@@ -2616,8 +2596,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
         else:
-            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,1:,:], amp_ratio[:,1:,:])
-
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:, 1:, :], amp_ratio[:, 1:, :])
 
         #####################
         # HOP TO THE UP   ##
@@ -2628,8 +2607,8 @@ class VMC_2d(VMC_base):
         interacting_coeff = np.zeros((Lx, Ly, num_config))
         for i in range(Lx):
             for j in range(Ly):
-                ## hopping from (i,j) to (i, j+1)
-                new_j = (j+1)%Ly
+                # hopping from (i,j) to (i, j+1)
+                new_j = (j+1) % Ly
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
                 mask2 = (config_arr[:, i, new_j, max_num_p] != 1)  # (i,j+1) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
@@ -2645,28 +2624,28 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, final_mask, i, new_j, :max_num_p] *= 0
                 config_flip_arr[i, j, final_mask, i, new_j, 1:] = tmp_config
                 # write in the interacting_coeff
-                if j%2 == 0:
+                if j % 2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
                 else:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
 
-
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
-        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        interacting_coeff = np.transpose(interacting_coeff, [2, 0, 1])
         # now of the shape, [num_config, Lx, Ly]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         # this mask is identical to the final_mask in the loop above.
         mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
         mask_to_eval = np.logical_not(mask_to_eval)
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
-        ## [TODO] remove the exp( masked ) part.
+        # [TODO] remove the exp( masked ) part.
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
         # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
         #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
         #                   )
@@ -2674,8 +2653,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
         else:
-            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,:,:-1], amp_ratio[:,:,:-1])
-
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:, :, :-1], amp_ratio[:, :, :-1])
 
         #######################
         # HOP TO THE DOWN    ##
@@ -2686,8 +2664,8 @@ class VMC_2d(VMC_base):
         interacting_coeff = np.zeros((Lx, Ly, num_config))
         for i in range(Lx):
             for j in range(Ly):
-                ## hopping from (i,j) to (i, j-1)
-                new_j = (j-1+Ly)%Ly
+                # hopping from (i,j) to (i, j-1)
+                new_j = (j-1+Ly) % Ly
                 mask1 = (config_arr[:, i, j, 0] != 1)  # (i,j) does not have zero particle
                 mask2 = (config_arr[:, i, new_j, max_num_p] != 1)  # (i,j-1) does not have two particles
                 final_mask = np.logical_and(mask1, mask2)
@@ -2703,29 +2681,28 @@ class VMC_2d(VMC_base):
                 config_flip_arr[i, j, final_mask, i, new_j, :max_num_p] *= 0
                 config_flip_arr[i, j, final_mask, i, new_j, 1:] = tmp_config
                 # write in the interacting_coeff
-                if j%2 == 0:
+                if j % 2 == 0:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t2
                 else:
                     interacting_coeff[i, j, :] = inter_coeff_map[old_site_idx, new_site_idx] * t1
 
-
-
-        config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+        config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
         # now of the shape, [num_config, Lx, Ly, num_config, Lx, Ly]
-        interacting_coeff = np.transpose(interacting_coeff, [2,0,1])
+        interacting_coeff = np.transpose(interacting_coeff, [2, 0, 1])
         # now of the shape, [num_config, Lx, Ly]
-        flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
+        flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
         # this mask is identical to the final_mask in the loop above.
         mask_to_eval = np.isclose(interacting_coeff.flatten(), np.zeros_like(interacting_coeff.flatten()))
         mask_to_eval = np.logical_not(mask_to_eval)
-        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+        flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+            config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
-        ## [TODO] remove the exp( masked ) part.
+        # [TODO] remove the exp( masked ) part.
         amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
         mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
         amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                        )
+                                          np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                         )
         # amp_ratio = np.exp(flip_log_amp_arr.reshape(num_config, Lx, Ly) -
         #                    np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT))
         #                   )
@@ -2733,7 +2710,7 @@ class VMC_2d(VMC_base):
         if PBC:
             localE_arr += np.einsum('ijk,ijk->i', interacting_coeff, amp_ratio)
         else:
-            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:,:,1:], amp_ratio[:,:,1:])
+            localE_arr += np.einsum('ijk,ijk->i', interacting_coeff[:, :, 1:], amp_ratio[:, :, 1:])
 
         #################
         #  h sigma^z_i  #
@@ -2745,13 +2722,14 @@ class VMC_2d(VMC_base):
         # mu if N not equal to Lx*Ly//2  #
         ###################################
         mu = 0.
-        num_particle = np.sum(config_arr, axis=(1,2)).dot(np.arange(max_num_p+1))
+        num_particle = np.sum(config_arr, axis=(1, 2)).dot(np.arange(max_num_p+1))
         # localE_arr += mu * (num_particle != Lx*Ly//2)
         # localE_arr += mu * num_particle
         print("num_batch in LxLy//2 sector : ", np.sum(num_particle == Lx*Ly//2)/num_config)
 
         if np.isnan(localE_arr).any():
-            import pdb;pdb.set_trace()
+            import pdb
+            pdb.set_trace()
 
         return localE_arr, localE_arr
         # return localE_arr + 0.5 * (num_particle - Lx*Ly//2)**2, localE_arr
@@ -2804,11 +2782,10 @@ class VMC_2d(VMC_base):
                     config_shift_copy[:, -a:, :-b, :] = config_arr[:, :a, b:, :]
                     config_shift_copy[:, -a:, -b:, :] = config_arr[:, :a, :b, :]
 
-
                 #  i            j    k,  l
                 # num_config , Lx , Ly, local_dim
                 SzSz = np.einsum('ijkl,ijkl->ijk', config_arr, config_shift_copy)
-                ## Always PBC:
+                # Always PBC:
                 localE_arr += np.einsum('ijk->i', SzSz - 0.5) * 2 * J / 4
 
                 #   g      h      i           j    k     l
@@ -2817,25 +2794,27 @@ class VMC_2d(VMC_base):
                 for i in range(Lx):
                     for j in range(Ly):
                         config_flip_arr[i, j, :, i, j, :] = 1 - config_flip_arr[i, j, :, i, j, :]
-                        config_flip_arr[i, j, :, (i+a) % Lx, (j+b) % Ly, :] = 1 - config_flip_arr[i, j, :, (i+a) % Lx, (j+b) % Ly, :]
+                        config_flip_arr[i, j, :, (i+a) % Lx, (j+b) % Ly, :] = 1 - \
+                            config_flip_arr[i, j, :, (i+a) % Lx, (j+b) % Ly, :]
 
-
-                config_flip_arr = np.transpose(config_flip_arr, [2,0,1,3,4,5])
+                config_flip_arr = np.transpose(config_flip_arr, [2, 0, 1, 3, 4, 5])
                 # now of the shape, [num_config, Lx, Ly, Lx, Ly, local_dim]
-                flip_log_amp_arr = np.zeros([num_config*Lx*Ly],dtype=self.NP_COMPLEX)
-                mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(SzSz.flatten()))  # mask part indicate Szi != Szj
-                flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
+                flip_log_amp_arr = np.zeros([num_config*Lx*Ly], dtype=self.NP_COMPLEX)
+                mask_to_eval = np.isclose(SzSz.flatten(), np.zeros_like(
+                    SzSz.flatten()))  # mask part indicate Szi != Szj
+                flip_log_amp_arr[mask_to_eval] = self.eval_log_amp_array(
+                    config_flip_arr.reshape(num_config*Lx*Ly, Lx, Ly, local_dim)[mask_to_eval])
 
                 amp_ratio = np.zeros([num_config, Lx, Ly], dtype=self.NP_COMPLEX)
                 mask_to_eval = mask_to_eval.reshape([num_config, Lx, Ly])
                 amp_ratio[mask_to_eval] = np.exp((flip_log_amp_arr.reshape(num_config, Lx, Ly) -
-                                                  np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx,Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
-                                                )
+                                                  np.einsum('i,jk->ijk', old_log_amp, np.ones((Lx, Ly), dtype=self.NP_FLOAT)))[mask_to_eval]
+                                                 )
 
                 # Always PBC:
                 localE_arr += np.einsum('ijk,ijk->i', (1-SzSz), amp_ratio) * J / 2
 
-        assert( not np.isnan(localE_arr).any() )
+        assert(not np.isnan(localE_arr).any())
 
         return localE_arr
 
