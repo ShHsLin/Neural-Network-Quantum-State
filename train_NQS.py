@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 from utils.parse_args import parse_args
 from network.tf_network import tf_network
-import NQS
+import VMC
 
 from tensorflow.python.training.saver import BaseSaverBuilder
 
@@ -165,24 +165,24 @@ if __name__ == "__main__":
                      conserved_inv=conserved_inv, num_threads=num_threads,
                     )
     if dim == 1:
-        N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
-                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
+        vmc = VMC.VMC_1d(systemSize, Wavefunction=Net, Hamiltonian=H, batch_size=batch_size,
+                         J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
+                         real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
     elif dim == 2:
-        N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
-                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
+        vmc = VMC.VMC_2d(systemSize, Wavefunction=Net, Hamiltonian=H, batch_size=batch_size,
+                         J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
+                         real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
     else:
         print("DIM error")
         raise NotImplementedError
 
     # Run Initilizer
-    N.NNet.run_global_variables_initializer()
+    vmc.wf.run_global_variables_initializer()
 
-    print("Total num para: ", N.net_num_para)
+    print("Total num para: ", vmc.wf_num_para)
     if SR:
         print("Using Stochastic Reconfiguration")
-        if N.net_num_para / 1 < num_sample:
+        if vmc.wf_num_para / 1 < num_sample:
             print("forming Sij explicitly")
             explicit_SR = True
         else:
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         explicit_SR = None
         print("Using plain gradient descent")
 
-    var_shape_list = N.NNet.var_shape_list
+    var_shape_list = vmc.wf.var_shape_list
     var_list = tf.global_variables()
 
     #############################################################
@@ -220,48 +220,48 @@ if __name__ == "__main__":
     #############################################################
 
     try:
-        # saver = tf.train.Saver(N.NNet.model_var_list)
+        # saver = tf.train.Saver(vmc.wf.model_var_list)
         saver = tf.train.Saver()
 
         if ckpt and ckpt.model_checkpoint_path:
-            saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
+            saver.restore(vmc.wf.sess, ckpt.model_checkpoint_path)
             print("Restore from last check point, stored at %s" % ckpt_path)
-            # print(N.NNet.sess.run(N.NNet.para_list))
+            # print(vmc.wf.sess.run(vmc.wf.para_list))
         else:
             print("No checkpoint found, at %s " % ckpt_path)
     except Exception as e:
         print(e)
         print("import weights only, not include stabilier, may cause numerical instability")
-        saver = tf.train.Saver(N.NNet.para_list, builder=CastFromFloat32SaverBuilder())
+        saver = tf.train.Saver(vmc.wf.para_list, builder=CastFromFloat32SaverBuilder())
 
         if ckpt and ckpt.model_checkpoint_path:
-            saver.restore(N.NNet.sess, ckpt.model_checkpoint_path)
+            saver.restore(vmc.wf.sess, ckpt.model_checkpoint_path)
             print("Restore from last check point, stored at %s" % ckpt_path)
-            # print(N.NNet.sess.run(N.NNet.para_list))
+            # print(vmc.wf.sess.run(vmc.wf.para_list))
         else:
             print("No checkpoint found, at %s " % ckpt_path)
 
-        # saver = tf.train.Saver(N.NNet.model_var_list)
+        # saver = tf.train.Saver(vmc.wf.model_var_list)
         saver = tf.train.Saver()
         ckpt = tf.train.get_checkpoint_state(ckpt_path)
 
         diag_QFI_path = path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' % (L, which_net, act, alpha, opt, lr, num_sample)
         if os.path.isfile(diag_QFI_path):
-            N.diag_QFI = np.load(path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' %
+            vmc.diag_QFI = np.load(path + 'L%d_%s_%s_a%s_%s%.e_S%d_diag_QFI.npy' %
                                  (L, which_net, act, alpha, opt, lr, num_sample),
-                                 N.diag_QFI)
+                                 vmc.diag_QFI)
 
     # Thermalization
     print("Thermalizing ~~ ")
     start_t, start_c = time.time(), time.clock()
-    # N.update_stabilizer()
+    # vmc.update_stabilizer()
     if 'pixelCNN' not in which_net:
         if batch_size > 1:
             for i in range(1000):
-                N.new_config_batch()
+                vmc.new_config_batch()
         else:
             for i in range(1000):
-                N.new_config()
+                vmc.new_config()
 
     end_t, end_c = time.time(), time.clock()
     print("Thermalization time: ", end_c - start_c, end_t - start_t)
@@ -275,10 +275,10 @@ if __name__ == "__main__":
         tmp_result_dict["totalS_var"] = []
 
 
-    N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
-    N.NNet.sess.run(N.NNet.momentum.assign(0.9))
+    vmc.wf.sess.run(vmc.wf.learning_rate.assign(lr))
+    vmc.wf.sess.run(vmc.wf.momentum.assign(0.9))
     GradW = None
-    # N.moving_E_avg = E_avg * l
+    # vmc.moving_E_avg = E_avg * l
 
     warm_up_array = np.ones(num_iter)  # np.ones(num_iter)
     if warm_up:
@@ -297,20 +297,20 @@ if __name__ == "__main__":
 
     for iteridx in range(start_idx + 1, num_iter + 1):
         if warm_up:
-            N.NNet.sess.run(N.NNet.learning_rate.assign(lr*warm_up_array[iteridx-1]))
+            vmc.wf.sess.run(vmc.wf.learning_rate.assign(lr*warm_up_array[iteridx-1]))
 
-        # N.update_stabilizer()
+        # vmc.update_stabilizer()
 
-        # N.NNet.sess.run(N.NNet.weights['wc1'].assign(wc1))
-        # N.NNet.sess.run(N.NNet.biases['bc1'].assign(bc1))
+        # vmc.wf.sess.run(vmc.wf.weights['wc1'].assign(wc1))
+        # vmc.wf.sess.run(vmc.wf.biases['bc1'].assign(bc1))
 
-        #    N.NNet.sess.run(N.NNet.learning_rate.assign(1e-3 * (0.995**iteridx)))
-        #    N.NNet.sess.run(N.NNet.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
+        #    vmc.wf.sess.run(vmc.wf.learning_rate.assign(1e-3 * (0.995**iteridx)))
+        #    vmc.wf.sess.run(vmc.wf.momentum.assign(0.95 - 0.4 * (0.98**iteridx)))
         # num_sample = 500 + iteridx/10
 
-        GradW, GjFj, info_dict = N.VMC(num_sample=num_sample, iteridx=iteridx,
-                                       SR=SR, Gj=GradW, explicit_SR=explicit_SR,
-                                       KFAC=KFAC)
+        GradW, GjFj, info_dict = vmc.get_VMC_gradient(num_sample=num_sample, iteridx=iteridx,
+                                                      SR=SR, Gj=GradW, explicit_SR=explicit_SR,
+                                                      KFAC=KFAC)
 
         progress(iteridx, num_iter, info_dict)
 
@@ -339,12 +339,12 @@ if __name__ == "__main__":
                 conv = False
                 while(mid_pt_iter < 20 and not conv):
                     grad_list = dw_to_glist(GradW, var_shape_list)
-                    N.NNet.sess.run(N.NNet.learning_rate.assign(lr / 2.))
-                    N.NNet.applyGrad(grad_list)
-                    GradW_mid, E, E_var, GjFj = N.VMC(num_sample=num_sample,
-                                                      iteridx=iteridx,
-                                                      SR=SR, Gj=GradW,
-                                                      explicit_SR=explicit_SR)
+                    vmc.wf.sess.run(vmc.wf.learning_rate.assign(lr / 2.))
+                    vmc.wf.applyGrad(grad_list)
+                    GradW_mid, E, E_var, GjFj = vmc.get_VMC_gradient(num_sample=num_sample,
+                                                                     iteridx=iteridx,
+                                                                     SR=SR, Gj=GradW,
+                                                                     explicit_SR=explicit_SR)
                     if np.linalg.norm(GradW - GradW_mid) / np.linalg.norm(GradW) < 1e-6:
                         conv = True
                     else:
@@ -352,8 +352,8 @@ if __name__ == "__main__":
                               np.linalg.norm(GradW - GradW_mid) / np.linalg.norm(GradW))
 
                     grad_list = dw_to_glist(-GradW, var_shape_list)
-                    N.NNet.applyGrad(grad_list)
-                    N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
+                    vmc.wf.applyGrad(grad_list)
+                    vmc.wf.sess.run(vmc.wf.learning_rate.assign(lr))
                     GradW = GradW_mid
                     mid_pt_iter += 1
 
@@ -362,37 +362,37 @@ if __name__ == "__main__":
                 k1 = GradW
                 grad_list = dw_to_glist(GradW, var_shape_list)
                 # Step size = h/2
-                N.NNet.sess.run(N.NNet.learning_rate.assign(lr / 2.))
-                N.NNet.applyGrad(grad_list)
+                vmc.wf.sess.run(vmc.wf.learning_rate.assign(lr / 2.))
+                vmc.wf.applyGrad(grad_list)
                 # x0 + k1 * h/2
-                GradW_2, E, E_var, GjFj = N.VMC(num_sample=num_sample,
-                                                iteridx=iteridx,
-                                                SR=SR, Gj=GradW,
-                                                explicit_SR=explicit_SR)
+                GradW_2, E, E_var, GjFj = vmc.get_VMC_gradient(num_sample=num_sample,
+                                                               iteridx=iteridx,
+                                                               SR=SR, Gj=GradW,
+                                                               explicit_SR=explicit_SR)
                 k2 = GradW_2
                 grad_list = dw_to_glist(-GradW + GradW_2, var_shape_list)
-                N.NNet.applyGrad(grad_list)
+                vmc.wf.applyGrad(grad_list)
                 # x0 + k2 * h/2
-                GradW_3, E, E_var, GjFj = N.VMC(num_sample=num_sample,
-                                                iteridx=iteridx,
-                                                SR=SR, Gj=GradW,
-                                                explicit_SR=explicit_SR)
+                GradW_3, E, E_var, GjFj = vmc.get_VMC_gradient(num_sample=num_sample,
+                                                               iteridx=iteridx,
+                                                               SR=SR, Gj=GradW,
+                                                               explicit_SR=explicit_SR)
                 k3 = GradW_3
                 grad_list = dw_to_glist(-GradW_2, var_shape_list)
-                N.NNet.applyGrad(grad_list)
+                vmc.wf.applyGrad(grad_list)
                 # x0
                 # Step size = h
-                N.NNet.sess.run(N.NNet.learning_rate.assign(lr))
+                vmc.wf.sess.run(vmc.wf.learning_rate.assign(lr))
                 grad_list = dw_to_glist(GradW_3, var_shape_list)
-                N.NNet.applyGrad(grad_list)
+                vmc.wf.applyGrad(grad_list)
                 # x0 + k3 * h
-                GradW_4, E, E_var, GjFj = N.VMC(num_sample=num_sample,
-                                                iteridx=iteridx,
-                                                SR=SR, Gj=GradW,
-                                                explicit_SR=explicit_SR)
+                GradW_4, E, E_var, GjFj = vmc.get_VMC_gradient(num_sample=num_sample,
+                                                               iteridx=iteridx,
+                                                               SR=SR, Gj=GradW,
+                                                               explicit_SR=explicit_SR)
                 k4 = GradW_4
                 grad_list = dw_to_glist(-GradW_3, var_shape_list)
-                N.NNet.applyGrad(grad_list)
+                vmc.wf.applyGrad(grad_list)
                 # x0
                 GradW = (k1 + 2 * k2 + 2 * k3 + k4) / 6.
 
@@ -423,10 +423,10 @@ if __name__ == "__main__":
         grad_list = dw_to_glist(GradW, var_shape_list)
 
         #  L2 Regularization ###
-        # for idx, W in enumerate(N.NNet.sess.run(N.NNet.para_list)):
+        # for idx, W in enumerate(vmc.wf.sess.run(vmc.wf.para_list)):
         #     grad_list[idx] += W * reg
 
-        N.NNet.applyGrad(grad_list)
+        vmc.wf.applyGrad(grad_list)
         # To save object ##
         if iteridx % save_each == 0:
             # Saving WF
@@ -435,7 +435,7 @@ if __name__ == "__main__":
                 break
             else:
                 print(" Wavefunction saved ~ ")
-                saver.save(N.NNet.sess, ckpt_path + 'opt%s_S%d' %
+                saver.save(vmc.wf.sess, ckpt_path + 'opt%s_S%d' %
                            (opt, num_sample))
             # Saving E_list
             if SR:
@@ -446,7 +446,7 @@ if __name__ == "__main__":
                 log_file.close()
 
                 cov_s_list = []
-                for cov in N.cov_list:
+                for cov in vmc.cov_list:
                     if type(cov) == list:
                         cov_s_list.append(cov[0])
                     else:

@@ -651,6 +651,9 @@ class tf_network:
 
         return sum([np.prod(w.get_shape().as_list()) for w in self.para_list])
 
+    def get_para_list(self):
+        return self.sess.run(self.para_list)
+
     def applyGrad(self, grad_list):
         self.sess.run(self.train_op, feed_dict={i: d for i, d in
                                                 zip(self.newgrads, grad_list)})

@@ -4,6 +4,16 @@ import numpy as np
 import time
 
 """
+Implement the variational monte carlo (VMC) optimization as a class
+It should take:
+    wavefunction (wf)
+    model
+    optimization setup
+
+TODO:
+    should remove all sess (tf.session) dependency.
+
+
 Should add spin-spin correlation in 2d
 should add vmc_observable in 2d
 
@@ -13,7 +23,7 @@ So that easily to change from 1d problem to 2d problem?
 So easily to switch model
 """
 
-class NQS_base():
+class VMC_base():
     def __init__(self):
         self.cov_list = None
         return
@@ -28,7 +38,7 @@ class NQS_base():
         '''
         assuming the vector is related to the weight.
         '''
-        var_shape_list = self.NNet.var_shape_list
+        var_shape_list = self.wf.var_shape_list
         T_list = []
         T_ind = 0
         for var_shape in var_shape_list:
@@ -45,7 +55,7 @@ class NQS_base():
         [(size_para_1, num_sample), (size_para_2, num_sample), ...]
         '''
         num_para, num_sample = Oarray.shape
-        var_shape_list = self.NNet.var_shape_list
+        var_shape_list = self.wf.var_shape_list
         unaggregated_O_list = []
         T_ind = 0
         for var_shape in var_shape_list:
@@ -58,26 +68,29 @@ class NQS_base():
 
 
     def getSelfAmp(self):
-        return float(self.NNet.get_amp(self.config))
+        return float(self.wf.get_amp(self.config))
 
     def get_self_amp_batch(self):
-        return self.NNet.get_amp(self.config).flatten()
+        return self.wf.get_amp(self.config).flatten()
 
     def get_self_log_amp_batch(self):
-        return self.NNet.get_log_amp(self.config).flatten()
+        return self.wf.get_log_amp(self.config).flatten()
 
     def update_stabilizer(self):
+        '''
+        [TF specific function]
+        '''
         current_amp = self.get_self_amp_batch()
         max_abs_amp = np.max(np.abs(current_amp))
         log_max_abs_amp = np.log(max_abs_amp)
-        print("exp_stabilier = %.5e, increments = %.5e " % (self.NNet.sess.run(self.NNet.exp_stabilizer),
+        print("exp_stabilier = %.5e, increments = %.5e " % (self.wf.sess.run(self.wf.exp_stabilizer),
                                                             log_max_abs_amp))
-        self.NNet.exp_stabilizer_add(log_max_abs_amp)
+        self.wf.exp_stabilizer_add(log_max_abs_amp)
         return
 
     def eval_amp_array(self, config_arr):
         '''
-        Return the amplitude of the NNQS/NAQS with NNet function, get_amp.
+        Return the amplitude of the wavefunction with the WF class method, get_amp.
         '''
         # for 1d:
         # (batch_size, inputShape[0], inputShape[1])
@@ -86,7 +99,7 @@ class NQS_base():
         array_shape = config_arr.shape
         max_size = self.max_batch_size
         if array_shape[0] <= max_size:
-            return self.NNet.get_amp(config_arr).flatten()
+            return self.wf.get_amp(config_arr).flatten()
         else:
             if self.using_complex:
                 amp_array = np.empty((array_shape[0], ), dtype=self.NP_COMPLEX)
@@ -94,9 +107,9 @@ class NQS_base():
                 amp_array = np.empty((array_shape[0], ), dtype=self.NP_FLOAT)
 
             for idx in range(array_shape[0] // max_size):
-                amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.get_amp(config_arr[max_size * idx : max_size * (idx + 1)]).flatten()
+                amp_array[max_size * idx : max_size * (idx + 1)] = self.wf.get_amp(config_arr[max_size * idx : max_size * (idx + 1)]).flatten()
 
-            amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.get_amp(config_arr[max_size * (array_shape[0]//max_size) : ]).flatten()
+            amp_array[max_size * (array_shape[0]//max_size) : ] = self.wf.get_amp(config_arr[max_size * (array_shape[0]//max_size) : ]).flatten()
             return amp_array
 
     def eval_log_amp_array(self, config_arr):
@@ -107,32 +120,32 @@ class NQS_base():
         array_shape = config_arr.shape
         max_size = self.max_batch_size
         if array_shape[0] <= max_size:
-            return self.NNet.get_log_amp(config_arr).flatten()
+            return self.wf.get_log_amp(config_arr).flatten()
         else:
             log_amp_array = np.empty((array_shape[0], ), dtype=np.complex64)
             for idx in range(array_shape[0] // max_size):
-                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.NNet.get_log_amp(config_arr[max_size * idx : max_size * (idx + 1)]).flatten()
+                log_amp_array[max_size * idx : max_size * (idx + 1)] = self.wf.get_log_amp(config_arr[max_size * idx : max_size * (idx + 1)]).flatten()
 
             if array_shape[0] % max_size != 0:
-                log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.NNet.get_log_amp(config_arr[max_size * (array_shape[0]//max_size) : ]).flatten()
+                log_amp_array[max_size * (array_shape[0]//max_size) : ] = self.wf.get_log_amp(config_arr[max_size * (array_shape[0]//max_size) : ]).flatten()
 
             return log_amp_array
 
-    def VMC(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True,
-            verbose=False,
-           ):
-        numPara = self.net_num_para
+    def get_VMC_gradient(self, num_sample, iteridx=0, SR=True, Gj=None, explicit_SR=False, KFAC=True,
+                         verbose=False,
+                        ):
+        num_para = self.wf_num_para
         num_site = self.num_site
-        # OOsum = np.zeros((numPara, numPara))
+        # OOsum = np.zeros((num_para, num_para))
         if self.using_complex:
             NP_DTYPE = self.NP_COMPLEX
         else:
             NP_DTYPE = self.NP_FLOAT
 
-        Osum = np.zeros((numPara), dtype=NP_DTYPE)
+        Osum = np.zeros((num_para), dtype=NP_DTYPE)
         Earray = np.zeros((num_sample), dtype=NP_DTYPE)
-        EOsum = np.zeros((numPara), dtype=NP_DTYPE)
-        # Oarray = np.zeros((numPara, num_sample), dtype=NP_DTYPE)
+        EOsum = np.zeros((num_para), dtype=NP_DTYPE)
+        # Oarray = np.zeros((num_para, num_sample), dtype=NP_DTYPE)
 
         start_c, start_t = time.clock(), time.time()
         corrlength = self.corrlength
@@ -198,8 +211,8 @@ class NQS_base():
             print("sampled channel statistic : ", sum_to_channel / np.prod(configDim[:-1]))
             print("sampled config <n>/Lx/Ly : ", avg_num_particle_per_site)
 
-        if self.NNet.conserved_Sz:
-            assert np.isclose(np.sum(num_particle == self.NNet.Q_tar)/configDim[0], 1.)
+        if self.wf.conserved_Sz:
+            assert np.isclose(np.sum(num_particle == self.wf.Q_tar)/configDim[0], 1.)
 
 
         # for i in range(num_sample):
@@ -210,7 +223,7 @@ class NQS_base():
 
         Earray = E0array
 
-        if self.NNet.conserved_SU2:
+        if self.wf.conserved_SU2:
             totalS_array = self.local_totalS_batch_log(config_arr)
 
             totalS_avg = np.average(totalS_array)
@@ -259,11 +272,11 @@ class NQS_base():
             else:
                 Earray = Earray - Eavg
 
-            Glist = self.NNet.get_E_grads(config_arr, Earray)
+            Glist = self.wf.get_E_grads(config_arr, Earray)
             ## The below seems to be wrong.
-            # Glist = self.NNet.get_E_grads(config_arr, Earray.conjugate())
+            # Glist = self.wf.get_E_grads(config_arr, Earray.conjugate())
             # Reg
-            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+            for idx, W in enumerate(self.wf.get_para_list()):
                 Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
@@ -282,7 +295,7 @@ class NQS_base():
             # RESULT SHOW THAT WE DO NOT NEED TO SPLIT GRADIENT
             #
             # import pdb;pdb.set_trace()
-            # Oarray = self.NNet.run_unaggregated_gradient(config_arr)
+            # Oarray = self.wf.run_unaggregated_gradient(config_arr)
             # Osum = Oarray.conjugate().dot(np.ones(Oarray.shape[1]))  # <O*>
             # EOsum = Oarray.conjugate().dot(Earray)  # <O^*E>
             # Eavg = np.average(Earray)
@@ -304,12 +317,12 @@ class NQS_base():
             else:
                 Earray = Earray - Eavg
 
-            Glist = self.NNet.get_E_grads(config_arr, Earray)
+            Glist = self.wf.get_E_grads(config_arr, Earray)
             ## The below seems to be wrong.
-            # Glist = self.NNet.get_E_grads(config_arr, Earray.conjugate())
+            # Glist = self.wf.get_E_grads(config_arr, Earray.conjugate())
 
             # Reg
-            for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+            for idx, W in enumerate(self.wf.get_para_list()):
                 Glist[idx] = Glist[idx] /num_sample + W * self.reg
 
             Gj = np.concatenate([g.flatten() for g in Glist])
@@ -325,16 +338,16 @@ class NQS_base():
             F_list = self.vec_to_list(F0_vec)
 
             # compute <O> (or <O^*>)??
-            Olist = self.NNet.get_log_grads(config_arr)
+            Olist = self.wf.get_log_grads(config_arr)
             Oi = np.concatenate([g.flatten() for g in Olist]) / num_sample
             end_c, end_t = time.clock(), time.time()
             if verbose:
                 print("<O> time (batch_gradient): ", end_c - start_c, end_t - start_t)
 
             # Initiate KFAC
-            self.NNet.apply_cov_update(config_arr)
+            self.wf.apply_cov_update(config_arr)
             try:
-                self.NNet.apply_inverse_update(config_arr)
+                self.wf.apply_inverse_update(config_arr)
             except Exception as e:
                 print("not inverse upadte !!!")
                 print(e)
@@ -343,7 +356,7 @@ class NQS_base():
             if verbose:
                 print("KFAC time ( OO update): ", end_c - start_c, end_t - start_t)
 
-            Gj = self.list_to_vec([pair[0] for pair in self.NNet.apply_fisher_inverse(F_list, config_arr)])
+            Gj = self.list_to_vec([pair[0] for pair in self.wf.apply_fisher_inverse(F_list, config_arr)])
             G_norm = np.linalg.norm(Gj)
             info_dict['G_norm'] = G_norm
             if verbose:
@@ -353,24 +366,24 @@ class NQS_base():
 
             '''
             # compute OO, OO_F
-            Oarray = self.NNet.run_unaggregated_gradient(config_arr)
+            Oarray = self.wf.run_unaggregated_gradient(config_arr)
             OOsum = Oarray.conjugate().dot(Oarray.T)
             OO = OOsum / num_sample
             end_c, end_t = time.clock(), time.time()
             print("OO explicit time ( SF ): ", end_c - start_c, end_t - start_t)
 
             # compute KFAC_OO_F
-            KFAC_OO_F = self.NNet.apply_fisher_multiply(F_list, config_arr)
+            KFAC_OO_F = self.wf.apply_fisher_multiply(F_list, config_arr)
             KFAC_OO_F = self.list_to_vec([pair[0] for pair in KFAC_OO_F])
             end_c, end_t = time.clock(), time.time()
             print("KFAC time ( OO_F): ", end_c - start_c, end_t - start_t)
 
             # compute KFAC_OO
-            FB_BLOCKS = list(self.NNet.layer_collection.get_blocks())
+            FB_BLOCKS = list(self.wf.layer_collection.get_blocks())
             OO_list = []
             for i in FB_BLOCKS:
                 print(i._renorm_coeff)
-                OO_list.append(self.NNet.sess.run(i.full_fisher_block()))
+                OO_list.append(self.wf.sess.run(i.full_fisher_block()))
 
             KFAC_OO = scipy.linalg.block_diag(*OO_list)
             end_c, end_t = time.clock(), time.time()
@@ -422,12 +435,12 @@ class NQS_base():
                 finalv = - avgO.conjugate() * avgO.dot(v)
 
                 v_list = self.vec_to_list(v)
-                KFAC_OO_v = self.NNet.apply_fisher_multiply(v_list, config_arr)
+                KFAC_OO_v = self.wf.apply_fisher_multiply(v_list, config_arr)
                 finalv += self.list_to_vec([pair[0] for pair in KFAC_OO_v])
 
                 return np.real(finalv)  + v * 1e-4
 
-            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
+            implicit_Sij = LinearOperator((num_para, num_para), matvec=implicit_S)
 
             Gj, info = scipy.sparse.linalg.minres(implicit_Sij, F0_vec, x0=Gj)
 
@@ -445,7 +458,7 @@ class NQS_base():
         else:  # the else from - if not SR; - elif KFAC
             if self.cov_list is None:
                 self.cov_list = []
-                for var_shape in self.NNet.var_shape_list:
+                for var_shape in self.wf.var_shape_list:
                     var_size = np.prod(var_shape)
                     if var_size < 512:
                         self.cov_list.append(np.eye(var_size, dtype=self.NP_FLOAT))
@@ -458,13 +471,13 @@ class NQS_base():
                 pass
 
 
-        Oarray = self.NNet.run_unaggregated_gradient(config_arr)
+        Oarray = self.wf.run_unaggregated_gradient(config_arr)
         end_c, end_t = time.clock(), time.time()
         if verbose:
             print("monte carlo time ( back propagation to get log_grads ): ", end_c - start_c, end_t - start_t)
 
         # for i in range(num_sample):
-        #     O_List = self.NNet.get_log_grads(config_arr[i:i+1])
+        #     O_List = self.wf.get_log_grads(config_arr[i:i+1])
         #     Oarray[:, i] = np.concatenate([g.flatten() for g in O_List])
 
         # end_c, end_t = time.clock(), time.time()
@@ -560,7 +573,7 @@ class NQS_base():
         else:
             Earray_m_avg = Earray - Eavg
 
-        _Flist = self.NNet.get_E_grads(config_arr, Earray_m_avg)
+        _Flist = self.wf.get_E_grads(config_arr, Earray_m_avg)
 
 
         if verbose:
@@ -568,7 +581,7 @@ class NQS_base():
             print("monte carlo time ( get E_grads ): ", end_c - start_c, end_t - start_t)
 
         ## Adding Regularization ##
-        for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
+        for idx, W in enumerate(self.wf.get_para_list()):
             _Flist[idx] = _Flist[idx] / num_sample + W * self.reg
 
         _Glist = []
@@ -629,7 +642,7 @@ class NQS_base():
             # (1.)
             OOsum = Oarray.conjugate().dot(Oarray.T)
             # (2.)
-            # mask = 1 - 2*self.NNet.im_para_array
+            # mask = 1 - 2*self.wf.im_para_array
             # Oarray_ = np.einsum('i,ij->ij', mask, Oarray)
             # OOsum = Oarray.dot(Oarray_.T)
 
@@ -651,7 +664,7 @@ class NQS_base():
         if self.moving_E_avg is None:
             # Fj = np.real(2. * (EOsum / num_sample - Eavg * Osum / num_sample))
             Fj = np.real((EOsum / num_sample - Eavg * Osum / num_sample))
-            Fj += self.reg * np.concatenate([g.flatten() for g in self.NNet.sess.run(self.NNet.para_list)])
+            Fj += self.reg * np.concatenate([g.flatten() for g in self.wf.get_para_list()])
             # if self.using_complex:
             #     Fj = Fj[self.re_idx_array] + 1j*Fj[self.im_idx_array]
             # else:
@@ -670,7 +683,7 @@ class NQS_base():
                 finalv += Oarray.conjugate().dot((Oarray.T.dot(v)))/num_sample
                 return np.real(finalv)  # + v * 1e-4
 
-            implicit_Sij = LinearOperator((numPara, numPara), matvec=implicit_S)
+            implicit_Sij = LinearOperator((num_para, num_para), matvec=implicit_S)
 
             Gj, info = scipy.sparse.linalg.minres(implicit_Sij, Fj, x0=Gj)
             print("conv Gj : ", info)
@@ -686,7 +699,7 @@ class NQS_base():
             # (2.)
             # Sij = OOsum / num_sample - np.einsum('i,j->ij', Osum.flatten() / num_sample,
             #                                      np.einsum('i,i->i', Osum.flatten()/num_sample,
-            #                                                (1-2*self.NNet.im_para_array)))
+            #                                                (1-2*self.wf.im_para_array)))
             # if self.using_complex:
             #     Sij = (Sij[self.re_idx_array][:, self.re_idx_array] -
             #            Sij[self.im_idx_array][:, self.im_idx_array] +
@@ -753,8 +766,8 @@ class NQS_base():
         return Gj, GjFj, info_dict
 
 
-class NQS_1d(NQS_base):
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
+class VMC_1d(VMC_base):
+    def __init__(self, inputShape, Wavefunction, Hamiltonian, batch_size=1, J2=None, reg=0.,
                  using_complex=False, single_precision=True, real_time=False,
                  pinv_rcond=1e-6, PBC=False):
         self.config = np.zeros((batch_size, inputShape[0], inputShape[1]),
@@ -769,8 +782,8 @@ class NQS_1d(NQS_base):
         if self.batch_size > self.max_batch_size:
             print("batch_size > max_batch_size, memory error may occur")
 
-        self.NNet = Net
-        self.net_num_para = self.NNet.getNumPara()
+        self.wf = Wavefunction
+        self.wf_num_para = self.wf.getNumPara()
         self.moving_E_avg = None
         self.reg = reg
         self.using_complex = using_complex
@@ -785,13 +798,13 @@ class NQS_1d(NQS_base):
         self.PBC = PBC
         self.real_time = real_time
         self.pinv_rcond = pinv_rcond
-        np_arange = np.arange(self.net_num_para)
-        self.re_idx_array = np_arange[np.array(1-self.NNet.im_para_array,
+        np_arange = np.arange(self.wf_num_para)
+        self.re_idx_array = np_arange[np.array(1-self.wf.im_para_array,
                                                dtype=bool)]
-        self.im_idx_array = np_arange[np.array(self.NNet.im_para_array,
+        self.im_idx_array = np_arange[np.array(self.wf.im_para_array,
                                                dtype=bool)]
 
-        print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
+        print("This wavefunction is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             self.get_local_E_batch = self.local_E_Ising_batch
             self.new_config_batch = self.new_config_batch_single
@@ -809,7 +822,7 @@ class NQS_1d(NQS_base):
         else:
             raise NotImplementedError
 
-        super(NQS_1d, self).__init__()
+        super(VMC_1d, self).__init__()
 
     def init_config(self, sz0_sector=True):
         if sz0_sector:
@@ -836,8 +849,8 @@ class NQS_1d(NQS_base):
         ## Reset the config to zeros
         self.config = 0 * self.config
         self.config = 0 * self.config
-        for site_i in range(self.NNet.L):
-            cond_prob_amp = self.NNet.plain_get_cond_log_amp(self.config)
+        for site_i in range(self.wf.L):
+            cond_prob_amp = self.wf.plain_get_cond_log_amp(self.config)
             cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch,...]
             cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
             site_prob = cond_prob[:, site_i, :]
@@ -863,7 +876,7 @@ class NQS_1d(NQS_base):
             tempconfig = self.config.copy()
             tempconfig[0, randsite1, :] = (1 - tempconfig[0, randsite1, :])
             tempconfig[0, randsite2, :] = (1 - tempconfig[0, randsite2, :])
-            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
+            ratio = self.wf.get_amp(tempconfig)[0] / self.getSelfAmp()
             if np.random.rand() < np.amin([1., ratio**2]):
                 self.config = tempconfig
             else:
@@ -876,13 +889,13 @@ class NQS_1d(NQS_base):
 #        if np.random.rand() < 0.5:
 #            randsite = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
-#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.wf.get_amp(tempconfig)[0] / self.getSelfAmp()
 #        else:
 #            randsite = np.random.randint(L)
 #            randsite2 = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
 #            tempconfig[0, randsite2, :] = (tempconfig[0, randsite2, :] + 1) % 2
-#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.wf.get_amp(tempconfig)[0] / self.getSelfAmp()
 #            if np.random.rand() < np.amin([1., ratio**2]):
 #                self.config = tempconfig
 #            else:
@@ -963,7 +976,7 @@ class NQS_1d(NQS_base):
 
     def VMC_observable(self, num_sample):
         L = self.config.shape[1]
-        numPara = self.net_num_para
+        num_para = self.wf_num_para
 
         start_c, start_t = time.clock(), time.time()
         corrlength = self.corrlength
@@ -1011,7 +1024,7 @@ class NQS_1d(NQS_base):
         # if (localE-localE2)>1e-12:
         #     print(np.squeeze(config).T, localE, localE2)
 
-        O_List = self.NNet.get_log_grads(config)
+        O_List = self.wf.get_log_grads(config)
         localO = np.concatenate([g.flatten() for g in O_List])
         localEO = localO * localE
 
@@ -1035,7 +1048,7 @@ class NQS_1d(NQS_base):
         for i in range(L):
             tempConfig = config.copy()
             tempConfig[0, i, :] = (1 - tempConfig[0, i, :])
-            tempAmp = float(self.NNet.get_amp(tempConfig))
+            tempAmp = float(self.wf.get_amp(tempConfig))
             localE -= h * tempAmp / oldAmp
 
         return localE
@@ -1053,7 +1066,7 @@ class NQS_1d(NQS_base):
                 tempConfig = config.copy()
                 tempConfig[0, i, :] = (1 - tempConfig[0, i, :])
                 tempConfig[0, i + 1, :] = (1 - tempConfig[0, i + 1, :])
-                tempAmp = float(self.NNet.get_amp(tempConfig))
+                tempAmp = float(self.wf.get_amp(tempConfig))
                 localE += J * tempAmp / oldAmp / 2
             else:
                 pass
@@ -1066,7 +1079,7 @@ class NQS_1d(NQS_base):
             tempConfig = config.copy()
             tempConfig[0, 0, :] = (1 - tempConfig[0, 0, :])
             tempConfig[0, L-1, :] = (1 - tempConfig[0, L-1, :])
-            tempAmp = float(self.NNet.get_amp(tempConfig))
+            tempAmp = float(self.wf.get_amp(tempConfig))
             localE += J * tempAmp / oldAmp / 2
 
         return localE
@@ -1371,12 +1384,12 @@ class NQS_1d(NQS_base):
         return NotImplementedError
 
 ############################
-#  END OF DEFINITION NQS1d #
+#  END OF DEFINITION VMC_1d #
 ############################
 
 
-class NQS_2d(NQS_base):
-    def __init__(self, inputShape, Net, Hamiltonian, batch_size=1, J2=None, reg=0.,
+class VMC_2d(VMC_base):
+    def __init__(self, inputShape, Wavefunction, Hamiltonian, batch_size=1, J2=None, reg=0.,
                  using_complex=False, single_precision=True, real_time=False,
                  pinv_rcond=1e-6, PBC=False):
         '''
@@ -1403,8 +1416,8 @@ class NQS_2d(NQS_base):
         if self.batch_size > self.max_batch_size:
             print("batch_size > max_batch_size, memory error may occur")
 
-        self.NNet = Net
-        self.net_num_para = self.NNet.getNumPara()
+        self.wf = Wavefunction
+        self.wf_num_para = self.wf.getNumPara()
         self.moving_E_avg = None
         self.reg = reg
         self.using_complex = using_complex
@@ -1419,11 +1432,11 @@ class NQS_2d(NQS_base):
         self.PBC = PBC
         self.real_time = real_time
         self.pinv_rcond = pinv_rcond
-        np_arange = np.arange(self.NNet.im_para_array.size)
-        self.re_idx_array = np_arange[np.array((1-self.NNet.im_para_array), dtype=bool)]
-        self.im_idx_array = np_arange[np.array(self.NNet.im_para_array, dtype=bool)]
+        np_arange = np.arange(self.wf.im_para_array.size)
+        self.re_idx_array = np_arange[np.array((1-self.wf.im_para_array), dtype=bool)]
+        self.im_idx_array = np_arange[np.array(self.wf.im_para_array, dtype=bool)]
 
-        print("This NQS is aimed for ground state of %s Hamiltonian" % Hamiltonian)
+        print("This wavefunction is aimed for ground state of %s Hamiltonian" % Hamiltonian)
         if Hamiltonian == 'Ising':
             self.get_local_E_batch = self.local_E_Ising_batch_log
             # self.get_local_E_batch = self.local_E_Ising_batch
@@ -1446,7 +1459,7 @@ class NQS_2d(NQS_base):
         else:
             raise NotImplementedError
 
-        super(NQS_2d, self).__init__()
+        super(VMC_2d, self).__init__()
 
     def init_config(self, sz0_sector=True):
         if sz0_sector:
@@ -1483,7 +1496,7 @@ class NQS_2d(NQS_base):
             tempconfig = self.config.copy()
             tempconfig[0, randsite1_x, randsite1_y, :] = (1 - tempconfig[0, randsite1_x, randsite1_y, :])
             tempconfig[0, randsite2_x, randsite2_y, :] = (1 - tempconfig[0, randsite2_x, randsite2_y, :])
-            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
+            ratio = self.wf.get_amp(tempconfig)[0] / self.getSelfAmp()
             if np.random.rand() < np.amin([1., ratio**2]):
                 self.config = tempconfig
             else:
@@ -1495,13 +1508,13 @@ class NQS_2d(NQS_base):
 #        if np.random.rand() < 0.5:
 #            randsite = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
-#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.wf.get_amp(tempconfig)[0] / self.getSelfAmp()
 #        else:
 #            randsite = np.random.randint(L)
 #            randsite2 = np.random.randint(L)
 #            tempconfig[0, randsite, :] = (tempconfig[0, randsite, :] + 1) % 2
 #            tempconfig[0, randsite2, :] = (tempconfig[0, randsite2, :] + 1) % 2
-#            ratio = self.NNet.get_amp(tempconfig)[0] / self.getSelfAmp()
+#            ratio = self.wf.get_amp(tempconfig)[0] / self.getSelfAmp()
 #            if np.random.rand() < np.amin([1., ratio**2]):
 #                self.config = tempconfig
 #            else:
@@ -1520,7 +1533,7 @@ class NQS_2d(NQS_base):
             self.config = 0 * self.config
             for site_i in range(self.Lx):
                 for site_j in range(self.Ly):
-                    cond_prob_amp = self.NNet.plain_get_cond_log_amp(self.config)
+                    cond_prob_amp = self.wf.plain_get_cond_log_amp(self.config)
                     # cond_prob_amp = cond_prob_amp.reshape([self.batch_size, *self.inputShape])
                     # site_cond_prob_amp = cond_prob_amp[:, site_i, site_j, :]
                     # mask = np.log(np.random.random_sample((batch_size,))) < site_cond_prob_amp[:,0]*2
@@ -1549,7 +1562,7 @@ class NQS_2d(NQS_base):
                 self.config = 0 * self.config
                 for site_i in range(self.Lx):
                     for site_j in range(self.Ly):
-                        cond_prob_amp = self.NNet.plain_get_cond_log_amp(self.config)
+                        cond_prob_amp = self.wf.plain_get_cond_log_amp(self.config)
                         cond_prob = np.exp(2 * cond_prob_amp.real)  # of shape [n_batch, 
                         cond_prob = cond_prob.reshape([self.batch_size, *self.inputShape])
                         site_prob = cond_prob[:, site_i, site_j, :]
@@ -2828,5 +2841,5 @@ class NQS_2d(NQS_base):
 
 
 ############################
-#  END OF DEFINITION NQS2d #
+#  END OF DEFINITION VMC_2d #
 ############################
