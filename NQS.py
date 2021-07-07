@@ -1,7 +1,6 @@
 import scipy.sparse.linalg
 from scipy.sparse.linalg import LinearOperator
 import numpy as np
-import tensorflow as tf
 import time
 
 """
@@ -549,8 +548,10 @@ class NQS_base():
                         self.cov_list[idx] = [cov_S, cov_U]
 
 
-        # End for update cov_list
-        end_c, end_t = time.clock(), time.time(); print("monte carlo time ( update cov_list ): ", end_c - start_c, end_t - start_t)
+        if verbose:
+            # End for update cov_list
+            end_c, end_t = time.clock(), time.time();
+            print("monte carlo time ( update cov_list ): ", end_c - start_c, end_t - start_t)
 
         if self.moving_E_avg != None:
             self.moving_E_avg = self.moving_E_avg * 0.5 + Eavg * 0.5
@@ -562,7 +563,9 @@ class NQS_base():
         _Flist = self.NNet.get_E_grads(config_arr, Earray_m_avg)
 
 
-        end_c, end_t = time.clock(), time.time(); print("monte carlo time ( get E_grads ): ", end_c - start_c, end_t - start_t)
+        if verbose:
+            end_c, end_t = time.clock(), time.time();
+            print("monte carlo time ( get E_grads ): ", end_c - start_c, end_t - start_t)
 
         ## Adding Regularization ##
         for idx, W in enumerate(self.NNet.sess.run(self.NNet.para_list)):
@@ -590,7 +593,9 @@ class NQS_base():
                 _Glist.append(_g)
 
 
-        end_c, end_t = time.clock(), time.time(); print("monte carlo time ( inverse cov_list get G ): ", end_c - start_c, end_t - start_t)
+        if verbose:
+            end_c, end_t = time.clock(), time.time();
+            print("monte carlo time ( inverse cov_list get G ): ", end_c - start_c, end_t - start_t)
 
 
         _Fj = np.concatenate([_f.flatten() for _f in _Flist])
@@ -608,7 +613,7 @@ class NQS_base():
             print("norm(G): ", G_norm,
                   "norm(F):", np.linalg.norm(_Fj),
                   "G.dot(F):", _GjFj)
-        return _Gj, _GjFj, info_dict
+        # return _Gj, _GjFj, info_dict
 
 
         ######### NEW MODIFICATION FOR KFAC like SR update scheme ##########
@@ -629,7 +634,9 @@ class NQS_base():
             # OOsum = Oarray.dot(Oarray_.T)
 
         end_c, end_t = time.clock(), time.time()
-        print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
+        if verbose:
+            print("monte carlo time (total): ", end_c - start_c, end_t - start_t)
+
         start_c, start_t = time.clock(), time.time()
 
         #####################################
@@ -713,16 +720,18 @@ class NQS_base():
                 # possible method, minres, lgmres, cg
                 Gj, info = scipy.sparse.linalg.minres(Sij, Fj, x0=Gj)
                 # Gj, info = scipy.sparse.linalg.cg(Sij, Fj)  # , x0=Gj)
-                print("conv Gj : ", info)
+                assert info == 0
+                # print("conv Gj : ", info)
 
         # Gj = Fj.T
         GjFj = np.linalg.norm(Gj.dot(Fj))
-        print("norm(G): ", np.linalg.norm(Gj),
-              "norm(F):", np.linalg.norm(Fj),
-              "G.dot(F):", GjFj)
+        if verbose:
+            print("norm(G): ", np.linalg.norm(Gj),
+                  "norm(F):", np.linalg.norm(Fj),
+                  "G.dot(F):", GjFj)
 
-        end_c, end_t = time.clock(), time.time()
-        print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
+            end_c, end_t = time.clock(), time.time()
+            print("Sij, Fj time: ", end_c - start_c, end_t - start_t)
 
         # (2.)
         # if self.using_complex:
@@ -736,9 +745,11 @@ class NQS_base():
             Gj[self.re_idx_array] = -Gj[self.im_idx_array]
             Gj[self.im_idx_array] = tmp
 
-        import pdb;pdb.set_trace()
-        print(" TO debug FjFj, ", Fj.dot(_Fj)/np.linalg.norm(Fj)/np.linalg.norm(_Fj),
-              " TO debug GjGj, ", Gj.dot(_Gj)/np.linalg.norm(Gj)/np.linalg.norm(_Gj))
+        # import pdb;pdb.set_trace()
+        if verbose:
+            print(" TO debug FjFj, ", Fj.dot(_Fj)/np.linalg.norm(Fj)/np.linalg.norm(_Fj),
+                  " TO debug GjGj, ", Gj.dot(_Gj)/np.linalg.norm(Gj)/np.linalg.norm(_Gj))
+
         return Gj, GjFj, info_dict
 
 
