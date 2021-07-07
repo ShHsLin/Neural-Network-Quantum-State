@@ -615,7 +615,8 @@ class tf_network:
                                        feed_dict={self.x: X0[max_bp_size*(num_data//max_bp_size):],
                                                   self.bn_is_training: True,
                                                   self.E_loc_m_avg: E_loc_array[max_bp_size*(num_data//max_bp_size):]})
-            grad_array += np.concatenate([g.flatten() for g in G_list])
+                grad_array += np.concatenate([g.flatten() for g in G_list])
+
             G_list = []
             grad_ind = 0
             for var_shape in self.var_shape_list:
