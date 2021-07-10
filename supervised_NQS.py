@@ -1,3 +1,4 @@
+import many_body
 import os
 import tensorflow as tf
 import numpy as np
@@ -5,10 +6,9 @@ import numpy as np
 from utils.parse_args import parse_args
 from network.tf_network import tf_network
 import network.tf_wrapper as tf_
-import NQS
+import VMC
 import sys
 sys.path.append('ExactDiag')
-import many_body
 
 
 if __name__ == "__main__":
@@ -57,7 +57,6 @@ if __name__ == "__main__":
     else:
         assert Q_tar is not None
 
-
     if opt == "KFAC":
         KFAC = True
     else:
@@ -81,20 +80,19 @@ if __name__ == "__main__":
                      conserved_C4=conserved_C4, conserved_Sz=conserved_Sz, Q_tar=Q_tar,
                      conserved_SU2=conserved_SU2, chem_pot=chem_pot,
                      conserved_inv=conserved_inv, num_threads=num_threads
-                    )
+                     )
 
     if dim == 1:
-        N = NQS.NQS_1d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
-                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
+        vmc = VMC.VMC_1d(systemSize, Wavefunction=Net, Hamiltonian=H, batch_size=batch_size,
+                         J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
+                         real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
     elif dim == 2:
-        N = NQS.NQS_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
-                       J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
-                       real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
+        vmc = VMC.VMC_2d(systemSize, Net=Net, Hamiltonian=H, batch_size=batch_size,
+                         J2=J2, reg=reg, using_complex=using_complex, single_precision=SP,
+                         real_time=real_time, pinv_rcond=pinv_rcond, PBC=PBC)
     else:
         print("DIM error")
         raise NotImplementedError
-
 
     #####################################
     ## From ED;  Creating exact basis  ##
@@ -105,8 +103,8 @@ if __name__ == "__main__":
             N_sys = L
             X_computation_basis = np.genfromtxt('ExactDiag/basis_L%d.csv' % L, delimiter=',')
             X = np.zeros([2**L, L, 2])
-            X[:,:,0] = X_computation_basis.reshape([2**L, L])
-            X[:,:,1] = 1-X_computation_basis.reshape([2**L, L])
+            X[:, :, 0] = X_computation_basis.reshape([2**L, L])
+            X[:, :, 1] = 1-X_computation_basis.reshape([2**L, L])
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_L'+str(L)+'_J2_'+str(int(J2*10))+'_OBC.csv').reshape((2**L, 1))
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
 
@@ -116,8 +114,8 @@ if __name__ == "__main__":
             N_sys = L ** 2
             X_computation_basis = np.genfromtxt('ExactDiag/basis_L%d.csv' % (L**2), delimiter=',')
             X = np.zeros([2**(L**2), L, L, 2])
-            X[:,:,:,0] = X_computation_basis.reshape([2**(L**2), L, L])
-            X[:,:,:,1] = 1-X_computation_basis.reshape([2**(L**2), L, L])
+            X[:, :, :, 0] = X_computation_basis.reshape([2**(L**2), L, L])
+            X[:, :, :, 1] = 1-X_computation_basis.reshape([2**(L**2), L, L])
 
             # Y = np.genfromtxt('ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
             Y = np.load('ExactDiag/wavefunction/%s/ED_wf_T%.2f.npy' % (supervised_model, args.T))
@@ -140,25 +138,22 @@ if __name__ == "__main__":
         import qTEBD
         import sample_mps
 
-        ###### Example 1
+        # Example 1
         # state = np.genfromtxt('/home/t30/all/ga63zuh/Neural-Network-Quantum-State/ExactDiag/EigVec/ES_2d_L4x4_J2_0.csv', delimiter=',')
         # MPS = mps_func.state_2_MPS(state, 16, 1000)
         # MPS, err = qTEBD.right_canonicalize(MPS, no_trunc=True, chi=1000, normalized=True)
         # print("err = ", err)
 
-        ###### Example 2:
+        # Example 2:
         import pickle
         MPS = np.load('ExactDiag/wavefunction/%s/somethinghere' % args.T)
         # MPS = pickle.load(open('/tuph/t30/space/ga63zuh/qTEBD/tenpy_tebd/data_tebd_dt1.000000e-03/1d_TFI_g1.4000_h0.9045/L31/wf_chi1024_4th/T%.1f.pkl' % args.T, 'rb'))
         # MPS = [np.array([1., 0.]).reshape([2, 1, 1])] * 31
 
-
-        #PIJ
+        # PIJ
         sample_mps.ipj_trans_pij(MPS)
-        #IPJ
+        # IPJ
         #################################################################################
-
-
 
     with Net.sess as sess:
         pi = tf.constant(np.pi, dtype=Net.TF_FLOAT)
@@ -172,19 +167,18 @@ if __name__ == "__main__":
         # Cost function : KL + L2 #
         ###################################
         kl_cost = tf.reduce_mean(2 * (true_amp_log_re - net_amp_log_re))
-        l2_cost_old = tf.reduce_mean(tf.abs( tf.mod(((true_amp_log_im - net_amp_log_im) + pi), 2*pi) - pi ))
+        l2_cost_old = tf.reduce_mean(tf.abs(tf.mod(((true_amp_log_im - net_amp_log_im) + pi), 2*pi) - pi))
         # l2_cost = tf.reduce_mean(tf.square( (true_amp_log_im - tf.mod(net_amp_log_im, 2*pi) )))
         l2_cost = tf.reduce_mean(tf.square(tf.cos(true_amp_log_im) - tf.cos(net_amp_log_im)) +
                                  tf.square(tf.sin(true_amp_log_im) - tf.sin(net_amp_log_im)))
         cost = kl_cost + l2_cost
 
-
         true_amp = tf.placeholder(Net.TF_COMPLEX, [None, 1])
         v1 = true_amp
         v2 = Net.amp
         # sampled_l2 = tf.reduce_mean(tf.square(tf.abs(v1 - v2)/tf.abs(v1)))
-        sampled_overlap = tf.reduce_mean(tf.real( v2/v1 ))
-        sampled_fidelity = tf.square(tf.abs(tf.reduce_mean( v2/v1 )))
+        sampled_overlap = tf.reduce_mean(tf.real(v2/v1))
+        sampled_fidelity = tf.square(tf.abs(tf.reduce_mean(v2/v1)))
 
         # cost = 1. - sampled_overlap
         # cost = 1. - sampled_fidelity
@@ -215,7 +209,6 @@ if __name__ == "__main__":
         for w in Net.para_list:
             cost += reg * tf.nn.l2_loss(w)
 
-
         learning_rate = tf.Variable(lr)
         Optimizer = tf_.select_optimizer(optimizer=opt, learning_rate=learning_rate,
                                          momentum=0.9)
@@ -231,13 +224,13 @@ if __name__ == "__main__":
         saver = tf.train.Saver(Net.model_var_list)
         if alpha is not None:
             ckpt_path = path + \
-                    'wavefunction/Supervised/' + '%s_T%.2f/' % (supervised_model, args.T) + \
-                    which_net+'_'+act+'_L'+str(L)+'_a'+str(alpha)
-                    # 'wavefunction/Supervised/' + 'TE_TFI_h0.9045_T%.1f/' % args.T + ...
+                'wavefunction/Supervised/' + '%s_T%.2f/' % (supervised_model, args.T) + \
+                which_net+'_'+act+'_L'+str(L)+'_a'+str(alpha)
+            # 'wavefunction/Supervised/' + 'TE_TFI_h0.9045_T%.1f/' % args.T + ...
         else:
             ckpt_path = path + \
-                    'wavefunction/Supervised/' + '%s_T%.2f/' % (supervised_model, args.T) + \
-                    which_net+'_'+act+'_L'+str(L)+'_a'+('-'.join([str(alpha) for alpha in alpha_list]))
+                'wavefunction/Supervised/' + '%s_T%.2f/' % (supervised_model, args.T) + \
+                which_net+'_'+act+'_L'+str(L)+'_a'+('-'.join([str(alpha) for alpha in alpha_list]))
 
         if num_blocks is not None:
             ckpt_path = ckpt_path + '_block%d' % num_blocks
@@ -268,7 +261,7 @@ if __name__ == "__main__":
             data_dict = {'cost_avg': [], 'kl_avg': [], 'l2_avg': [], 'fidelity_avg': [],
                          'cost_var': [], 'kl_var': [], 'l2_var': [], 'fidelity_var': [],
                          'lr': []
-                        }
+                         }
             data_dict['num_para'] = Net.getNumPara()
 
         cost_list = []
@@ -292,7 +285,6 @@ if __name__ == "__main__":
                                                   true_amp_log_re: np.real(np.log(Y_mini_batch)),
                                                   true_amp_log_im: np.imag(np.log(Y_mini_batch)),
                                                   true_amp: Y_mini_batch})
-
 
             cost_list.append(c)
             kl_list.append(kl)
@@ -318,10 +310,10 @@ if __name__ == "__main__":
                 fidelity_list = []
 
             if ED and i % 5000 == 0:
-                ### get full batch information
+                # get full batch information
                 # y = Net.get_amp(X)
                 y_list = []
-                end_idx=0
+                end_idx = 0
                 for i in range((2**N_sys) // 1024):
                     start_idx, end_idx = i*1024, (i+1)*1024
                     yi = Net.get_amp(X[start_idx:end_idx])
@@ -331,9 +323,6 @@ if __name__ == "__main__":
                     y_list.append(Net.get_amp(X[end_idx:]))
 
                 y = np.concatenate(y_list)
-
-
-
 
                 print(('y norm : ', np.linalg.norm(y)))
                 measured_fidelity = np.square(np.abs(Y.flatten().dot(y.flatten().conj())))
@@ -353,9 +342,9 @@ if __name__ == "__main__":
                 PLOT = False
                 SZ_MASK = True
                 if dim == 1:
-                    mask = np.sum(X[:,:,0], axis=(1)) == 8
+                    mask = np.sum(X[:, :, 0], axis=(1)) == 8
                 elif dim == 2:
-                    mask = np.sum(X[:,:,:,0], axis=(1,2)) == 8
+                    mask = np.sum(X[:, :, :, 0], axis=(1, 2)) == 8
                 y_mask = y[mask]
                 print("Sz 0 prob : ", y_mask.T.conjugate().dot(y_mask))
                 if PLOT and SZ_MASK:
@@ -364,14 +353,14 @@ if __name__ == "__main__":
                     plt.plot(Y[mask]/np.linalg.norm(Y[mask]), '-o')
                     plt.plot(y[mask].real/np.linalg.norm(y[mask].real), '--')
                     plt.show()
-                    import pdb;pdb.set_trace()
+                    import pdb
+                    pdb.set_trace()
                 elif PLOT:
                     import matplotlib.pyplot as plt
                     fig = plt.figure()
                     plt.plot(Y/np.linalg.norm(Y), '-o')
                     plt.plot(y/np.linalg.norm(y), '--')
                     plt.show()
-
 
         if ED:
             sx_expectation = many_body.sx_expectation(N_sys//2+1, y.flatten(), N_sys)
@@ -387,8 +376,8 @@ if __name__ == "__main__":
             ####################################################
             config_arr = np.zeros([2 * num_sample, *systemSize])
             for i in range(1, 1+int(2 * num_sample // batch_size)):
-                N.forward_sampling()
-                config_arr[(i-1) * batch_size: i * batch_size] = N.config.copy()
+                vmc.forward_sampling()
+                config_arr[(i-1) * batch_size: i * batch_size] = vmc.config.copy()
 
             amp_no_swap = Net.get_amp(config_arr)
 
@@ -399,7 +388,8 @@ if __name__ == "__main__":
 
             rho_2 = 0
             for i in range(num_sample):
-                rho_2 += (amp_swap[i].conj() * amp_swap[i+num_sample].conj())/(amp_no_swap[i].conj() * amp_no_swap[i+num_sample].conj())
+                rho_2 += (amp_swap[i].conj() * amp_swap[i+num_sample].conj()) / \
+                    (amp_no_swap[i].conj() * amp_no_swap[i+num_sample].conj())
 
             rho_2 = rho_2[0] / num_sample
             print("Tr rho_2 = ", rho_2)
@@ -410,7 +400,7 @@ if __name__ == "__main__":
             data_dict["renyi_2"] = -np.log(rho_2)
 
             #################
-            ### Measure Sx
+            # Measure Sx
             #################
 
             flip_config_arr = config_arr.copy()
@@ -418,11 +408,9 @@ if __name__ == "__main__":
 
             amp_flip = Net.get_amp(flip_config_arr)
             # amp_no_swap
-            sx_expectation = np.average( amp_flip / amp_no_swap )
+            sx_expectation = np.average(amp_flip / amp_no_swap)
             print("<Sx> = ", sx_expectation)
             data_dict["Sx"] = sx_expectation
 
-
         saver.save(sess, ckpt_path + '/pre')
         np.save(ckpt_path + '/data_dict.npy', data_dict, allow_pickle=True)
-
