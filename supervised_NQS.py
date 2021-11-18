@@ -1,4 +1,3 @@
-import many_body
 import os
 import tensorflow as tf
 import numpy as np
@@ -9,6 +8,7 @@ import network.tf_wrapper as tf_
 import VMC
 import sys
 sys.path.append('ExactDiag')
+import many_body
 
 
 if __name__ == "__main__":
@@ -177,10 +177,30 @@ if __name__ == "__main__":
         v1 = true_amp
         v2 = Net.amp
         # sampled_l2 = tf.reduce_mean(tf.square(tf.abs(v1 - v2)/tf.abs(v1)))
-        sampled_overlap = tf.reduce_mean(tf.real(v2/v1))
-        sampled_fidelity = tf.square(tf.abs(tf.reduce_mean(v2/v1)))
+        normalized_target_sampled_overlap = tf.reduce_mean(tf.real(v2/v1))
+        normalized_target_sampled_fidelity = tf.square(tf.abs(tf.reduce_mean(v2/v1)))
+        uniform_sampled_fidelity = tf.square(tf.abs(tf.reduce_mean(tf.conj(v2)*v1))) / tf.real(tf.reduce_mean(tf.conj(v2)*v2)) / tf.real(tf.reduce_mean(tf.conj(v1)*v1))
+        target_sampled_fidelity = tf.real(tf.reduce_mean(v2/v1) * tf.reduce_mean(tf.conj(v2)/tf.conj(v1)) / tf.reduce_mean( (tf.conj(v2)*v2) / (tf.conj(v1)*v1) ))
 
-        # cost = 1. - sampled_overlap
+        if args.cost_function == 'joint':
+            assert args.sampling_dist == 'target'
+            # This works for sampling according to the target wf given.
+            sampled_fidelity = normalized_target_sampled_fidelity
+            cost = kl_cost + l2_cost
+        elif args.cost_function == 'neg_F' and args.sampling_dist == 'target':
+            # This works for sampling according to the target wf given.
+            sampled_fidelity = target_sampled_fidelity
+            cost = - sampled_fidelity
+        elif args.cost_function == 'neg_F' and args.sampling_dist == 'uniform':
+            # This works for full batch or uniform sampling.
+            sampled_fidelity = uniform_sampled_fidelity
+            cost = - sampled_fidelity
+        else:
+            raise NotImplementedError
+
+
+
+        # cost = 1. - normalized_target_sampled_overlap
         # cost = 1. - sampled_fidelity
         true_log_amp = tf.complex(true_amp_log_re, true_amp_log_im)
         # cost = tf.reduce_sum(tf.square( tf.abs( true_log_amp - Net.log_amp )))
@@ -269,10 +289,22 @@ if __name__ == "__main__":
         l2_list = []
         fidelity_list = []
         for i in range(1, num_iter+1):
-            if ED:
-                batch_mask = np.random.choice(len(Y), batch_size, p=ED_prob)
+            if ED and (not args.exact_gradient):
+                if args.sampling_dist == 'target':
+                    ## sampling based on target distribution
+                    batch_mask = np.random.choice(len(Y), batch_size, p=ED_prob)
+                elif args.sampling_dist == 'uniform':
+                    ## unifrom sampling
+                    batch_mask = np.random.choice(len(Y), batch_size)
+                else:
+                    raise NotImplementedError
+
                 X_mini_batch = X[batch_mask]
                 Y_mini_batch = Y[batch_mask]
+            elif ED and args.exact_gradient:
+                ## FULL BATCH HERE
+                X_mini_batch = X
+                Y_mini_batch = Y
             else:
                 configs, amps = sample_mps.parallel_sampling(MPS, batch_size)
                 Y_mini_batch = np.array(amps, dtype=np.complex128)[:, None]
@@ -324,8 +356,9 @@ if __name__ == "__main__":
 
                 y = np.concatenate(y_list)
 
-                print(('y norm : ', np.linalg.norm(y)))
-                measured_fidelity = np.square(np.abs(Y.flatten().dot(y.flatten().conj())))
+                y_norm = np.linalg.norm(y)
+                print('y norm : ', y_norm)
+                measured_fidelity = np.square(np.abs(Y.flatten().dot(y.flatten().conj())) / y_norm )
                 print("Fidelity = ", measured_fidelity)
                 data_dict['fidelity'] = measured_fidelity
 
@@ -346,7 +379,7 @@ if __name__ == "__main__":
                 elif dim == 2:
                     mask = np.sum(X[:, :, :, 0], axis=(1, 2)) == 8
                 y_mask = y[mask]
-                print("Sz 0 prob : ", y_mask.T.conjugate().dot(y_mask))
+                print("Sz 0 prob : ", y_mask.T.conjugate().dot(y_mask) / (y_norm**2))
                 if PLOT and SZ_MASK:
                     import matplotlib.pyplot as plt
                     fig = plt.figure()

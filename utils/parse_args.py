@@ -168,6 +168,23 @@ def parse_args():
     parser.add_argument('--supervised_model', dest='supervised_model',
                         help='Name of the supervised Hamiltonian. Default: None',
                         default=None, type=str)
+    parser.add_argument('--cost_function', dest='cost_function',
+                        help='The cost function used for supervised learning.'
+                        'Can be joint, neg_F, neg_log_F. Note that joint should only be used for NAQS'
+                        'Default: None',
+                        default=None, type=str)
+    parser.add_argument('--sampling_dist', dest='sampling_dist',
+                        help='The sampling distriubtion for supervised learning.'
+                        'It could be the according to target distribution (target), or'
+                        'an unifrom sampling. Notice that doing an uniform sampling (uniform)'
+                        'might have higher variance.'
+                        'Default: target',
+                        default='target', type=str)
+    parser.add_argument('--exact_gradient', dest='exact_gradient',
+                        help='Whether to compute the exact gradient by taking'
+                        'the summation over all possible data.'
+                        'Default: False',
+                        default=False, type=bool)
 
     if len(sys.argv) == 1:
         pass
