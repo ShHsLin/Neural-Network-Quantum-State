@@ -1,5 +1,3 @@
-from kfac.python.ops.loss_functions import LogProbLoss
-import kfac
 import numpy as np
 import math
 import tensorflow as tf
@@ -7,10 +5,6 @@ import tensorflow as tf
 from . import tf_wrapper as tf_
 from . import mask
 
-# The following argument is for setting up kfac optimizer
-import sys
-# We append the relative path to kfac cloned directory
-sys.path.append("../../kfac")
 
 
 def average_gradients(tower_grads):
@@ -170,6 +164,12 @@ class tf_network:
         # layer_collection is defined before the build_ntwork
         # so that one can register the layer while building the network.
         if optimizer == "KFAC":
+            # The following argument is for setting up kfac optimizer
+            import sys
+            # We append the relative path to kfac cloned directory
+            sys.path.append("../../kfac")
+            import kfac
+
             self.layer_collection = kfac.LayerCollection()
             self.registered = False
         else:
@@ -246,6 +246,7 @@ class tf_network:
             # self.layer_collection.register_categorical_predictive_distribution(tf.square(self.amp),
             #                                                                    targets=tf.square(self.amp))
             # kfac_loss = LogProbLoss(self.prob)
+            from kfac.python.ops.loss_functions import LogProbLoss
             kfac_loss = LogProbLoss(self.amp)
             # kfac_loss = kfac.python.ops.loss_functions.LogProbLoss(tf.square(self.amp))
             self.layer_collection._register_loss_function(kfac_loss, self.amp, 'log_prob_loss')

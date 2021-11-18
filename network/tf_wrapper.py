@@ -1,14 +1,9 @@
-import kfac
 import tensorflow as tf
 from functools import reduce
 import numpy as np
 from . import mask
 from . import layers
 
-# The following argument is for setting up kfac optimizer
-import sys
-# We append the relative path to kfac cloned directory
-sys.path.append("../kfac")
 
 # Inverse update ops will be run every _INVERT_EVRY iterations.
 _INVERT_EVERY = 10
@@ -41,6 +36,12 @@ def select_optimizer(optimizer,
         return tf.contrib.opt.GGTOptimizer(learning_rate=learning_rate,
                                            window=128)
     elif optimizer == 'KFAC':
+        # The following argument is for setting up kfac optimizer
+        import sys
+        # We append the relative path to kfac cloned directory
+        sys.path.append("../../kfac")
+        import kfac
+
         # return kfac.KfacOptimizer(
         #     learning_rate=learning_rate,
         #     var_list=var_list,
