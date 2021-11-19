@@ -56,3 +56,7 @@ To cite our work, please copy
   year={2021}
 }
 ```
+
+
+### Comparison NetKet
+We include the code for comparison using library netket v2. See under directory `netket`.
