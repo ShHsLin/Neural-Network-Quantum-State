@@ -778,8 +778,10 @@ def fc_layer(bottom,
              name,
              biases=True,
              dtype=tf.float64,
+             init_style='He',
              layer_collection=None,
-             registered=False):
+             registered=False,
+            ):
     '''
     The if...else... below could merge.
     '''
@@ -788,7 +790,9 @@ def fc_layer(bottom,
             weights, biases = get_fc_var(in_size,
                                          out_size,
                                          biases=biases,
-                                         dtype=dtype)
+                                         dtype=dtype,
+                                         init_style=init_style
+                                        )
             x = tf.reshape(bottom, [-1, in_size])
             if biases:
                 fc = tf.nn.bias_add(tf.matmul(x, weights), biases)
@@ -1040,7 +1044,7 @@ def get_conv_var2d(filter_size,
             return filters, biases
 
 
-def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
+def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64, init_style='He'):
     if dtype in [tf.complex64, tf.complex128]:
         # tensorflow optimizer does not support complex type
         # So we init with two sets of real variables
@@ -1085,12 +1089,15 @@ def get_fc_var(in_size, out_size, name="", biases=True, dtype=tf.float64):
 
     else:
         # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.1)
-        # Xavier init
-        # initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)))
-        # He (MSAR) init
-        initial_value = tf.random_normal([in_size, out_size],
-                                         stddev=np.sqrt(2. / (in_size)),
-                                         dtype=dtype)
+        if init_style == 'Xavier':
+            # Xavier init
+            initial_value = tf.random_normal([in_size, out_size], stddev=np.sqrt(2./(in_size+out_size)), dtype=dtype)
+        elif init_style == 'He':
+            # He (MSAR) init
+            initial_value = tf.random_normal([in_size, out_size],
+                                             stddev=np.sqrt(2. / (in_size)),
+                                             dtype=dtype)
+
         weights = get_var(initial_value, name + "weights", dtype=dtype)
 
         if biases:

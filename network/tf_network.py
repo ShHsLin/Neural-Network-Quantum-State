@@ -2122,8 +2122,8 @@ class tf_network:
         with tf.variable_scope("network", reuse=tf.AUTO_REUSE):
             # inputShape = x.get_shape().as_list()
             x = tf.cast(x[:, :, 0], dtype=self.TF_FLOAT) - 0.5
-            fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re')
-            fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im')
+            fc1_re = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_re', init_style='Xavier')
+            fc1_im = tf_.fc_layer(x, self.L, self.L * self.alpha, 'fc1_im', init_style='Xavier')
             fc1 = tf.complex(fc1_re, fc1_im)
 
             v_bias_re = tf_.fc_layer(x, self.L, 1, 'v_bias_re')
