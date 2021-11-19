@@ -9,6 +9,7 @@ import VMC
 import sys
 sys.path.append('ExactDiag')
 import many_body
+import time
 
 
 if __name__ == "__main__":
@@ -155,6 +156,7 @@ if __name__ == "__main__":
         # IPJ
         #################################################################################
 
+    t0 = time.time()
     with Net.sess as sess:
         pi = tf.constant(np.pi, dtype=Net.TF_FLOAT)
 
@@ -280,7 +282,7 @@ if __name__ == "__main__":
             print("no data_dict found; create new data_dict")
             data_dict = {'cost_avg': [], 'kl_avg': [], 'l2_avg': [], 'fidelity_avg': [],
                          'cost_var': [], 'kl_var': [], 'l2_var': [], 'fidelity_var': [],
-                         'lr': []
+                         'lr': [], 'timestamps': [],
                          }
             data_dict['num_para'] = Net.getNumPara()
 
@@ -332,6 +334,7 @@ if __name__ == "__main__":
                 data_dict['kl_var'].append(np.var(kl_list))
                 data_dict['l2_var'].append(np.var(l2_list))
                 data_dict['fidelity_var'].append(np.var(fidelity_list))
+                data_dict['timestamps'].append(time.time() - t0)
                 print("iter=", i, "cost=", data_dict['cost_avg'][-1],
                       "kl_cost=", data_dict['kl_avg'][-1],
                       "l2_cost=", data_dict['l2_avg'][-1],
