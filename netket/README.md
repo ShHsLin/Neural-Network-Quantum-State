@@ -1,14 +1,16 @@
 ### Installation
 
 Follows in the instructions at: https://github.com/netket/netket
-and install netket v2.
+and install netket v2.1
 
 ### Requirements
 
-  - netket version 2
+  - netket version 2.1
 
 
 ### How to run the Code
+
+First create the data for the exact states following the instructions in the parent directory.
 
 Under this directory and run
 ```

@@ -41,6 +41,8 @@ The general command for running supervised learning is provided below, one can a
 python supervised_NQS.py --l ${system_size} --dim 1 --net ${net} --using_complex 1 --Q_tar -1  --lr 1e-3 --opt Adam --path ${NN_PATH} --act relu --alpha ${alpha}  --T ${T}  --supervised_model ${supervised_model} --filter_size ${fsize} --num_blocks ${blocks}
 ```
 
+For comparison with NetKet library, see the directory `netket`.
+
 
 
      
